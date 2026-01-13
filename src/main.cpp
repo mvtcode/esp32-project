@@ -1,165 +1,133 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
+#include <WiFi.h>
+#include <time.h>
+#include <FastLED.h>
 
-// ===========================================
-// CẤU HÌNH LED MATRIX P5
-// ===========================================
-#define PANEL_RES_X 64 // Số cột (pixels)
-#define PANEL_RES_Y 32 // Số hàng (pixels)
-#define PANEL_CHAIN 1  // Số panel nối tiếp (1 panel)
+// Thông tin cấu hình từ source cũ
+const char* ssid = "HPSTAR";
+const char* password = "0964335688";
+#define PANEL_RES_X 64 
+#define PANEL_RES_Y 32 
+#define PANEL_CHAIN 1  
 
-// Tạo đối tượng matrix
 MatrixPanel_I2S_DMA *dma_display = nullptr;
+uint8_t globalHue = 0;
 
-// ===========================================
-// FORWARD DECLARATIONS
-// ===========================================
-void demoColors();
-void demoShapes();
-void demoText();
-uint8_t sin8(uint8_t x);
+uint16_t hsvToRgb565(uint8_t hue, uint8_t sat, uint8_t val) {
+  CRGB rgb;
+  CHSV hsv(hue, sat, val);
+  hsv2rgb_rainbow(hsv, rgb);
+  return dma_display->color565(rgb.r, rgb.g, rgb.b);
+}
 
-// ===========================================
-// PIN MAPPING (HUB75)
-// ===========================================
-// Cấu hình mặc định của thư viện:
-// R1: GPIO25, G1: GPIO26, B1: GPIO27
-// R2: GPIO14, G2: GPIO12, B2: GPIO13
-// A: GPIO23, B: GPIO19, C: GPIO5, D: GPIO17, E: GPIO18
-// CLK: GPIO16, LAT: GPIO4, OE: GPIO15
+// Cải tiến: WiFi không gây treo máy
+void connectWiFi() {
+  Serial.println("Connecting WiFi...");
+  WiFi.begin(ssid, password);
+  int timeout = 0;
+  while (WiFi.status() != WL_CONNECTED && timeout < 20) { // Giới hạn 10 giây
+    delay(500);
+    Serial.print(".");
+    timeout++;
+  }
+  if(WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi Connected!");
+    configTime(7 * 3600, 0, "pool.ntp.org");
+  } else {
+    Serial.println("\nWiFi Failed! Running in offline mode.");
+  }
+}
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
 
-  Serial.println("\n\n=================================");
-  Serial.println("ESP32 LED Matrix P5 Controller");
-  Serial.println("=================================\n");
+  // 1. Cấu hình Pin theo sơ đồ của bạn
+  HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, PANEL_CHAIN);
+  mxconfig.gpio.r1 = 25; mxconfig.gpio.g1 = 26; mxconfig.gpio.b1 = 27;
+  mxconfig.gpio.r2 = 14; mxconfig.gpio.g2 = 12; mxconfig.gpio.b2 = 13;
+  mxconfig.gpio.a  = 23; mxconfig.gpio.b  = 19; mxconfig.gpio.c  = 5; 
+  mxconfig.gpio.d  = 17; mxconfig.gpio.e  = 18; 
+  mxconfig.gpio.clk = 16; mxconfig.gpio.lat = 4; mxconfig.gpio.oe = 15;
 
-  // Cấu hình HUB75
-  HUB75_I2S_CFG mxconfig(PANEL_RES_X, // Chiều rộng module
-                         PANEL_RES_Y, // Chiều cao module
-                         PANEL_CHAIN  // Số lượng module nối tiếp
-  );
-
-  // Tùy chọn nâng cao (có thể bỏ comment nếu cần)
-  // mxconfig.gpio.e = 18;  // Pin E (cho panel > 32 rows)
-  // mxconfig.clkphase = false;
-  // mxconfig.driver = HUB75_I2S_CFG::FM6126A; // Nếu dùng driver FM6126A
-
-  // Khởi tạo matrix
+  // 2. Khởi tạo màn hình TRƯỚC khi kết nối WiFi
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
-  dma_display->begin();
-  dma_display->setBrightness8(90); // Độ sáng (0-255)
+  if(!dma_display->begin()) {
+    Serial.println("Failed to initialize DMA Display!");
+  }
+  dma_display->setBrightness8(100);
   dma_display->clearScreen();
 
-  Serial.println("✅ LED Matrix đã sẵn sàng!");
-  Serial.println("Độ phân giải: " + String(PANEL_RES_X) + "x" +
-                 String(PANEL_RES_Y));
-  Serial.println();
+  // Test màn hình bằng một dòng chữ ngay lập tức
+  dma_display->setCursor(10, 10);
+  dma_display->setTextColor(dma_display->color565(255, 0, 0));
+  dma_display->print("BOOTING...");
 
-  // Demo các màu cơ bản
-  demoColors();
-  delay(2000);
-
-  // Demo vẽ hình
-  demoShapes();
-  delay(2000);
-
-  // Demo text
-  demoText();
+  // 3. Sau đó mới kết nối WiFi
+  connectWiFi();
 }
 
 void loop() {
-  // Hiệu ứng rainbow
-  static uint8_t hue = 0;
+  struct tm timeinfo;
+  bool hasTime = getLocalTime(&timeinfo);
 
-  for (int x = 0; x < PANEL_RES_X; x++) {
-    for (int y = 0; y < PANEL_RES_Y; y++) {
-      // Tạo màu rainbow
-      uint8_t pixelHue =
-          hue + (x * 256 / PANEL_RES_X) + (y * 256 / PANEL_RES_Y);
-      uint16_t color = dma_display->color565(
-          sin8(pixelHue), sin8(pixelHue + 85), sin8(pixelHue + 170));
-      dma_display->drawPixel(x, y, color);
-    }
+  dma_display->clearScreen();
+  
+  if (hasTime) {
+    // Phần vẽ đồng hồ (Giữ nguyên logic cũ của bạn)
+    char hStr[3], mStr[3], sStr[3];
+    sprintf(hStr, "%02d", timeinfo.tm_hour);
+    sprintf(mStr, "%02d", timeinfo.tm_min);
+    sprintf(sStr, "%02d", timeinfo.tm_sec);
+
+    dma_display->setTextSize(2);
+    // Vẽ Giờ
+    dma_display->setCursor(1, 2);
+    dma_display->setTextColor(hsvToRgb565(globalHue, 255, 255));
+    dma_display->print(hStr);
+    // Dấu :
+    dma_display->setCursor(22, 2);
+    dma_display->print(":");
+    // Vẽ Phút
+    dma_display->setCursor(30, 2);
+    dma_display->setTextColor(hsvToRgb565(globalHue + 40, 255, 255));
+    dma_display->print(mStr);
+    // Vẽ Giây (với gradient cho từng chữ số)
+    dma_display->setTextSize(1);
+    // Chữ số giây thứ nhất
+    dma_display->setCursor(52, 10);
+    dma_display->setTextColor(hsvToRgb565(globalHue + 80, 255, 255));
+    dma_display->print(sStr[0]);
+    // Chữ số giây thứ hai
+    dma_display->setCursor(58, 10);
+    dma_display->setTextColor(hsvToRgb565(globalHue + 100, 255, 255));
+    dma_display->print(sStr[1]);
+    
+    // Vẽ dòng 2: Thứ và Ngày/Tháng
+    dma_display->setTextSize(1);
+    
+    // Hiển thị Thứ (wday: 0=CN, 1=Thứ 2, ..., 6=Thứ 7)
+    const char* dayNames[] = {"CN", "T2", "T3", "T4", "T5", "T6", "T7"};
+    dma_display->setCursor(2, 23);
+    dma_display->setTextColor(hsvToRgb565(globalHue + 120, 255, 255));
+    dma_display->print(dayNames[timeinfo.tm_wday]);
+    
+    // Dấu phẩy
+    dma_display->print(",");
+    
+    // Hiển thị ngày/tháng DD/MM
+    char dateStr[10];
+    sprintf(dateStr, " %02d/%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
+    dma_display->setTextColor(hsvToRgb565(globalHue + 160, 255, 255));
+    dma_display->print(dateStr);
+  } else {
+    // Nếu chưa có WiFi, hiện thông báo
+    dma_display->setTextSize(1);
+    dma_display->setCursor(5, 12);
+    dma_display->setTextColor(dma_display->color565(0, 255, 0));
+    dma_display->print("Waiting WiFi...");
   }
 
-  hue++;
-  delay(20);
+  globalHue += 2;
+  delay(50);
 }
-
-// ===========================================
-// DEMO FUNCTIONS
-// ===========================================
-
-void demoColors() {
-  Serial.println("📺 Demo màu sắc cơ bản...");
-
-  // Đỏ
-  dma_display->fillScreen(dma_display->color565(255, 0, 0));
-  delay(500);
-
-  // Xanh lá
-  dma_display->fillScreen(dma_display->color565(0, 255, 0));
-  delay(500);
-
-  // Xanh dương
-  dma_display->fillScreen(dma_display->color565(0, 0, 255));
-  delay(500);
-
-  // Trắng
-  dma_display->fillScreen(dma_display->color565(255, 255, 255));
-  delay(500);
-
-  dma_display->clearScreen();
-}
-
-void demoShapes() {
-  Serial.println("🎨 Demo vẽ hình...");
-
-  dma_display->clearScreen();
-
-  // Vẽ đường thẳng
-  dma_display->drawLine(0, 0, PANEL_RES_X - 1, PANEL_RES_Y - 1,
-                        dma_display->color565(255, 0, 0));
-  dma_display->drawLine(PANEL_RES_X - 1, 0, 0, PANEL_RES_Y - 1,
-                        dma_display->color565(0, 255, 0));
-
-  // Vẽ hình chữ nhật
-  dma_display->drawRect(10, 10, 20, 12, dma_display->color565(0, 0, 255));
-
-  // Vẽ hình tròn
-  dma_display->drawCircle(PANEL_RES_X / 2, PANEL_RES_Y / 2, 8,
-                          dma_display->color565(255, 255, 0));
-}
-
-void demoText() {
-  Serial.println("📝 Demo hiển thị text...");
-
-  dma_display->clearScreen();
-  dma_display->setTextSize(1);
-  dma_display->setTextWrap(false);
-
-  // Text màu đỏ
-  dma_display->setCursor(2, 2);
-  dma_display->setTextColor(dma_display->color565(255, 0, 0));
-  dma_display->println("ESP32");
-
-  // Text màu xanh
-  dma_display->setCursor(2, 11);
-  dma_display->setTextColor(dma_display->color565(0, 255, 0));
-  dma_display->println("LED");
-
-  // Text màu vàng
-  dma_display->setCursor(2, 20);
-  dma_display->setTextColor(dma_display->color565(255, 255, 0));
-  dma_display->println("Matrix");
-}
-
-// ===========================================
-// HELPER FUNCTIONS
-// ===========================================
-
-// Hàm sin8 để tạo hiệu ứng (0-255)
-uint8_t sin8(uint8_t x) { return (sin(x * 2 * PI / 256.0) + 1.0) * 127.5; }
