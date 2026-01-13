@@ -21,6 +21,44 @@ uint16_t hsvToRgb565(uint8_t hue, uint8_t sat, uint8_t val) {
   return dma_display->color565(rgb.r, rgb.g, rgb.b);
 }
 
+// Bitmap cho chữ "Thứ" (15x8 pixels)
+// T = 84, h = 68, ứ = u + dấu
+const uint8_t thuBitmap[8] = {
+  0b11111000, // T
+  0b00100000, // h
+  0b00100110, // ứ (u)
+  0b00100110, // 
+  0b00100110, //
+  0b00100110, //
+  0b00100011, // dấu ứ
+  0b00000000
+};
+
+// Hàm vẽ chữ "Thứ" tùy chỉnh
+void drawThu(int16_t x, int16_t y, uint16_t color) {
+  // Vẽ chữ "T"
+  dma_display->drawLine(x, y, x+4, y, color);     // Ngang trên
+  dma_display->drawLine(x+2, y, x+2, y+6, color); // Dọc
+  
+  // Vẽ chữ "h"
+  dma_display->drawLine(x+6, y, x+6, y+6, color);  // Dọc trái
+  dma_display->drawPixel(x+7, y+3, color);         // Cong
+  dma_display->drawPixel(x+8, y+4, color);
+  dma_display->drawPixel(x+8, y+5, color);
+  dma_display->drawPixel(x+8, y+6, color);
+  
+  // Vẽ chữ "ư" (u + dấu)
+  dma_display->drawLine(x+10, y+3, x+10, y+6, color); // Dọc trái
+  dma_display->drawLine(x+13, y+3, x+13, y+6, color); // Dọc phải
+  dma_display->drawPixel(x+11, y+6, color);            // Đáy
+  dma_display->drawPixel(x+12, y+6, color);
+  dma_display->drawPixel(x+14, y+4, color);            // Dấu ngang
+  
+  // Vẽ dấu sắc (/)
+  dma_display->drawPixel(x+12, y+1, color);
+  dma_display->drawPixel(x+13, y, color);
+}
+
 // Cải tiến: WiFi không gây treo máy
 void connectWiFi() {
   Serial.println("Connecting WiFi...");
@@ -59,7 +97,7 @@ void setup() {
   dma_display->clearScreen();
 
   // Test màn hình bằng một dòng chữ ngay lập tức
-  dma_display->setCursor(10, 10);
+  dma_display->setCursor(4, 10);
   dma_display->setTextColor(dma_display->color565(255, 0, 0));
   dma_display->print("BOOTING...");
 
@@ -86,10 +124,10 @@ void loop() {
     dma_display->setTextColor(hsvToRgb565(globalHue, 255, 255));
     dma_display->print(hStr);
     // Dấu :
-    dma_display->setCursor(22, 2);
+    dma_display->setCursor(21, 2);
     dma_display->print(":");
     // Vẽ Phút
-    dma_display->setCursor(30, 2);
+    dma_display->setCursor(29, 2);
     dma_display->setTextColor(hsvToRgb565(globalHue + 40, 255, 255));
     dma_display->print(mStr);
     // Vẽ Giây (với gradient cho từng chữ số)
@@ -106,18 +144,29 @@ void loop() {
     // Vẽ dòng 2: Thứ và Ngày/Tháng
     dma_display->setTextSize(1);
     
-    // Hiển thị Thứ (wday: 0=CN, 1=Thứ 2, ..., 6=Thứ 7)
-    const char* dayNames[] = {"CN", "T2", "T3", "T4", "T5", "T6", "T7"};
-    dma_display->setCursor(2, 23);
-    dma_display->setTextColor(hsvToRgb565(globalHue + 120, 255, 255));
-    dma_display->print(dayNames[timeinfo.tm_wday]);
+    // Hiển thị Thứ + số (wday: 0=CN, 1=Thứ 2, ..., 6=Thứ 7)
+    uint16_t dayColor = hsvToRgb565(globalHue + 120, 255, 255);
     
-    // Dấu phẩy
+    if (timeinfo.tm_wday == 0) {
+      // Chủ nhật - hiển thị "CN"
+      dma_display->setCursor(2, 23);
+      dma_display->setTextColor(dayColor);
+      dma_display->print("CN");
+    } else {
+      // Thứ 2-7 - vẽ "Thứ" + số
+      drawThu(2, 23, dayColor);
+      dma_display->setCursor(18, 23);
+      dma_display->setTextColor(dayColor);
+      dma_display->print(timeinfo.tm_wday + 1); // 1->2, 2->3, ..., 6->7
+    }
+    
+    // Dấu phẩy sau thứ
     dma_display->print(",");
     
-    // Hiển thị ngày/tháng DD/MM
-    char dateStr[10];
-    sprintf(dateStr, " %02d/%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
+    // Hiển thị ngày/tháng DD/MM ở vị trí cố định
+    char dateStr[12];
+    sprintf(dateStr, "%02d/%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
+    dma_display->setCursor(34, 23); // Vị trí cố định, dịch trái 6 pixel
     dma_display->setTextColor(hsvToRgb565(globalHue + 160, 255, 255));
     dma_display->print(dateStr);
   } else {
@@ -128,6 +177,6 @@ void loop() {
     dma_display->print("Waiting WiFi...");
   }
 
-  globalHue += 2;
-  delay(50);
+  globalHue += 1;
+  delay(100);
 }
