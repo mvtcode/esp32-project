@@ -1,303 +1,235 @@
-#include <Adafruit_Fingerprint.h>
-#include <SoftwareSerial.h>
+/***************************************************
+  This is an example sketch for our optical Fingerprint sensor
 
-SoftwareSerial mySerial(4, 5); // RX, TX
+  Designed specifically to work with the Adafruit BMP085 Breakout
+  ----> http://www.adafruit.com/products/751
+
+  These displays use TTL Serial to communicate, 2 pins are required to
+  interface
+  Adafruit invests time and resources providing this open source code,
+  please support Adafruit and open-source hardware by purchasing
+  products from Adafruit!
+
+  Written by Limor Fried/Ladyada for Adafruit Industries.  
+  Small bug-fix by Michael cochez
+
+  BSD license, all text above must be included in any redistribution
+ ****************************************************/
+
+#include <Adafruit_Fingerprint.h>
+
+
+#if (defined(__AVR__) || defined(ESP8266)) && !defined(__AVR_ATmega2560__)
+// For UNO and others without hardware serial, we must use software serial...
+// pin #2 is IN from sensor (GREEN wire)
+// pin #3 is OUT from arduino  (WHITE wire)
+// Set up the serial port to use softwareserial..
+SoftwareSerial mySerial(2, 3);
+
+#else
+// On Leonardo/M0/etc, others with hardware serial, use hardware serial!
+// #0 is green wire, #1 is white
+#define mySerial Serial1
+
+#endif
+
 
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 
-// Cấu hình chân
-const int touchPin = 2;        // Chân ngắt - Touch sensor (Verify)
-const int enrollPin = 3;       // Chân ngắt - Nút ENROLL
-const int deletePin = 6;       // Chân polling - Nút DELETE
+uint8_t id;
 
-// Biến cờ hiệu ngắt
-volatile bool fingerTouched = false;  // Cờ verify
-volatile bool enrollRequested = false; // Cờ enroll
-volatile bool deleteRequested = false; // Cờ delete
+// Forward declarations
+uint8_t getFingerprintEnroll();
 
-// Debounce cho các nút
-volatile unsigned long lastEnrollTime = 0;
-const unsigned long debounceDelay = 300; // 300ms debounce
-
-// Biến quản lý ID vân tay
-uint8_t nextID = 1; // ID tiếp theo để đăng ký
-
-// Khai báo trước các hàm (forward declaration)
-void touchISR();
-void enrollISR();
-int verifyFingerprint();
-uint8_t enrollFingerprint();
-void deleteFingerprint();
-
-void setup() {
+void setup()
+{
   Serial.begin(9600);
-  
-  // Cấu hình chân
-  pinMode(touchPin, INPUT);    // Touch sensor (3.3V từ module)
-  pinMode(enrollPin, INPUT_PULLUP);  // Nút ENROLL (nhấn = LOW)
-  pinMode(deletePin, INPUT_PULLUP);  // Nút DELETE (nhấn = LOW)
-  
-  // Thiết lập ngắt
-  attachInterrupt(digitalPinToInterrupt(touchPin), touchISR, RISING);  // Touch sensor
-  attachInterrupt(digitalPinToInterrupt(enrollPin), enrollISR, FALLING); // Nút ENROLL
+  while (!Serial);  // For Yun/Leo/Micro/Zero/...
+  delay(100);
+  Serial.println("\n\nAdafruit Fingerprint sensor enrollment");
 
-  // Khởi tạo cảm biến vân tay
+  // set the data rate for the sensor serial port
   finger.begin(57600);
-  
-  Serial.println("=== HE THONG VAN TAY BIOSEC TA0702 ===");
-  Serial.println("- Dat ngon tay len sensor: VERIFY");
-  Serial.println("- Nhan nut ENROLL (Pin 3): THEM van tay");
-  Serial.println("- Nhan nut DELETE (Pin 6): XOA van tay");
-  Serial.println("San sang...\n");
+
+  if (finger.verifyPassword()) {
+    Serial.println("Found fingerprint sensor!");
+  } else {
+    Serial.println("Did not find fingerprint sensor :(");
+    while (1) { delay(1); }
+  }
+
+  Serial.println(F("Reading sensor parameters"));
+  finger.getParameters();
+  Serial.print(F("Status: 0x")); Serial.println(finger.status_reg, HEX);
+  Serial.print(F("Sys ID: 0x")); Serial.println(finger.system_id, HEX);
+  Serial.print(F("Capacity: ")); Serial.println(finger.capacity);
+  Serial.print(F("Security level: ")); Serial.println(finger.security_level);
+  Serial.print(F("Device address: ")); Serial.println(finger.device_addr, HEX);
+  Serial.print(F("Packet len: ")); Serial.println(finger.packet_len);
+  Serial.print(F("Baud rate: ")); Serial.println(finger.baud_rate);
 }
 
-void loop() {
-  // Kiểm tra nút DELETE (polling vì không có ngắt ngoài)
-  if (digitalRead(deletePin) == LOW && !deleteRequested) {
-    deleteRequested = true;
-    delay(50); // Debounce
+uint8_t readnumber(void) {
+  uint8_t num = 0;
+
+  while (num == 0) {
+    while (! Serial.available());
+    num = Serial.parseInt();
   }
-  
-  // Chế độ 1: ENROLL - Thêm vân tay mới
-  if (enrollRequested) {
-    Serial.println("\n>>> CHE DO THEM VAN TAY <<<");
-    enrollRequested = false; // Reset để tránh lặp
-    fingerTouched = false;   // Clear cờ verify
-    deleteRequested = false; // Clear cờ delete
-    
-    // TẮT NGẮT trong lúc enroll để tránh conflict
-    detachInterrupt(digitalPinToInterrupt(touchPin));
-    detachInterrupt(digitalPinToInterrupt(enrollPin));
-    
-    uint8_t result = enrollFingerprint();
-    if (result == FINGERPRINT_OK) {
-      Serial.println("==> THEM VAN TAY THANH CONG!");
-      nextID++; // Tăng ID cho lần sau
-    } else {
-      Serial.println("==> LOI: Khong them duoc van tay!");
-    }
-    
-    // BẬT LẠI NGẮT sau khi xong
-    attachInterrupt(digitalPinToInterrupt(touchPin), touchISR, RISING);
-    attachInterrupt(digitalPinToInterrupt(enrollPin), enrollISR, FALLING);
-    
-    // Clear lại tất cả các cờ sau khi xong
-    fingerTouched = false;
-    deleteRequested = false;
-    enrollRequested = false;
-    Serial.println("San sang...\n");
-  }
-  
-  // Chế độ 2: DELETE - Xóa vân tay
-  else if (deleteRequested) {
-    Serial.println("\n>>> CHE DO XOA VAN TAY <<<");
-    deleteRequested = false; // Reset
-    fingerTouched = false;   // Clear cờ verify
-    enrollRequested = false; // Clear cờ enroll
-    
-    // TẮT NGẮT trong lúc delete
-    detachInterrupt(digitalPinToInterrupt(touchPin));
-    detachInterrupt(digitalPinToInterrupt(enrollPin));
-    
-    deleteFingerprint();
-    
-    // BẬT LẠI NGẮT sau khi xong
-    attachInterrupt(digitalPinToInterrupt(touchPin), touchISR, RISING);
-    attachInterrupt(digitalPinToInterrupt(enrollPin), enrollISR, FALLING);
-    
-    // Clear lại tất cả các cờ sau khi xong
-    fingerTouched = false;
-    enrollRequested = false;
-    deleteRequested = false;
-    Serial.println("San sang...\n");
-  }
-  
-  // Chế độ 3: VERIFY - Kiểm tra vân tay
-  else if (fingerTouched) {
-    Serial.println("Phat hien co ngon tay! Dang quet...");
-    fingerTouched = false;   // Reset ngay để tránh lặp
-    
-    int result = verifyFingerprint();
-    
-    if (result == FINGERPRINT_OK) {
-      Serial.println("==> MO CUA THANH CONG!");
-      delay(2000);
-    } else {
-      Serial.println("==> VAN TAY KHONG HOP LE!");
-    }
-    
-    Serial.println("Cho tiep...\n");
-  }
+  return num;
 }
 
-// ============= CÁC HÀM XỬ LÝ NGẮT (ISR) =============
-void touchISR() {
-  fingerTouched = true; 
-}
-
-void enrollISR() {
-  // Debounce: chỉ trigger nếu đã qua 300ms từ lần nhấn trước
-  unsigned long currentTime = millis();
-  if (currentTime - lastEnrollTime > debounceDelay) {
-    enrollRequested = true;
-    lastEnrollTime = currentTime;
+void loop()                     // run over and over again
+{
+  Serial.println("Ready to enroll a fingerprint!");
+  Serial.println("Please type in the ID # (from 1 to 127) you want to save this finger as...");
+  id = readnumber();
+  if (id == 0) {// ID #0 not allowed, try again!
+     return;
   }
-}
-
-// ============= VERIFY - KIỂM TRA VÂN TAY =============
-int verifyFingerprint() {
-  uint8_t p = finger.getImage();
-  if (p != FINGERPRINT_OK) return -1;
-  
-  p = finger.image2Tz();
-  if (p != FINGERPRINT_OK) return -1;
-  
-  p = finger.fingerFastSearch();
-  return p;
-}
-
-// ============= ENROLL - THÊM VÂN TAY MỚI =============
-uint8_t enrollFingerprint() {
-  uint8_t id = nextID;
-  
-  Serial.print("Dang ky van tay voi ID #");
+  Serial.print("Enrolling ID #");
   Serial.println(id);
-  Serial.println("Vui long dat ngon tay len sensor...");
-  
-  // Bước 1: Chụp ảnh lần 1
+
+  while (! getFingerprintEnroll() );
+}
+
+uint8_t getFingerprintEnroll() {
+
   int p = -1;
+  Serial.print("Waiting for valid finger to enroll as #"); Serial.println(id);
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
-    if (p == FINGERPRINT_NOFINGER) {
-      // Đợi ngón tay
-    } else if (p == FINGERPRINT_OK) {
-      Serial.println("Anh 1 OK!");
-    } else {
-      Serial.print("Loi chup anh 1, ma loi: 0x");
-      Serial.println(p, HEX);
-      return p;
+    switch (p) {
+    case FINGERPRINT_OK:
+      Serial.println("Image taken");
+      break;
+    case FINGERPRINT_NOFINGER:
+      Serial.print(".");
+      break;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      Serial.println("Communication error");
+      break;
+    case FINGERPRINT_IMAGEFAIL:
+      Serial.println("Imaging error");
+      break;
+    default:
+      Serial.println("Unknown error");
+      break;
     }
   }
-  
-  // Chuyển đổi ảnh sang template
+
+  // OK success!
+
   p = finger.image2Tz(1);
-  if (p != FINGERPRINT_OK) {
-    Serial.println("Loi chuyen doi anh 1");
-    return p;
+  switch (p) {
+    case FINGERPRINT_OK:
+      Serial.println("Image converted");
+      break;
+    case FINGERPRINT_IMAGEMESS:
+      Serial.println("Image too messy");
+      return p;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      Serial.println("Communication error");
+      return p;
+    case FINGERPRINT_FEATUREFAIL:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    case FINGERPRINT_INVALIDIMAGE:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    default:
+      Serial.println("Unknown error");
+      return p;
   }
-  
-  Serial.println("Nha ngon tay ra...");
+
+  Serial.println("Remove finger");
   delay(2000);
-  
-  // Đợi nhả tay
   p = 0;
   while (p != FINGERPRINT_NOFINGER) {
     p = finger.getImage();
   }
-  
-  Serial.println("Dat lai ngon tay lan 2...");
-  
-  // Bước 2: Chụp ảnh lần 2
+  Serial.print("ID "); Serial.println(id);
   p = -1;
+  Serial.println("Place same finger again");
   while (p != FINGERPRINT_OK) {
     p = finger.getImage();
-    if (p == FINGERPRINT_NOFINGER) {
-      // Đợi ngón tay
-    } else if (p == FINGERPRINT_OK) {
-      Serial.println("Anh 2 OK!");
-    } else {
-      Serial.println("Loi chup anh 2");
-      return p;
+    switch (p) {
+    case FINGERPRINT_OK:
+      Serial.println("Image taken");
+      break;
+    case FINGERPRINT_NOFINGER:
+      Serial.print(".");
+      break;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      Serial.println("Communication error");
+      break;
+    case FINGERPRINT_IMAGEFAIL:
+      Serial.println("Imaging error");
+      break;
+    default:
+      Serial.println("Unknown error");
+      break;
     }
   }
-  
-  // Chuyển đổi ảnh sang template
+
+  // OK success!
+
   p = finger.image2Tz(2);
-  if (p != FINGERPRINT_OK) {
-    Serial.println("Loi chuyen doi anh 2");
-    return p;
+  switch (p) {
+    case FINGERPRINT_OK:
+      Serial.println("Image converted");
+      break;
+    case FINGERPRINT_IMAGEMESS:
+      Serial.println("Image too messy");
+      return p;
+    case FINGERPRINT_PACKETRECIEVEERR:
+      Serial.println("Communication error");
+      return p;
+    case FINGERPRINT_FEATUREFAIL:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    case FINGERPRINT_INVALIDIMAGE:
+      Serial.println("Could not find fingerprint features");
+      return p;
+    default:
+      Serial.println("Unknown error");
+      return p;
   }
-  
-  // Tạo model từ 2 template
-  Serial.println("Dang tao model...");
+
+  // OK converted!
+  Serial.print("Creating model for #");  Serial.println(id);
+
   p = finger.createModel();
-  if (p != FINGERPRINT_OK) {
-    Serial.println("Loi: 2 anh khong khop!");
+  if (p == FINGERPRINT_OK) {
+    Serial.println("Prints matched!");
+  } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
+    Serial.println("Communication error");
+    return p;
+  } else if (p == FINGERPRINT_ENROLLMISMATCH) {
+    Serial.println("Fingerprints did not match");
+    return p;
+  } else {
+    Serial.println("Unknown error");
     return p;
   }
-  
-  // Lưu model vào database
-  Serial.print("Luu vao ID #");
-  Serial.println(id);
+
+  Serial.print("ID "); Serial.println(id);
   p = finger.storeModel(id);
   if (p == FINGERPRINT_OK) {
-    Serial.println("Da luu thanh cong!");
+    Serial.println("Stored!");
+  } else if (p == FINGERPRINT_PACKETRECIEVEERR) {
+    Serial.println("Communication error");
+    return p;
+  } else if (p == FINGERPRINT_BADLOCATION) {
+    Serial.println("Could not store in that location");
+    return p;
+  } else if (p == FINGERPRINT_FLASHERR) {
+    Serial.println("Error writing to flash");
+    return p;
   } else {
-    Serial.println("Loi luu model!");
+    Serial.println("Unknown error");
     return p;
   }
-  
-  return FINGERPRINT_OK;
-}
 
-// ============= DELETE - XÓA VÂN TAY =============
-void deleteFingerprint() {
-  Serial.println("Chon che do xoa:");
-  Serial.println("1. Xoa tat ca van tay");
-  Serial.println("2. Xoa theo ID cu the");
-  Serial.println("Gui '1' hoac '2' qua Serial...");
-  
-  // Đợi input từ Serial (timeout 10 giây)
-  unsigned long timeout = millis() + 10000;
-  while (!Serial.available() && millis() < timeout) {
-    delay(10);
-  }
-  
-  if (!Serial.available()) {
-    Serial.println("Het thoi gian! Huy thao tac.");
-    return;
-  }
-  
-  char choice = Serial.read();
-  
-  if (choice == '1') {
-    // Xóa tất cả
-    Serial.println("Xoa tat ca van tay...");
-    finger.emptyDatabase();
-    Serial.println("==> DA XOA TAT CA VAN TAY!");
-    nextID = 1; // Reset ID counter
-  } 
-  else if (choice == '2') {
-    // Xóa theo ID
-    Serial.println("Nhap ID can xoa (1-127):");
-    
-    timeout = millis() + 10000;
-    while (!Serial.available() && millis() < timeout) {
-      delay(10);
-    }
-    
-    if (!Serial.available()) {
-      Serial.println("Het thoi gian! Huy thao tac.");
-      return;
-    }
-    
-    uint8_t id = Serial.parseInt();
-    
-    if (id >= 1 && id <= 127) {
-      Serial.print("Xoa van tay ID #");
-      Serial.println(id);
-      
-      uint8_t p = finger.deleteModel(id);
-      if (p == FINGERPRINT_OK) {
-        Serial.println("==> DA XOA THANH CONG!");
-      } else {
-        Serial.println("==> LOI: Khong xoa duoc!");
-      }
-    } else {
-      Serial.println("ID khong hop le!");
-    }
-  } 
-  else {
-    Serial.println("Lua chon khong hop le!");
-  }
+  return true;
 }
