@@ -49,7 +49,7 @@ void setup()
   Serial.println("\n\nAdafruit Fingerprint sensor enrollment");
 
   // set the data rate for the sensor serial port
-  finger.begin(57600);
+  finger.begin(115200);
 
   if (finger.verifyPassword()) {
     Serial.println("Found fingerprint sensor!");
