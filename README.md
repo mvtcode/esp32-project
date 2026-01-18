@@ -101,8 +101,9 @@ brew install platformio
 
 ### 2. Clone Dự Án
 ```bash
-git clone <repository-url>
+git clone https://github.com/mvtcode/esp32-project.git
 cd esp32-project
+git checkout clock
 ```
 
 ### 3. Cài Đặt Dependencies
@@ -155,8 +156,10 @@ pio device monitor
      ```
 
 3. **Kết nối WiFi từ điện thoại/máy tính**:
-   - Tên WiFi: `Clock-2026
+   - Tên WiFi: `Clock-2026`
    - Không cần mật khẩu
+
+   ![](connect-wifi.jpg)
 
 4. **Mở trình duyệt và truy cập**:
    ```
@@ -168,6 +171,8 @@ pio device monitor
    - Nhập **Mật khẩu WiFi**
    - Chọn **Thành phố** từ dropdown (tọa độ GPS sẽ tự động điền)
    - Click **"Lưu cấu hình"**
+
+   ![](config.jpg)
 
 6. **ESP32 tự động khởi động lại**:
    - Kết nối WiFi đã cấu hình
