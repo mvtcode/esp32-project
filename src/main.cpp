@@ -432,64 +432,55 @@ void loop() {
       
       // Bắt đầu từ vị trí cố định
       int currentX = 1; // Bắt đầu từ pixel 1
-      uint8_t hueOffset = 200; // Hue offset ban đầu
       
       // Vẽ "T" với gradient
       // dma_display->setCursor(currentX, 23);
-      // dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
+      // dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
       // dma_display->print("T");
       currentX += 4;
-      // hueOffset += 10; // Tăng hue cho ký tự tiếp theo
       
       // Vẽ phần nguyên (23) - từng chữ số với gradient
       currentX -= 1;
       for (int i = 0; i < strlen(tempIntStr); i++) {
         dma_display->setCursor(currentX, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
+        dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
         dma_display->print(tempIntStr[i]);
         currentX += 6;
-        hueOffset += 10;
       }
       
       // Vẽ dấu chấm (.) - chỉ 1 pixel
-      dma_display->drawPixel(currentX, 29, hsvToRgb565(globalHue + hueOffset, 255, 255));
+      dma_display->drawPixel(currentX, 29, hsvToRgb565(globalHue + currentX * 2, 255, 255));
       currentX += 2;
-      hueOffset += 10;
       
       // Vẽ phần thập phân (1)
       dma_display->setCursor(currentX, 23);
-      dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
+      dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
       dma_display->print(tempDecStr);
       currentX += strlen(tempDecStr) * 6;
-      hueOffset += 10;
       
       // Vẽ ký tự độ (°) - vòng tròn nhỏ
-      dma_display->drawCircle(currentX + 1, 24, 1, hsvToRgb565(globalHue + hueOffset, 255, 255));
+      dma_display->drawCircle(currentX + 1, 24, 1, hsvToRgb565(globalHue + currentX * 2, 255, 255));
       currentX += 3;
-      hueOffset += 10;
       
       // Vẽ "C"
       dma_display->setCursor(currentX, 23);
-      dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
+      dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
       dma_display->print("C");
       currentX += 6 + 6; // C (6px) + space (6px)
-      hueOffset += 20; // Tăng nhiều hơn để tạo khoảng cách màu
       
       // Vẽ "H"
       currentX = 40;
       // dma_display->setCursor(currentX, 23);
-      // dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
+      // dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
       // dma_display->print("H");
       // currentX += 6; // H (6px)
-      // hueOffset += 10;
       
       // Vẽ độ ẩm - từng ký tự với gradient
       for (int i = 0; i < strlen(humStr); i++) {
         dma_display->setCursor(currentX, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
+        dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
         dma_display->print(humStr[i]);
         currentX += 6;
-        hueOffset += 10;
       }
     } else if (displayMode == 2) {
       // Mode 2: Hiển thị Âm lịch
@@ -505,44 +496,61 @@ void loop() {
       
       // Hiển thị với gradient
       int currentX = 2;
-      uint8_t hueOffset = 160;
       
       for (int i = 0; i < strlen(lunarStr); i++) {
         dma_display->setCursor(currentX, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
+        dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
         dma_display->print(lunarStr[i]);
         currentX += 6;
-        hueOffset += 10;
       }
     } else {
-      // Hiển thị Thứ và Ngày/Tháng
-      uint16_t dayColor = hsvToRgb565(globalHue + 120, 255, 255);
+      // Hiển thị Thứ và Ngày/Tháng - từng ký tự với gradient theo vị trí X
       
       if (timeinfo.tm_wday == 0) {
-        // Chủ nhật - hiển thị "CNhật"
+        // Chủ nhật - hiển thị "CNhật" với gradient từng ký tự
         dma_display->setCursor(2, 23);
-        dma_display->setTextColor(dayColor);
-        dma_display->print("CNh");
+        dma_display->setTextColor(hsvToRgb565(globalHue + 2 * 2, 255, 255));
+        dma_display->print("C");
+        
+        dma_display->setCursor(8, 23);
+        dma_display->setTextColor(hsvToRgb565(globalHue + 8 * 2, 255, 255));
+        dma_display->print("N");
+        
+        dma_display->setCursor(14, 23);
+        dma_display->setTextColor(hsvToRgb565(globalHue + 14 * 2, 255, 255));
+        dma_display->print("h");
+        
         // Vẽ chữ "ậ" tùy chỉnh
-        drawACircumflexDotBelow(20, 23, dayColor); // Vị trí sau "CNh"
-        dma_display->setCursor(26, 23); // Di chuyển cursor sau chữ "ậ"
+        drawACircumflexDotBelow(20, 23, hsvToRgb565(globalHue + 20 * 2, 255, 255));
+        
+        dma_display->setCursor(26, 23);
+        dma_display->setTextColor(hsvToRgb565(globalHue + 26 * 2, 255, 255));
         dma_display->print("t");
       } else {
-        // Thứ 2-7 - vẽ "Thứ" + số
-        drawThu(2, 23, dayColor);
+        // Thứ 2-7 - vẽ "Thứ" + số với gradient theo vị trí
+        // Vẽ "Thứ" tùy chỉnh - màu dựa trên vị trí x=2
+        drawThu(2, 23, hsvToRgb565(globalHue + 2 * 2, 255, 255));
+        
         dma_display->setCursor(18, 23);
-        dma_display->setTextColor(dayColor);
+        dma_display->setTextColor(hsvToRgb565(globalHue + 18 * 2, 255, 255));
         dma_display->print(timeinfo.tm_wday + 1); // 1->2, 2->3, ..., 6->7
-        // Dấu phẩy sau thứ
+        
+        // Dấu phẩy sau thứ - vị trí x=24
+        dma_display->setCursor(24, 23);
+        dma_display->setTextColor(hsvToRgb565(globalHue + 24 * 2, 255, 255));
         dma_display->print(",");
       }
       
-      // Hiển thị ngày/tháng DD/MM ở vị trí cố định
+      // Hiển thị ngày/tháng DD/MM ở vị trí cố định với gradient từng ký tự
       char dateStr[12];
       sprintf(dateStr, "%02d/%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
-      dma_display->setCursor(34, 23); // Vị trí cố định
-      dma_display->setTextColor(hsvToRgb565(globalHue + 160, 255, 255));
-      dma_display->print(dateStr);
+      int currentX = 34; // Vị trí cố định
+      for (int i = 0; i < strlen(dateStr); i++) {
+        dma_display->setCursor(currentX, 23);
+        dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
+        dma_display->print(dateStr[i]);
+        currentX += 6;
+      }
     }
   } else {
     // Nếu chưa có WiFi, hiện thông báo
