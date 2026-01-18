@@ -28,6 +28,10 @@ unsigned long lastWeatherUpdate = 0;
 const unsigned long weatherUpdateInterval = 600000; // 10 minutes in milliseconds
 bool hasWeatherData = false;
 
+// FreeRTOS task handle and mutex for thread-safe weather updates
+TaskHandle_t weatherTaskHandle = NULL;
+SemaphoreHandle_t weatherMutex = NULL;
+
 // Lunar calendar variables
 int lunarDay = 0;
 int lunarMonth = 0;
@@ -145,7 +149,7 @@ void connectWiFi() {
 
 // Lunar calendar implementation moved to lunar_calendar.cpp
 
-// Hàm lấy dữ liệu thời tiết từ Open-Meteo API
+// Hàm lấy dữ liệu thời tiết từ Open-Meteo API (thread-safe)
 void fetchWeatherData() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi not connected, skipping weather update");
@@ -157,34 +161,54 @@ void fetchWeatherData() {
     return;
   }
 
+  Serial.println("[Weather Task] Fetching weather data...");
   HTTPClient http;
   http.begin(weatherApiUrl.c_str());
+  http.setTimeout(5000); // 5 second timeout
   int httpCode = http.GET();
 
   if (httpCode == 200) {
     String payload = http.getString();
-    Serial.println("Weather API Response:");
-    Serial.println(payload);
+    Serial.println("[Weather Task] API Response received");
 
     // Parse JSON
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, payload);
 
     if (!error) {
-      temperature = doc["current"]["temperature_2m"];
-      humidity = doc["current"]["relative_humidity_2m"];
-      hasWeatherData = true;
-      Serial.printf("Temperature: %.1f°C, Humidity: %d%%\n", temperature, humidity);
+      // Lock mutex before updating shared variables
+      if (xSemaphoreTake(weatherMutex, portMAX_DELAY) == pdTRUE) {
+        temperature = doc["current"]["temperature_2m"];
+        humidity = doc["current"]["relative_humidity_2m"];
+        hasWeatherData = true;
+        xSemaphoreGive(weatherMutex);
+        Serial.printf("[Weather Task] Updated: %.1f°C, %d%%\n", temperature, humidity);
+      }
     } else {
-      Serial.print("JSON parse error: ");
+      Serial.print("[Weather Task] JSON parse error: ");
       Serial.println(error.c_str());
     }
   } else {
-    Serial.printf("HTTP GET failed, error: %d\n", httpCode);
+    Serial.printf("[Weather Task] HTTP GET failed, error: %d\n", httpCode);
   }
 
   http.end();
   lastWeatherUpdate = millis();
+}
+
+// FreeRTOS task for background weather updates
+void weatherUpdateTask(void *parameter) {
+  Serial.println("[Weather Task] Started on Core " + String(xPortGetCoreID()));
+  
+  // Initial fetch after 5 seconds
+  vTaskDelay(5000 / portTICK_PERIOD_MS);
+  fetchWeatherData();
+  
+  // Periodic updates every 10 minutes
+  while (true) {
+    vTaskDelay(weatherUpdateInterval / portTICK_PERIOD_MS);
+    fetchWeatherData();
+  }
 }
 
 void setup() {
@@ -266,9 +290,24 @@ void setup() {
     // Connect to WiFi
     connectWiFi();
     
-    // Fetch weather data
+    // Create mutex for thread-safe weather data access
+    weatherMutex = xSemaphoreCreateMutex();
+    if (weatherMutex == NULL) {
+      Serial.println("Failed to create weather mutex!");
+    }
+    
+    // Create weather update task on Core 0 (main loop runs on Core 1)
     if (WiFi.status() == WL_CONNECTED) {
-      fetchWeatherData();
+      xTaskCreatePinnedToCore(
+        weatherUpdateTask,    // Task function
+        "WeatherTask",        // Task name
+        8192,                 // Stack size (bytes)
+        NULL,                 // Task parameter
+        1,                    // Priority (lower than default)
+        &weatherTaskHandle,   // Task handle
+        0                     // Core 0
+      );
+      Serial.println("Weather task created successfully");
     }
   }
 }
@@ -417,18 +456,30 @@ void loop() {
     unsigned long currentTime = millis() / 5000; // Chia cho 5000ms = 5 giây
     int displayMode = currentTime % 3; // 0 = ngày/tháng, 1 = thời tiết, 2 = âm lịch
     
-    if (displayMode == 1 && hasWeatherData) {
+    // Thread-safe check for weather data availability
+    bool showWeather = false;
+    float tempDisplay = 0.0;
+    int humDisplay = 0;
+    
+    if (xSemaphoreTake(weatherMutex, 10 / portTICK_PERIOD_MS) == pdTRUE) {
+      showWeather = hasWeatherData;
+      tempDisplay = temperature;
+      humDisplay = humidity;
+      xSemaphoreGive(weatherMutex);
+    }
+    
+    if (displayMode == 1 && showWeather) {
       // Hiển thị Nhiệt độ và Độ ẩm với nhãn T và H
       // Format: "T 23.1°C  H 79%" với gradient colors
       
-      // Tách phần nguyên và phần thập phân của nhiệt độ
-      int tempInt = (int)temperature;
-      int tempDec = (int)((temperature - tempInt) * 10); // Lấy 1 chữ số thập phân
+      // Tách phần nguyên và phần thập phân của nhiệt độ (using thread-safe copies)
+      int tempInt = (int)tempDisplay;
+      int tempDec = (int)((tempDisplay - tempInt) * 10); // Lấy 1 chữ số thập phân
       
       char tempIntStr[5], tempDecStr[2], humStr[8];
       sprintf(tempIntStr, "%d", tempInt);
       sprintf(tempDecStr, "%d", tempDec);
-      sprintf(humStr, "%d%%", humidity);
+      sprintf(humStr, "%d%%", humDisplay);
       
       // Bắt đầu từ vị trí cố định
       int currentX = 1; // Bắt đầu từ pixel 1
@@ -563,10 +614,7 @@ void loop() {
     delay(1500);
   }
 
-  // Cập nhật dữ liệu thời tiết mỗi 10 phút
-  if (WiFi.status() == WL_CONNECTED && (millis() - lastWeatherUpdate >= weatherUpdateInterval)) {
-    fetchWeatherData();
-  }
+  // Weather updates now handled by background task - no blocking calls here!
 
   globalHue += 1;
   delay(100);
