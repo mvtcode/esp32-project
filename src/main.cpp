@@ -435,11 +435,11 @@ void loop() {
       uint8_t hueOffset = 200; // Hue offset ban đầu
       
       // Vẽ "T" với gradient
-      dma_display->setCursor(currentX, 23);
-      dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
-      dma_display->print("T");
-      currentX += 6 + 1; // T (6px) + space (1px) = 8px
-      hueOffset += 10; // Tăng hue cho ký tự tiếp theo
+      // dma_display->setCursor(currentX, 23);
+      // dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
+      // dma_display->print("T");
+      currentX += 4;
+      // hueOffset += 10; // Tăng hue cho ký tự tiếp theo
       
       // Vẽ phần nguyên (23) - từng chữ số với gradient
       currentX -= 1;
@@ -477,11 +477,11 @@ void loop() {
       
       // Vẽ "H"
       currentX = 40;
-      dma_display->setCursor(currentX, 23);
-      dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
-      dma_display->print("H");
-      currentX += 6; // H (6px)
-      hueOffset += 10;
+      // dma_display->setCursor(currentX, 23);
+      // dma_display->setTextColor(hsvToRgb565(globalHue + hueOffset, 255, 255));
+      // dma_display->print("H");
+      // currentX += 6; // H (6px)
+      // hueOffset += 10;
       
       // Vẽ độ ẩm - từng ký tự với gradient
       for (int i = 0; i < strlen(humStr); i++) {
