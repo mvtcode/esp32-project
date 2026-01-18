@@ -6,10 +6,12 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "lunar_calendar.h"
+#include "config_manager.h"
+#include "web_server.h"
+#include "reset_button.h"
 
-// Thông tin cấu hình từ source cũ
-const char* ssid = "HPSTAR";
-const char* password = "0964335688";
+// Configuration data loaded from NVS
+ConfigData deviceConfig;
 #define PANEL_RES_X 64 
 #define PANEL_RES_Y 32 
 #define PANEL_CHAIN 1  
@@ -17,8 +19,9 @@ const char* password = "0964335688";
 MatrixPanel_I2S_DMA *dma_display = nullptr;
 uint8_t globalHue = 0;
 
-// Weather API configuration (Open-Meteo for Hanoi)
-const char* weatherApiUrl = "https://api.open-meteo.com/v1/forecast?latitude=21.0285&longitude=105.8542&current=temperature_2m,relative_humidity_2m";
+// Weather API URL (will be built dynamically from config)
+String weatherApiUrl = "";
+bool isConfigMode = false; // Flag to indicate if in AP config mode
 float temperature = 0.0;
 int humidity = 0;
 unsigned long lastWeatherUpdate = 0;
@@ -115,18 +118,25 @@ void drawACircumflexDotBelow(int16_t x, int16_t y, uint16_t color) {
   dma_display->drawPixel(x+2, y+8, color);
 }
 
-// Cải tiến: WiFi không gây treo máy
+// Connect to WiFi using stored configuration
 void connectWiFi() {
   Serial.println("Connecting WiFi...");
-  WiFi.begin(ssid, password);
+  Serial.printf("SSID: %s\n", deviceConfig.ssid);
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(deviceConfig.ssid, deviceConfig.password);
+  
   int timeout = 0;
   while (WiFi.status() != WL_CONNECTED && timeout < 20) { // Giới hạn 10 giây
     delay(500);
     Serial.print(".");
     timeout++;
   }
+  
   if(WiFi.status() == WL_CONNECTED) {
     Serial.println("\nWiFi Connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
     configTime(7 * 3600, 0, "pool.ntp.org");
   } else {
     Serial.println("\nWiFi Failed! Running in offline mode.");
@@ -142,8 +152,13 @@ void fetchWeatherData() {
     return;
   }
 
+  if (weatherApiUrl.length() == 0) {
+    Serial.println("Weather API URL not configured");
+    return;
+  }
+
   HTTPClient http;
-  http.begin(weatherApiUrl);
+  http.begin(weatherApiUrl.c_str());
   int httpCode = http.GET();
 
   if (httpCode == 200) {
@@ -174,8 +189,9 @@ void fetchWeatherData() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("\n\n=== ESP32 LED Matrix Clock v2.0 ===");
 
-  // 1. Cấu hình Pin theo sơ đồ của bạn
+  // 1. Initialize LED Matrix first
   HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, PANEL_CHAIN);
   mxconfig.gpio.r1 = 25; mxconfig.gpio.g1 = 26; mxconfig.gpio.b1 = 27;
   mxconfig.gpio.r2 = 14; mxconfig.gpio.g2 = 12; mxconfig.gpio.b2 = 13;
@@ -183,7 +199,6 @@ void setup() {
   mxconfig.gpio.d  = 17; mxconfig.gpio.e  = 18; 
   mxconfig.gpio.clk = 16; mxconfig.gpio.lat = 4; mxconfig.gpio.oe = 15;
 
-  // 2. Khởi tạo màn hình TRƯỚC khi kết nối WiFi
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   if(!dma_display->begin()) {
     Serial.println("Failed to initialize DMA Display!");
@@ -191,23 +206,144 @@ void setup() {
   dma_display->setBrightness8(100);
   dma_display->clearScreen();
 
-  // Test màn hình bằng một dòng chữ ngay lập tức
   dma_display->setCursor(2, 8);
   dma_display->setTextColor(dma_display->color565(255, 0, 0));
   dma_display->print("BOOTING...");
   dma_display->setCursor(6, 20);
-  dma_display->print("v 1.0.1");
+  dma_display->print("v 2.0.0");
+  delay(2000);
 
-  // 3. Sau đó mới kết nối WiFi
-  connectWiFi();
-  
-  // 4. Lấy dữ liệu thời tiết lần đầu
-  if (WiFi.status() == WL_CONNECTED) {
-    fetchWeatherData();
+  // 2. Load configuration from NVS
+  loadConfig(deviceConfig);
+
+  // 3. Setup reset button
+  setupResetButton();
+
+  // 4. Check if configuration is valid
+  if (!deviceConfig.isValid) {
+    // No valid configuration - enter AP mode
+    Serial.println("\n>>> NO CONFIGURATION FOUND <<<");
+    Serial.println(">>> ENTERING AP CONFIGURATION MODE <<<\n");
+    
+    isConfigMode = true;
+    
+    // Display CONFIG MODE on LED matrix
+    dma_display->clearScreen();
+    dma_display->setTextSize(1);
+    dma_display->setCursor(2, 4);
+    dma_display->setTextColor(dma_display->color565(255, 128, 0));
+    dma_display->print("CONFIG");
+    dma_display->setCursor(2, 14);
+    dma_display->print("MODE");
+    dma_display->setCursor(2, 24);
+    // dma_display->setTextColor(dma_display->color565(0, 255, 255));
+    // dma_display->print("ESP32-");
+    // dma_display->setCursor(2, 32);
+    // dma_display->print("Clock");
+    
+    // Setup AP and web server
+    setupAPMode();
+    setupWebServer();
+    
+    Serial.println("\nConnect to WiFi: ESP32-Clock-Config");
+    Serial.println("Then visit: http://192.168.4.1");
+    Serial.println("\nWaiting for configuration...\n");
+  } else {
+    // Valid configuration exists - normal operation
+    Serial.println("\n>>> CONFIGURATION LOADED <<<");
+    Serial.println(">>> STARTING NORMAL MODE <<<\n");
+    
+    isConfigMode = false;
+    
+    // Build weather API URL from stored coordinates
+    weatherApiUrl = "https://api.open-meteo.com/v1/forecast?latitude=";
+    weatherApiUrl += String(deviceConfig.latitude, 4);
+    weatherApiUrl += "&longitude=";
+    weatherApiUrl += String(deviceConfig.longitude, 4);
+    weatherApiUrl += "&current=temperature_2m,relative_humidity_2m";
+    Serial.println("Weather API: " + weatherApiUrl);
+    
+    // Connect to WiFi
+    connectWiFi();
+    
+    // Fetch weather data
+    if (WiFi.status() == WL_CONNECTED) {
+      fetchWeatherData();
+    }
   }
 }
 
 void loop() {
+  // Check reset button in all modes
+  checkResetButton();
+  
+  // If in config mode, just blink indicator and wait
+  if (isConfigMode) {
+    static unsigned long lastBlink = 0;
+    static bool blinkState = false;
+    
+    if (millis() - lastBlink > 500) {
+      blinkState = !blinkState;
+      lastBlink = millis();
+      
+      dma_display->clearScreen();
+      dma_display->setTextSize(1);
+      
+      // Dòng 1: "Conf wifi:" - cố định, không nháy
+      dma_display->setCursor(2, 4);
+      dma_display->setTextColor(dma_display->color565(255, 128, 0)); // Màu cam cố định
+      dma_display->print("Conf wifi:");
+      
+      // Dòng 2: "Clock-2026" - nháy
+      dma_display->setCursor(2, 14);
+      dma_display->setTextColor(blinkState ? dma_display->color565(255, 255, 255) : dma_display->color565(64, 64, 64)); // Màu trắng nháy
+      dma_display->print("Clock-2026");
+
+      // Dòng 3: Hiển thị IP address với dấu chấm chỉ 1 pixel
+      uint16_t ipColor = dma_display->color565(0, 255, 255);
+      int currentX = 5;
+      
+      // "192"
+      dma_display->setCursor(currentX, 24);
+      dma_display->setTextColor(ipColor);
+      dma_display->print("192");
+      currentX += 18; // 3 chữ số * 6 pixels = 18px
+      
+      // Dấu chấm (1 pixel)
+      dma_display->drawPixel(currentX, 30, ipColor);
+      currentX += 2; // 1px cho chấm + 1px khoảng cách
+      
+      // "168"
+      dma_display->setCursor(currentX, 24);
+      dma_display->setTextColor(ipColor);
+      dma_display->print("168");
+      currentX += 18; // 3 chữ số * 6 pixels = 18px
+      
+      // Dấu chấm (1 pixel)
+      dma_display->drawPixel(currentX, 30, ipColor);
+      currentX += 2;
+      
+      // "4"
+      dma_display->setCursor(currentX, 24);
+      dma_display->setTextColor(ipColor);
+      dma_display->print("4");
+      currentX += 6; // 1 chữ số * 6 pixels = 6px
+      
+      // Dấu chấm (1 pixel)
+      dma_display->drawPixel(currentX, 30, ipColor);
+      currentX += 2;
+      
+      // "1"
+      dma_display->setCursor(currentX, 24);
+      dma_display->setTextColor(ipColor);
+      dma_display->print("1");
+    }
+    
+    delay(50);
+    return;
+  }
+  
+  // Normal operation mode
   struct tm timeinfo;
   bool hasTime = getLocalTime(&timeinfo);
 

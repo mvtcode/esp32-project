@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Clock Config</title>
+    <style>
+        :root {
+            --p: #007bff;
+            --bg: #f4f4f9;
+            --txt: #333;
+        }
+
+        body {
+            font-family: sans-serif;
+            background: var(--bg);
+            color: var(--txt);
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            padding-bottom: 60px;
+            margin: 0;
+        }
+
+        .card {
+            background: #fff;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: var(--p);
+            text-align: center;
+            font-size: 1.5rem;
+        }
+
+        .item {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: var(--p);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-top: 10px;
+        }
+
+        button:disabled {
+            background: #ccc;
+        }
+
+        #msg {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            display: none;
+            font-size: 0.9rem;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: #fff;
+            text-align: center;
+            padding: 12px 0;
+            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+            font-size: 0.9rem;
+            color: var(--txt);
+        }
+
+        footer a {
+            color: var(--p);
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="card">
+        <h2>Cấu Hình Hệ Thống</h2>
+
+        <div class="item">
+            <label>Tên WiFi (SSID)</label>
+            <input type="text" id="ssid" placeholder="Nhập SSID">
+        </div>
+
+        <div class="item">
+            <label>Mật khẩu</label>
+            <input type="password" id="pw" placeholder="Nhập mật khẩu">
+        </div>
+
+        <div class="item">
+            <label>Thành phố</label>
+            <select id="city" onchange="updateCoords()">
+            </select>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <div style="flex:1">
+                <label>Vĩ độ (Lat)</label>
+                <input type="text" id="lat" readonly style="background:#eee">
+            </div>
+            <div style="flex:1">
+                <label>Kinh độ (Long)</label>
+                <input type="text" id="lon" readonly style="background:#eee">
+            </div>
+        </div>
+
+        <button id="btn" onclick="sendData()">Lưu cấu hình</button>
+        <div id="msg"></div>
+    </div>
+
+    <script>
+        // Danh sách thành phố (Có thể mở rộng thêm dễ dàng)
+        const cities = [
+            { name: "Hà Nội", lat: 21.0285, lon: 105.8542 },
+            { name: "Hải Phòng", lat: 20.8449, lon: 106.6881 },
+            { name: "Đà Nẵng", lat: 16.0544, lon: 108.2022 },
+            { name: "TP. Hồ Chí Minh", lat: 10.7626, lon: 106.6601 },
+            { name: "Cần Thơ", lat: 10.0333, lon: 105.7833 },
+            { name: "Điện Biên", lat: 21.3833, lon: 103.0167 }
+        ];
+
+        const citySelect = document.getElementById('city');
+        const latInp = document.getElementById('lat');
+        const lonInp = document.getElementById('lon');
+
+        // Khởi tạo dropdown thành phố
+        cities.forEach((c, index) => {
+            let opt = document.createElement('option');
+            opt.value = index;
+            opt.innerHTML = c.name;
+            citySelect.appendChild(opt);
+        });
+
+        function updateCoords() {
+            const c = cities[citySelect.value];
+            latInp.value = c.lat;
+            lonInp.value = c.lon;
+        }
+
+        // Chạy lần đầu để set giá trị mặc định
+        updateCoords();
+
+        function sendData() {
+            const btn = document.getElementById('btn');
+            const msg = document.getElementById('msg');
+
+            const payload = {
+                ssid: document.getElementById('ssid').value,
+                password: document.getElementById('pw').value,
+                latitude: parseFloat(latInp.value),
+                longitude: parseFloat(lonInp.value)
+            };
+
+            if (!payload.ssid) {
+                alert("Vui lòng nhập SSID");
+                return;
+            }
+
+            btn.disabled = true;
+            msg.style.display = 'block';
+            msg.innerHTML = "Đang gửi dữ liệu...";
+            msg.className = '';
+
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api/save", true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        msg.innerHTML = "Lưu thành công! Thiết bị đang khởi động lại...";
+                        msg.className = 'success';
+                    } else {
+                        msg.innerHTML = "Lỗi: " + xhr.status;
+                        msg.className = 'error';
+                        btn.disabled = false;
+                    }
+                }
+            };
+
+            xhr.send(JSON.stringify(payload));
+        }
+    </script>
+
+    <footer>
+        Power by <a href="https://www.facebook.com/mvt.hp.star/" target="_blank">Mạc Tân</a> | Mobile: <a
+            href="tel:0964335688">0964 335 688</a>
+    </footer>
+
+</body>
+
+</html>
