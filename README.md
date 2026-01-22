@@ -6,9 +6,16 @@
 ![Platform](https://img.shields.io/badge/platform-ESP32-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
+## 🎬 Demo
+
+Video demo trên tiktok:
+[https://vt.tiktok.com/ZSaMTVyBm/
+![Tiktok](video-thumb.jpg)](https://vt.tiktok.com/ZSaMTVyBm/)
+
 ## ✨ Tính Năng
 
 ### 🕐 Hiển Thị Đồng Hồ
+
 - **Giờ:Phút** với font chữ lớn (size 2) và hiệu ứng gradient rainbow
 - **Giây** hiển thị ở góc phải với font nhỏ (size 1)
 - Dấu hai chấm `:` với hiệu ứng chuyển động động (ping-pong animation)
@@ -16,37 +23,143 @@
 - Múi giờ GMT+7 (Việt Nam)
 
 ### 📅 Hiển Thị Ngày Tháng
+
 Luân phiên hiển thị mỗi 5 giây:
+
 1. **Thứ và Ngày/Tháng**: "Thứ 2, 18/01" hoặc "CNhật, 18/01"
-2. **Thông Tin Thời Tiết**: "T 23.1°C  H 79%" (nhiệt độ và độ ẩm)
+2. **Thông Tin Thời Tiết**: "T 23.1°C H 79%" (nhiệt độ và độ ẩm)
 3. **Âm Lịch**: "AL18/12/26" (ngày/tháng/năm âm lịch)
 
 ### 🌈 Hiệu Ứng Đồ Họa
+
 - Gradient màu rainbow tự động chuyển đổi
 - Hiệu ứng chuyển động mượt mà cho dấu hai chấm
 - Màu sắc gradient riêng biệt cho từng ký tự
 - Không nhấp nháy nhờ công nghệ DMA
 
 ### 🌤️ Thông Tin Thời Tiết
+
 - Tự động lấy dữ liệu từ Open-Meteo API
 - Hiển thị nhiệt độ (°C) và độ ẩm (%)
 - Cập nhật mỗi 10 phút
 - Dựa trên tọa độ GPS được cấu hình
 
 ### 📱 Cấu Hình Qua Web
+
 - Giao diện web thân thiện để cấu hình WiFi
 - Chọn thành phố từ danh sách có sẵn (Hà Nội, TP.HCM, Đà Nẵng, v.v.)
 - Tự động điền tọa độ GPS khi chọn thành phố
 - Lưu cấu hình vĩnh viễn vào NVS (Non-Volatile Storage)
 
 ### 🔄 Reset Về Chế Độ Cấu Hình
+
 - Sử dụng nút **BOOT** có sẵn trên board ESP32 (GPIO 0)
 - Nhấn một lần để xóa cấu hình và khởi động lại
 - Tự động chuyển sang AP Mode để cấu hình lại
 
+## ✅ Checklist Tính Năng Đã Hoàn Thành
+
+### Hiển Thị (v1.0.x)
+
+- [x] Hiển thị giờ:phút với font chữ lớn và hiệu ứng gradient rainbow
+- [x] Hiển thị giây ở góc phải
+- [x] Dấu hai chấm với hiệu ứng chuyển động (ping-pong animation)
+- [x] Hiển thị thứ và ngày/tháng
+- [x] Hiển thị thông tin thời tiết (nhiệt độ và độ ẩm)
+- [x] Hiển thị âm lịch
+- [x] Luân phiên hiển thị các thông tin mỗi 5 giây
+
+### Kết Nối & Đồng Bộ (v1.0.x)
+
+- [x] Tự động đồng bộ thời gian qua NTP
+- [x] Kết nối WiFi với cấu hình đã lưu
+- [x] Lấy dữ liệu thời tiết từ Open-Meteo API
+- [x] Cập nhật thời tiết mỗi 10 phút
+
+### Hiệu Ứng (v1.0.x)
+
+- [x] Gradient màu rainbow tự động chuyển đổi
+- [x] Hiệu ứng chuyển động mượt mà
+- [x] Không nhấp nháy nhờ công nghệ DMA
+
+### Cấu Hình (v2.0.0)
+
+- [x] Chế độ AP Mode để cấu hình WiFi
+- [x] Giao diện web thân thiện
+- [x] Chọn thành phố từ danh sách có sẵn
+- [x] Tự động điền tọa độ GPS khi chọn thành phố
+- [x] Lưu cấu hình vào NVS (Non-Volatile Storage)
+- [x] Nút reset phần cứng (nút BOOT)
+
+## 📋 TODO - Tính Năng Sắp Triển Khai
+
+### Cải Thiện Kết Nối WiFi
+
+- [ ] **Retry Connect WiFi** (v2.0.x): Tự động thử kết nối lại WiFi khi mất kết nối hoặc kết nối thất bại, hiện tại phải nhấn phím reset để kết nối lại.
+- [ ] **WiFi Captive Portal** (v2.1.x): Tự động chuyển hướng đến trang cấu hình khi kết nối AP mode (không cần nhập địa chỉ IP thủ công)
+- [ ] **Danh sách WiFi** (v2.1.x): Hiển thị danh sách các mạng WiFi khả dụng trong trang web cấu hình để dễ dàng chọn
+
+### Điều Chỉnh Hiển Thị
+
+- [ ] **Điều chỉnh độ sáng runtime** (v2.2.x): Cho phép thay đổi độ sáng LED Matrix qua giao diện web mà không cần upload lại code
+- [ ] **Hiển thị ngày đặc biệt** (v2.2.x):
+  - Hiển thị ngày lễ đặc biệt (như Tết, Giáng sinh, v.v.)
+- [ ] **Hiển thị ngày tốt xấu** (v2.2.x):
+  - Hiển thị ngày tốt xấu dựa trên ngày âm lịch
+- [ ] **Hiển thị ngày sinh nhật** (v2.2.x):
+  - Hiển thị ngày sinh nhật của bạn, bạn bè, nyc
+- [ ] **Chế độ ngủ thông minh** (v2.2.x):
+  - Cấu hình giờ ngủ và giờ thức (ví dụ: 23:00 - 06:00)
+  - Tùy chọn giảm độ sáng hoặc tắt hoàn toàn màn hình trong giờ ngủ
+  - Tự động bật lại màn hình khi đến giờ thức
+- [ ] **Lưu trữ và hiển thị log** (v2.3.x):
+  - Lưu trữ log vào database
+  - Hiển thị log qua giao diện web các thông tin: nhiệt độ, độ ẩm của ngày nào đó đã lưu.
+
+### Tích Hợp Module Âm Thanh
+
+- [ ] **Hẹn giờ báo thức** (v2.3.x):
+  - Cấu hình nhiều báo thức qua giao diện web
+  - Chọn nhạc chuông báo thức
+  - Tùy chọn lặp lại theo ngày trong tuần
+  - Hiển thị biểu tượng báo thức trên màn hình LED
+- [ ] **Loa Bluetooth** (v2.3.x):
+  - Biến đồng hồ thành loa Bluetooth
+  - Kết nối với điện thoại để phát nhạc
+  - Hiển thị tên bài hát đang phát trên màn hình LED (nếu có metadata)
+  - Điều khiển âm lượng qua giao diện web hoặc nút bấm
+
+### Tích hợp module tuỳ chọn (có thể có hoặc không)
+
+- [ ] **Module thời gian thực DS3231** (v2.4.x):
+  - Giúp đồng hồ vẫn chạy đúng giờ khi mất kết nối internet
+- [ ] **Cảm biến nhiệt độ, độ ẩm DHT22** (v2.4.x):
+  - Hiển thị nhiệt độ, độ ẩm trong nhà (bằng module) và ngoài trời (bằng API - hiện tại)
+- [ ] **Cảm biến chất lượng không khí BME680** (v2.4.x):
+  - Hiển thị chất lượng không khí trên màn hình LED
+- [ ] **Cảm biến ánh sáng BH1750** (v2.4.x):
+  - Tự động điều chỉnh độ sáng LED Matrix theo ánh sáng môi trường
+- [ ] **Module ESP-NOW** (v2.4.x):
+  - Giao tiếp với các ESP32 khác để chia sẻ dữ liệu với các module khác.
+- [ ] **Module radar** (v2.5.x):
+  - Phát hiện chuyển động, người, vật thể đến gần để điều chỉnh độ sáng cho phù hợp.
+- [ ] **Module GPS** (v2.5.x):
+  - Lấy tọa độ GPS để hiển thị thời tiết hiện tại mà không cần phải config thủ công (điện thoại có thể được nhưng chỉ hỗ trợ web có SSL (HTTPS).
+- [ ] **Làm MCP cho AI** (v3.x.x):
+  - làm MCP cho AI (model context protocol)
+
+### Tích hợp xiaozhi (dùng Esp32-s3)
+
+- [ ] **Tích hợp xiaozhi** (v4.x.x):
+  - Tích hợp xiaozhi vào esp32-s3 để làm chatbot âm thanh
+  - Điều khiển thiết bị thông qua giọng nói
+
 ## 🛠️ Yêu Cầu Phần Cứng
 
+Danh sách linh kiện - phần cứng sử dụng: [Google Sheet](https://docs.google.com/spreadsheets/d/1swM3OM9-xU4paUzBfFUdlDwbnLg4lPnLfiZTFbzTzyY/edit?usp=sharing)
+
 ### Linh Kiện Chính
+
 - **ESP32 DevKit V1** (hoặc tương đương)
 - **LED Matrix P5 64x32** (HUB75 interface)
 - **Nguồn 5V/5A** (cho LED Matrix)
@@ -54,7 +167,7 @@ Luân phiên hiển thị mỗi 5 giây:
 ### Sơ Đồ Kết Nối LED Matrix
 
 | HUB75 Pin | ESP32 GPIO | Chức Năng     |
-|-----------|------------|---------------|
+| --------- | ---------- | ------------- |
 | R1        | GPIO25     | Red Data 1    |
 | G1        | GPIO26     | Green Data 1  |
 | B1        | GPIO27     | Blue Data 1   |
@@ -72,6 +185,7 @@ Luân phiên hiển thị mỗi 5 giây:
 | GND       | GND        | Ground        |
 
 ### Nút Reset
+
 - Sử dụng nút **BOOT** có sẵn trên board ESP32 (GPIO 0)
 - Nhấn một lần để reset về chế độ cấu hình
 
@@ -85,6 +199,7 @@ Chi tiết kết nối phần cứng: xem [LED_MATRIX_SETUP.md](LED_MATRIX_SETUP
 ### 1. Cài Đặt PlatformIO
 
 #### Cách 1: PlatformIO CLI
+
 ```bash
 # Cài đặt qua pip
 pip install -U platformio
@@ -94,12 +209,14 @@ brew install platformio
 ```
 
 #### Cách 2: VS Code Extension
+
 1. Mở VS Code
 2. Vào Extensions (Ctrl+Shift+X)
 3. Tìm "PlatformIO IDE"
 4. Click Install
 
 ### 2. Clone Dự Án
+
 ```bash
 git clone https://github.com/mvtcode/esp32-project.git
 cd esp32-project
@@ -107,7 +224,9 @@ git checkout clock
 ```
 
 ### 3. Cài Đặt Dependencies
+
 PlatformIO sẽ tự động tải các thư viện cần thiết khi build:
+
 - ESP32-HUB75-MatrixPanel-DMA
 - Adafruit GFX Library
 - FastLED
@@ -116,11 +235,13 @@ PlatformIO sẽ tự động tải các thư viện cần thiết khi build:
 - AsyncTCP
 
 ### 4. Build Project
+
 ```bash
 pio run
 ```
 
 ### 5. Upload Code Lên ESP32
+
 ```bash
 # Upload code chương trình
 pio run --target upload
@@ -131,12 +252,14 @@ pio run --target uploadfs
 
 > [!TIP]
 > Bạn cũng có thể sử dụng các script tiện lợi:
+>
 > ```bash
 > ./upload.sh    # Upload code
 > ./monitor.sh   # Mở Serial Monitor
 > ```
 
 ### 6. Xem Serial Monitor
+
 ```bash
 pio device monitor
 ```
@@ -162,6 +285,7 @@ pio device monitor
    ![](connect-wifi.jpg)
 
 4. **Mở trình duyệt và truy cập**:
+
    ```
    http://192.168.4.1
    ```
@@ -183,6 +307,7 @@ pio device monitor
 ### Sử Dụng Bình Thường
 
 Sau khi đã cấu hình, ESP32 sẽ:
+
 - Tự động kết nối WiFi khi khởi động
 - Hiển thị đồng hồ với hiệu ứng gradient
 - Luân phiên hiển thị: Ngày/Tháng → Thời tiết → Âm lịch (mỗi 5 giây)
@@ -228,35 +353,45 @@ esp32-project/
 ## 🎨 Tùy Chỉnh
 
 ### Thay Đổi Độ Sáng
+
 Trong `src/main.cpp`, dòng 206:
+
 ```cpp
 dma_display->setBrightness8(100); // 0-255
 ```
 
 ### Thay Đổi Tốc Độ Gradient
+
 Trong `src/main.cpp`, dòng 563:
+
 ```cpp
 globalHue += 1; // Tăng giá trị này để gradient chạy nhanh hơn
 ```
 
 ### Thêm Thành Phố Mới
+
 Trong `data/index.html`, thêm vào mảng `cities`:
+
 ```javascript
 const cities = [
-    { name: "Hà Nội", lat: 21.0285, lon: 105.8542 },
-    { name: "Thành phố mới", lat: xx.xxxx, lon: xxx.xxxx },
-    // ...
+  { name: "Hà Nội", lat: 21.0285, lon: 105.8542 },
+  { name: "Thành phố mới", lat: xx.xxxx, lon: xxx.xxxx },
+  // ...
 ];
 ```
 
 ### Thay Đổi Tên WiFi AP Mode
+
 Trong `src/web_server.cpp`, tìm dòng:
+
 ```cpp
 WiFi.softAP("Clock-2026");
 ```
 
 ### Thay Đổi Thời Gian Cập Nhật Thời Tiết
+
 Trong `src/main.cpp`, dòng 28:
+
 ```cpp
 const unsigned long weatherUpdateInterval = 600000; // 10 phút (ms)
 ```
@@ -264,30 +399,36 @@ const unsigned long weatherUpdateInterval = 600000; // 10 phút (ms)
 ## 🔧 Troubleshooting
 
 ### LED Matrix không sáng
+
 - ✅ Kiểm tra nguồn 5V cho LED Matrix
 - ✅ Kiểm tra kết nối GND chung giữa ESP32 và LED Matrix
 - ✅ Kiểm tra cáp HUB75 cắm đúng hướng
 
 ### Màu sắc hiển thị sai
+
 - ✅ Kiểm tra kết nối R1, G1, B1, R2, G2, B2
 - ✅ Thử thay đổi driver IC trong code (một số panel dùng FM6126A)
 
 ### Không kết nối được WiFi AP Mode
+
 - ✅ Đảm bảo đã upload cả code và filesystem (`uploadfs`)
 - ✅ Kiểm tra Serial Monitor xem có thông báo lỗi
 - ✅ Reset ESP32 và thử lại
 
 ### Không lưu được cấu hình
+
 - ✅ Kiểm tra kết nối mạng từ điện thoại đến ESP32
 - ✅ Xem Serial Monitor để debug
 - ✅ Đảm bảo đã nhập đúng SSID và password
 
 ### Thời gian không chính xác
+
 - ✅ Kiểm tra kết nối WiFi
 - ✅ Đảm bảo ESP32 có thể truy cập internet để đồng bộ NTP
 - ✅ Kiểm tra múi giờ (GMT+7 cho Việt Nam)
 
 ### Nút Reset không hoạt động
+
 - ✅ Sử dụng nút BOOT có sẵn trên board ESP32 (không cần nút ngoài)
 - ✅ Nhấn một lần rõ ràng (có debounce 1 giây)
 - ✅ Xem Serial Monitor để kiểm tra log reset
@@ -295,6 +436,7 @@ const unsigned long weatherUpdateInterval = 600000; // 10 phút (ms)
 ## 📝 Lịch Sử Phiên Bản
 
 ### v2.0.0 (2026-01-18)
+
 - ✨ Thêm chế độ AP Mode để cấu hình WiFi qua web
 - ✨ Thêm hiển thị thông tin thời tiết
 - ✨ Thêm hiển thị âm lịch
@@ -305,6 +447,7 @@ const unsigned long weatherUpdateInterval = 600000; // 10 phút (ms)
 - 🐛 Sửa lỗi hiển thị chữ "CNhật" với ký tự đặc biệt
 
 ### v2.0.0
+
 - 🎉 Phiên bản đầu tiên với chức năng đồng hồ cơ bản
 
 ## 🤝 Đóng Góp
