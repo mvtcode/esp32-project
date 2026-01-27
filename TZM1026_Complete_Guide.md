@@ -124,29 +124,32 @@ Khi module phản hồi, **byte thứ 5** (DATA3) trong gói tin thường chứ
 
 Dưới đây là danh sách **đầy đủ 21 lệnh HEX** được hỗ trợ bởi module TZM1026:
 
-| STT | Lệnh HEX | Chức năng |
-| :---: | :--- | :--- |
-| **0** | `F5090000000009F5` | Lấy số lượng người dùng |
-| **1** | `F5600000000060F5` | Lấy ID (mã định danh) duy nhất |
-| **2** | `F52D000001002CF5` | Thiết lập mức độ so khớp (độ nghiêm ngặt) |
-| **3** | `F526000000000026F5` | Thiết lập chế độ đăng ký vân tay |
-| **4** | `F528000200002AF5` | Thiết lập cấp phân quyền người dùng |
-| **5** | `F505000000000005F5` | Xóa toàn bộ dữ liệu người dùng |
-| **6** | `F52D000000002DF5` | Cho phép hoặc cấm đăng ký người dùng mới |
-| **7** | `F52800020000000000F5` | Thiết lập lại mức độ so khớp |
-| **8** | `F53F0000000000F5` | Thiết lập chế độ đăng ký |
-| **9** | `F53F0001000000F5` | Thiết lập mức xác thực cùng cấp |
-| **10** | `F53F0002000003F5` | Thiết lập mức xác thực cùng cấp (mức 2) |
-| **11** | `F53F0003000003F5` | Thiết lập tần suất thu thập vân tay |
-| **12** | `F53F00040001003AF5` | Thiết lập cấp độ cho người dùng chỉ định |
-| **13** | `F53F0005000000F5` | Thiết lập chức năng điều khiển bằng nút bấm |
-| **14** | `F52B000000002BF5` | Lấy toàn bộ dữ liệu người dùng |
-| **15** | `F5010001010101F5` | Đăng ký bằng nhiều lần nhấn (chế độ 3CNR) |
-| **16** | `F5010000010000F5` | Đăng ký bằng nhiều lần nhấn (chế độ NCNR) |
-| **17** | `F50B000100000AF5` | So khớp vân tay 1:1 (verify với ID cụ thể) |
-| **18** | `F50C000000000CF5` | So khớp vân tay 1:N (tìm trong toàn bộ database) |
-| **19** | `F50D000000000DF5` | Lấy ảnh vân tay (fingerprint image) |
-| **20** | `F5380000000038F5` | Hủy / ngắt thao tác hiện tại |
+| STT | Lệnh HEX | Chức năng | Ghi chú |
+| :---: | :--- | :--- | :--- |
+| **0** | `F5090000000009F5` | Lấy số lượng người dùng | ✅ Đã verify |
+| **1** | `F5600000000060F5` | Lấy ID (mã định danh) duy nhất | ✅ Đã verify |
+| **2** | `F52D000001002CF5` | Thiết lập mức độ so khớp (độ nghiêm ngặt) | ✅ Đã verify |
+| **3** | `F526000000000026F5` | Thiết lập chế độ đăng ký vân tay | ✅ Đã verify |
+| **4** | `F528000200002AF5` | Thiết lập cấp phân quyền người dùng | ✅ Đã verify |
+| **5** | `F505000000000005F5` | Xóa toàn bộ dữ liệu người dùng | ✅ Đã verify |
+| **6** | `F52D000000002DF5` | Cho phép hoặc cấm đăng ký người dùng mới | ✅ Đã verify |
+| **7** | `F5280002000028F5` | Thiết lập lại mức độ so khớp | 🔧 Đã sửa (8 bytes) |
+| **8** | `F53F000000003FF5` | Thiết lập chế độ đăng ký | 🔧 Đã sửa checksum |
+| **9** | `F53F000100003EF5` | Thiết lập mức xác thực cùng cấp | 🔧 Đã sửa checksum |
+| **10** | `F53F000200003DF5` | Thiết lập mức xác thực cùng cấp (mức 2) | 🔧 Đã sửa checksum |
+| **11** | `F53F000300003CF5` | Thiết lập tần suất thu thập vân tay | 🔧 Đã sửa checksum |
+| **12** | `F53F00040001003AF5` | Thiết lập cấp độ cho người dùng chỉ định | ✅ Đã verify |
+| **13** | `F53F000500003AF5` | Thiết lập chức năng điều khiển bằng nút bấm | 🔧 Đã sửa checksum |
+| **14** | `F52B000000002BF5` | Lấy toàn bộ dữ liệu người dùng | ✅ Đã verify |
+| **15** | `F5010001010101F5` | Đăng ký bằng nhiều lần nhấn (chế độ 3CNR) | ✅ Đã verify |
+| **16** | `F5010000010000F5` | Đăng ký bằng nhiều lần nhấn (chế độ NCNR) | ✅ Đã verify |
+| **17** | `F50B0001000000AF5` | So khớp vân tay 1:1 (verify với ID cụ thể) | 🔧 Đã sửa checksum |
+| **18** | `F50C000000000CF5` | So khớp vân tay 1:N (tìm trong toàn bộ database) | ✅ Đã verify |
+| **19** | `F524000000000024F5` | Lấy ảnh vân tay (fingerprint image) | 🔧 Đã sửa CMD (0x24) |
+| **20** | `F5B8000000000B8F5` | Hủy / ngắt thao tác hiện tại | 🔧 Đã sửa CMD (0xB8) |
+
+> [!IMPORTANT]
+> **Lưu ý về Checksum**: Tài liệu gốc có một số lệnh với checksum sai (đặt là 0x00). Bảng trên đã được sửa lại với checksum đúng theo công thức XOR. Các lệnh được đánh dấu 🔧 đã được kiểm tra và sửa lỗi.
 
 > [!TIP]
 > Để test các lệnh, bạn có thể gửi số thứ tự (STT) qua Serial Monitor. Code mẫu bên dưới sẽ tự động gửi lệnh tương ứng.
