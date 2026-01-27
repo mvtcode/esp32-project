@@ -4,66 +4,69 @@
 #include <SPIFFS.h>
 #include <WiFi.h>
 
+
 AsyncWebServer *server = nullptr;
 DNSServer dnsServer;
+ConfigData globalConfig; // Global reference to config for authentication
 
-void setupAPMode() {
-  Serial.println("=== Setting up Access Point ===");
+// Helper function: HTTP Basic Auth
+bool authenticateRequest(AsyncWebServerRequest *request,
+                         const String &adminPassword) {
+  // Skip auth if admin password not set yet
+  if (adminPassword.length() == 0) {
+    return true;
+  }
 
-  // Disconnect from any existing WiFi connection
-  WiFi.disconnect();
+  // Use AsyncWebServer's built-in authentication
+  return request->authenticate("admin", adminPassword.c_str());
+}
+// Setup APSTA Mode (AP + STA simultaneously)
+void setupAPSTAMode() {
+  Serial.println("=== Setting up AP+STA Mode ===");
+
+  // Set mode to AP+STA
+  WiFi.mode(WIFI_AP_STA);
   delay(100);
 
   // Configure AP mode
-  WiFi.mode(WIFI_AP);
-
-  // Configure static IP for AP
   IPAddress local_IP(192, 168, 4, 1);
   IPAddress gateway(192, 168, 4, 1);
   IPAddress subnet(255, 255, 255, 0);
-
-  // Set AP configuration
   WiFi.softAPConfig(local_IP, gateway, subnet);
 
-  // Start AP with better compatibility settings
-  // Parameters: SSID, password, channel, hidden, max_connection
-  bool result = WiFi.softAP("Clock-2026", // SSID
-                            "",           // No password (empty string)
-                            1,            // Channel 1 (most compatible)
-                            false,        // Not hidden
-                            4             // Max 4 connections
-  );
+  // Start AP
+  bool apResult = WiFi.softAP("Clock-2026", "", 1, false, 4);
 
-  if (result) {
-    IPAddress IP = WiFi.softAPIP();
+  if (apResult) {
     Serial.print("AP IP address: ");
-    Serial.println(IP);
+    Serial.println(WiFi.softAPIP());
     Serial.println("SSID: Clock-2026");
     Serial.println("Password: (none)");
-    Serial.println("Channel: 1");
-    Serial.println("Gateway: " + gateway.toString());
-    Serial.println("Subnet: " + subnet.toString());
-    Serial.printf("Connected clients: %d\n", WiFi.softAPgetStationNum());
-    Serial.println("==============================");
   } else {
     Serial.println("ERROR: Failed to start AP!");
   }
+
+  // If we have WiFi config, try to connect to STA
+  if (globalConfig.isValid && strlen(globalConfig.ssid) > 0) {
+    Serial.println("Attempting to connect to WiFi as STA...");
+    WiFi.begin(globalConfig.ssid, globalConfig.password);
+
+    // Non-blocking: will auto-reconnect in background
+    Serial.printf("Connecting to SSID: %s\n", globalConfig.ssid);
+  } else {
+    Serial.println("No WiFi config found, STA mode not started");
+  }
+
+  Serial.println("==============================");
 }
 
 void setupCaptivePortal() {
-  // Start DNS server for captive portal
-  // Redirect all DNS requests to ESP32's IP (192.168.4.1)
   const byte DNS_PORT = 53;
   dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
   Serial.println("DNS Server started for Captive Portal");
-  Serial.println("All DNS requests will redirect to: " +
-                 WiFi.softAPIP().toString());
 }
 
-void handleDNS() {
-  // Process DNS requests (call this in loop when in AP mode)
-  dnsServer.processNextRequest();
-}
+void handleDNS() { dnsServer.processNextRequest(); }
 
 void setupWebServer() {
   // Initialize SPIFFS
@@ -74,140 +77,81 @@ void setupWebServer() {
   }
   Serial.println("SPIFFS mounted successfully!");
 
-  // List files in SPIFFS for debugging
+  // List files
   Serial.println("Files in SPIFFS:");
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
   while (file) {
-    Serial.print("  - ");
-    Serial.print(file.name());
-    Serial.print(" (");
-    Serial.print(file.size());
-    Serial.println(" bytes)");
+    Serial.printf("  - %s (%d bytes)\n", file.name(), file.size());
     file = root.openNextFile();
   }
 
-  // Check if index.html exists
-  if (SPIFFS.exists("/index.html")) {
-    Serial.println("✓ /index.html found in SPIFFS");
-  } else {
-    Serial.println("✗ /index.html NOT FOUND in SPIFFS!");
-    Serial.println("Please run: pio run --target uploadfs");
-  }
-
-  // Create web server instance
+  // Create server instance
   server = new AsyncWebServer(80);
 
-  // Serve the configuration page at root
+  // ==========================================
+  // ROOT ENDPOINT: Dual routing based on client IP
+  // ==========================================
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    Serial.println("HTTP GET / - Serving index.html");
+    IPAddress clientIP = request->client()->localIP();
+    IPAddress apIP = WiFi.softAPIP();
 
-    // Read file content
-    File file = SPIFFS.open("/index.html", "r");
-    if (!file) {
-      Serial.println("ERROR: Failed to open /index.html");
+    Serial.printf("HTTP GET / from %s\n", clientIP.toString().c_str());
 
-      // Send user-friendly HTML error message
-      String errorHtml =
-          "<!DOCTYPE html><html lang='vi'><head><meta charset='UTF-8'>"
-          "<meta name='viewport' "
-          "content='width=device-width,initial-scale=1.0'>"
-          "<title>Lỗi - ESP32 Clock</title>"
-          "<style>body{font-family:sans-serif;background:#f4f4f9;display:flex;"
-          "justify-content:center;align-items:center;height:100vh;margin:0;"
-          "padding:20px}"
-          ".card{background:#fff;padding:30px;border-radius:12px;box-shadow:0 "
-          "4px 10px rgba(0,0,0,0.1);"
-          "max-width:500px;text-align:center}h1{color:#dc3545;margin-top:0}p{"
-          "color:#333;line-height:1.6}"
-          "code{background:#f8f9fa;padding:8px "
-          "12px;border-radius:4px;display:block;margin:15px 0;"
-          "font-family:monospace;color:#007bff;font-size:0.95rem}</style></"
-          "head><body>"
-          "<div class='card'><h1>⚠️ Lỗi Hệ Thống</h1>"
-          "<p>Chưa upload file giao diện web lên ESP32.</p>"
-          "<p><strong>Vui lòng chạy lệnh sau:</strong></p>"
-          "<code>pio run --target uploadfs</code>"
-          "<p style='margin-top:20px;font-size:0.9rem;color:#666'>"
-          "Sau khi chạy lệnh, hãy reset ESP32 và thử "
-          "lại.</p></div></body></html>";
+    // Check if client connected via AP (192.168.4.x)
+    if (clientIP[0] == apIP[0] && clientIP[1] == apIP[1] &&
+        clientIP[2] == apIP[2]) {
+      // AP Mode client → Serve index.html (first-time setup)
+      Serial.println("Serving index.html (AP Mode)");
 
-      AsyncWebServerResponse *response =
-          request->beginResponse(200, "text/html; charset=UTF-8", errorHtml);
-      response->addHeader("Cache-Control", "no-cache");
-      request->send(response);
-      return;
+      if (!SPIFFS.exists("/index.html")) {
+        request->send(500, "text/plain",
+                      "index.html not found. Run: pio run --target uploadfs");
+        return;
+      }
+
+      request->send(SPIFFS, "/index.html", "text/html");
+    } else {
+      // STA Mode client → Serve config_sta.html (with auth)
+      Serial.println("Serving config_sta.html (STA Mode)");
+
+      if (!authenticateRequest(request, String(globalConfig.adminPassword))) {
+        return request->requestAuthentication("ESP32 Clock", false);
+      }
+
+      if (!SPIFFS.exists("/config_sta.html")) {
+        // Fallback to index.html if config_sta.html doesn't exist yet
+        Serial.println(
+            "WARNING: config_sta.html not found, falling back to index.html");
+        request->send(SPIFFS, "/index.html", "text/html");
+        return;
+      }
+
+      request->send(SPIFFS, "/config_sta.html", "text/html");
     }
-
-    String html = file.readString();
-    file.close();
-
-    Serial.printf("Sending HTML (%d bytes)\n", html.length());
-
-    // Send with explicit headers
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "text/html; charset=UTF-8", html);
-    response->addHeader("Cache-Control", "no-cache");
-    response->addHeader("Connection", "close");
-    request->send(response);
-
-    Serial.println("Response sent!");
   });
 
-  // Also serve at /index.html explicitly
-  // server->on("/index.html", HTTP_GET, [](AsyncWebServerRequest *request) {
-  //   Serial.println("HTTP GET /index.html - Serving index.html");
-
-  //   // Read file content
-  //   File file = SPIFFS.open("/index.html", "r");
-  //   if (!file) {
-  //     Serial.println("ERROR: Failed to open /index.html");
-  //     request->send(500, "text/plain", "Failed to open index.html");
-  //     return;
-  //   }
-
-  //   String html = file.readString();
-  //   file.close();
-
-  //   Serial.printf("Sending HTML (%d bytes)\n", html.length());
-
-  //   // Send with explicit headers
-  //   AsyncWebServerResponse *response =
-  //       request->beginResponse(200, "text/html; charset=UTF-8", html);
-  //   response->addHeader("Cache-Control", "no-cache");
-  //   response->addHeader("Connection", "close");
-  //   request->send(response);
-
-  //   Serial.println("Response sent!");
-  // });
-
-  // Captive portal detection endpoints
-  // These endpoints help mobile devices detect the captive portal
-  server->on("/generate_204", HTTP_GET, [](AsyncWebServerRequest *request) {
-    // Android captive portal detection
-    request->redirect("/");
-  });
+  // ==========================================
+  // Captive Portal Detection Endpoints
+  // ==========================================
+  server->on("/generate_204", HTTP_GET,
+             [](AsyncWebServerRequest *request) { request->redirect("/"); });
 
   server->on("/hotspot-detect.html", HTTP_GET,
-             [](AsyncWebServerRequest *request) {
-               // iOS captive portal detection
-               request->redirect("/");
-             });
+             [](AsyncWebServerRequest *request) { request->redirect("/"); });
 
-  server->on("/connecttest.txt", HTTP_GET, [](AsyncWebServerRequest *request) {
-    // Windows captive portal detection
-    request->redirect("/");
-  });
+  server->on("/connecttest.txt", HTTP_GET,
+             [](AsyncWebServerRequest *request) { request->redirect("/"); });
 
-  // API endpoint to scan WiFi networks
+  // ==========================================
+  // API: WiFi Scan (available to both AP and STA)
+  // ==========================================
   server->on("/api/wifi", HTTP_GET, [](AsyncWebServerRequest *request) {
     Serial.println("API /api/wifi - Scanning WiFi networks...");
 
-    // Scan for WiFi networks
     int n = WiFi.scanNetworks();
     Serial.printf("Found %d networks\n", n);
 
-    // Build JSON response
     JsonDocument doc;
     JsonArray networks = doc["networks"].to<JsonArray>();
 
@@ -217,115 +161,206 @@ void setupWebServer() {
       network["rssi"] = WiFi.RSSI(i);
       network["encryption"] =
           (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "OPEN" : "ENCRYPTED";
-
-      Serial.printf(
-          "  %d: %s (%d dBm) %s\n", i, WiFi.SSID(i).c_str(), WiFi.RSSI(i),
-          (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "OPEN" : "ENCRYPTED");
     }
 
     String response;
     serializeJson(doc, response);
 
-    AsyncWebServerResponse *resp =
-        request->beginResponse(200, "application/json", response);
-    resp->addHeader("Access-Control-Allow-Origin", "*");
-    request->send(resp);
-
-    Serial.println("WiFi scan results sent");
+    request->send(200, "application/json", response);
   });
 
-  // API endpoint to save configuration
-  server->on("/api/save", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
-    // Handle preflight CORS request
-    AsyncWebServerResponse *response = request->beginResponse(200);
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    request->send(response);
-  });
-
+  // ==========================================
+  // API: Save Initial Config (AP Mode only)
+  // ==========================================
   server->on(
       "/api/save", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        Serial.printf("API /api/save called - Received %d bytes\n", len);
+        Serial.printf("API /api/save - Received %d bytes\n", len);
 
-        // Parse JSON payload
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, data, len);
+      DeserializationError error = deserializeJson(doc, data, len");
+      
+      if (error) {
+      Serial.printf("JSON parse error: %s\n", error.c_str());
+      request->send(400, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
+      return;
+      }
 
-        if (error) {
-          Serial.print("JSON parse error: ");
-          Serial.println(error.c_str());
+      // Extract config
+      ConfigData newConfig;
+      memset(&newConfig, 0, sizeof(ConfigData));
 
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json",
-              "{\"status\":\"error\",\"message\":\"Invalid JSON\"}");
-          response->addHeader("Access-Control-Allow-Origin", "*");
-          request->send(response);
-          return;
+      if (doc.containsKey("ssid")) {
+      String ssid = doc["ssid"].as<String>();
+      ssid.toCharArray(newConfig.ssid, sizeof(newConfig.ssid));
+      }
+
+      if (doc.containsKey("password")) {
+      String password = doc["password"].as<String>();
+      password.toCharArray(newConfig.password, sizeof(newConfig.password));
+      }
+
+      if (doc.containsKey("adminPassword")) {
+      String adminPassword = doc["adminPassword"].as<String>();
+      adminPassword.toCharArray(newConfig.adminPassword,
+                                sizeof(newConfig.adminPassword));
+      }
+
+      newConfig.latitude = doc["latitude"] | 0.0;
+      newConfig.longitude = doc["longitude"] | 0.0;
+
+      // Set defaults for new fields
+      newConfig.brightness = 100;
+      newConfig.sleepEnabled = false;
+      newConfig.sleepHour = 23;
+      newConfig.sleepMinute = 0;
+      newConfig.wakeHour = 6;
+      newConfig.wakeMinute = 0;
+      newConfig.sleepBrightness = 10;
+
+      // Validate
+      if (!isConfigValid(newConfig)) {
+      Serial.println("ERROR: Invalid configuration");
+      request->send(400, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Invalid config\"}");
+      return;
+      }
+
+      // Save and restart
+      if (saveConfig(newConfig)) {
+      Serial.println("Configuration saved!");
+      request->send(200, "application/json", "{\"status\":\"success\"}");
+
+      delay(2000);
+      ESP.restart();
+      } else {
+      request->send(500, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Save failed\"}");
+      }
+      });
+
+  // ==========================================
+  // API: Get Current Config (STA Mode with auth)
+  // ==========================================
+  server->on("/api/config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!authenticateRequest(request, String(globalConfig.adminPassword))) {
+      return request->requestAuthentication("ESP32 Clock", false);
+    }
+
+    JsonDocument doc;
+    doc["ssid"] = globalConfig.ssid;
+    doc["latitude"] = globalConfig.latitude;
+    doc["longitude"] = globalConfig.longitude;
+    doc["brightness"] = globalConfig.brightness;
+    doc["sleepEnabled"] = globalConfig.sleepEnabled;
+    doc["sleepHour"] = globalConfig.sleepHour;
+    doc["sleepMinute"] = globalConfig.sleepMinute;
+    doc["wakeHour"] = globalConfig.wakeHour;
+    doc["wakeMinute"] = globalConfig.wakeMinute;
+    doc["sleepBrightness"] = globalConfig.sleepBrightness;
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  // ==========================================
+  // API: Update Brightness (STA Mode with auth)
+  // ==========================================
+  server->on(
+      "/api/brightness", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (!authenticateRequest(request, String(globalConfig.adminPassword))) {
+          return request->requestAuthentication("ESP32 Clock", false);
         }
 
-        // Extract configuration data
-        ConfigData newConfig;
+        JsonDocument doc;
+        deserializeJson(doc, data, len);
 
-        if (doc.containsKey("ssid")) {
-          String ssid = doc["ssid"].as<String>();
-          ssid.toCharArray(newConfig.ssid, sizeof(newConfig.ssid));
-          Serial.printf("SSID: %s\n", newConfig.ssid);
+        if (doc.containsKey("brightness")) {
+          uint8_t brightness = doc["brightness"];
+          globalConfig.brightness = brightness;
+
+          // Apply immediately (will be handled in main.cpp)
+          extern void updateBrightnessRuntime(uint8_t brightness);
+          updateBrightnessRuntime(brightness);
+
+          saveConfig(globalConfig);
+
+          request->send(200, "application/json", "{\"status\":\"success\"}");
         } else {
-          newConfig.ssid[0] = '\0';
-        }
-
-        if (doc.containsKey("password")) {
-          String password = doc["password"].as<String>();
-          password.toCharArray(newConfig.password, sizeof(newConfig.password));
-          Serial.println("Password: ***");
-        } else {
-          newConfig.password[0] = '\0';
-        }
-
-        newConfig.latitude = doc["latitude"] | 0.0;
-        newConfig.longitude = doc["longitude"] | 0.0;
-        Serial.printf("Coordinates: %.4f, %.4f\n", newConfig.latitude,
-                      newConfig.longitude);
-
-        // Validate and save
-        if (!isConfigValid(newConfig)) {
-          Serial.println("ERROR: Invalid configuration received");
-
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json",
-              "{\"status\":\"error\",\"message\":\"Invalid configuration\"}");
-          response->addHeader("Access-Control-Allow-Origin", "*");
-          request->send(response);
-          return;
-        }
-
-        if (saveConfig(newConfig)) {
-          Serial.println("Configuration saved successfully!");
-
-          AsyncWebServerResponse *response = request->beginResponse(
-              200, "application/json",
-              "{\"status\":\"success\",\"message\":\"Configuration saved\"}");
-          response->addHeader("Access-Control-Allow-Origin", "*");
-          response->addHeader("Connection", "close");
-          request->send(response);
-
-          Serial.println("Restarting in 2 seconds...");
-          // Restart ESP32 after 2 seconds
-          delay(2000);
-          ESP.restart();
-        } else {
-          request->send(
-              500, "application/json",
-              "{\"status\":\"error\",\"message\":\"Failed to save\"}");
+          request->send(400, "application/json", "{\"status\":\"error\"}");
         }
       });
 
-  // Start the server
+  // ==========================================
+  // API: Update Sleep Settings (STA Mode with auth)
+  // ==========================================
+  server->on(
+      "/api/sleep", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (!authenticateRequest(request, String(globalConfig.adminPassword))) {
+          return request->requestAuthentication("ESP32 Clock", false);
+        }
+
+        JsonDocument doc;
+        deserializeJson(doc, data, len);
+
+        globalConfig.sleepEnabled = doc["sleepEnabled"] | false;
+        globalConfig.sleepHour = doc["sleepHour"] | 23;
+        globalConfig.sleepMinute = doc["sleepMinute"] | 0;
+        globalConfig.wakeHour = doc["wakeHour"] | 6;
+        globalConfig.wakeMinute = doc["wakeMinute"] | 0;
+        globalConfig.sleepBrightness = doc["sleepBrightness"] | 10;
+
+        saveConfig(globalConfig);
+        request->send(200, "application/json", "{\"status\":\"success\"}");
+      });
+
+  // ==========================================
+  // API: Update Admin Password (STA Mode with auth)
+  // ==========================================
+  server->on(
+      "/api/admin-password", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (!authenticateRequest(request, String(globalConfig.adminPassword))) {
+          return request->requestAuthentication("ESP32 Clock", false);
+        }
+
+        JsonDocument doc;
+        deserializeJson(doc, data, len);
+
+        if (doc.containsKey("newPassword")) {
+          String newPassword = doc["newPassword"].as<String>();
+          if (newPassword.length() >= 6) {
+            newPassword.toCharArray(globalConfig.adminPassword,
+                                    sizeof(globalConfig.adminPassword));
+            saveConfig(globalConfig);
+            request->send(200, "application/json", "{\"status\":\"success\"}");
+          } else {
+            request->send(
+                400, "application/json",
+                "{\"status\":\"error\",\"message\":\"Password too short\"}");
+          }
+        } else {
+          request->send(400, "application/json", "{\"status\":\"error\"}");
+        }
+      });
+
+  // Start server
   server->begin();
   Serial.println("Web server started on port 80");
+  Serial.println("AP Mode: http://192.168.4.1/");
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("STA Mode: http://%s/\n", WiFi.localIP().toString().c_str());
+  }
 }
 
 void stopWebServer() {

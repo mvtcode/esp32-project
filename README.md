@@ -2,7 +2,7 @@
 
 Đồng hồ LED Matrix P5 64x32 thông minh với ESP32, hiển thị thời gian, ngày tháng, âm lịch và thông tin thời tiết với hiệu ứng gradient đầy màu sắc.
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-ESP32-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
@@ -91,6 +91,12 @@ Luân phiên hiển thị mỗi 5 giây:
 - [x] Lưu cấu hình vào NVS (Non-Volatile Storage)
 - [x] Nút reset phần cứng (nút BOOT)
 
+### Cấu Hình Nâng Cao (v2.2.x)
+
+- [x] **APSTA Mode**: Chạy đồng thời AP Mode (192.168.4.1) và STA Mode (kết nối WiFi nhà)
+- [x] **Xác thực bảo mật**: Mật khẩu quản trị để truy cập cấu hình nâng cao
+- [x] **Giao diện cấu hình nâng cao**: Web UI riêng cho STA mode với HTTP Basic Authentication
+
 ## 📋 TODO - Tính Năng Sắp Triển Khai
 
 ### Cải Thiện Kết Nối WiFi
@@ -101,17 +107,20 @@ Luân phiên hiển thị mỗi 5 giây:
 
 ### Điều Chỉnh Hiển Thị
 
-- [ ] **Điều chỉnh độ sáng runtime** (v2.2.x): Cho phép thay đổi độ sáng LED Matrix qua giao diện web mà không cần upload lại code
-- [ ] **Hiển thị ngày đặc biệt** (v2.2.x):
-  - Hiển thị ngày lễ đặc biệt (như Tết, Giáng sinh, v.v.)
-- [ ] **Hiển thị ngày tốt xấu** (v2.2.x):
-  - Hiển thị ngày tốt xấu dựa trên ngày âm lịch
-- [ ] **Hiển thị ngày sinh nhật** (v2.2.x):
-  - Hiển thị ngày sinh nhật của bạn, bạn bè, nyc
-- [ ] **Chế độ ngủ thông minh** (v2.2.x):
+- [x] **Điều chỉnh độ sáng runtime** (v2.2.x): Cho phép thay đổi độ sáng LED Matrix qua giao diện web mà không cần upload lại code
+  - Slider 0-255 với preview real-time
+  - Áp dụng ngay lập tức, lưu vào NVS
+- [x] **Chế độ ngủ thông minh** (v2.2.x):
   - Cấu hình giờ ngủ và giờ thức (ví dụ: 23:00 - 06:00)
   - Tùy chọn giảm độ sáng hoặc tắt hoàn toàn màn hình trong giờ ngủ
   - Tự động bật lại màn hình khi đến giờ thức
+  - Hỗ trợ lịch qua đêm (cross-midnight)
+- [ ] **Hiển thị ngày đặc biệt** (v2.3.x):
+  - Hiển thị ngày lễ đặc biệt (như Tết, Giáng sinh, v.v.)
+- [ ] **Hiển thị ngày tốt xấu** (v2.3.x):
+  - Hiển thị ngày tốt xấu dựa trên ngày âm lịch
+- [ ] **Hiển thị ngày sinh nhật** (v2.3.x):
+  - Hiển thị ngày sinh nhật của bạn, bạn bè, nyc
 - [ ] **Lưu trữ và hiển thị log** (v2.3.x):
   - Lưu trữ log vào database
   - Hiển thị log qua giao diện web các thông tin: nhiệt độ, độ ẩm của ngày nào đó đã lưu.
@@ -313,6 +322,60 @@ Sau khi đã cấu hình, ESP32 sẽ:
 - Luân phiên hiển thị: Ngày/Tháng → Thời tiết → Âm lịch (mỗi 5 giây)
 - Tự động cập nhật thời tiết mỗi 10 phút
 
+### Cấu Hình Nâng Cao (v2.2.x)
+
+Sau khi setup xong, bạn có thể truy cập **giao diện cấu hình nâng cao** để điều chỉnh độ sáng và chế độ ngủ:
+
+#### Cách truy cập:
+
+1. **Tìm địa chỉ IP của ESP32**:
+   - Xem trong Serial Monitor: `STA Mode: http://192.168.1.xxx/`
+   - Hoặc vào router để xem IP của thiết bị "ESP32"
+   - Hoặc truy cập: `http://192.168.4.1/` (AP Mode luôn hoạt động)
+
+2. **Mở trình duyệt và truy cập**:
+
+   ```
+   http://<IP-của-ESP32>/
+   ```
+
+3. **Đăng nhập**:
+   - Username: `admin`
+   - Password: Mật khẩu quản trị bạn đã nhập lúc setup
+
+4. **Giao diện cấu hình nâng cao** sẽ hiển thị với các tùy chọn:
+
+#### Điều chỉnh độ sáng:
+
+- Kéo **slider độ sáng** từ 0-255
+- Giá trị hiện tại hiển thị real-time
+- Click **"Áp dụng ngay"** → LED Matrix thay đổi độ sáng ngay lập tức
+- Cấu hình được lưu vào NVS, giữ nguyên sau khi khởi động lại
+
+#### Chế độ ngủ thông minh:
+
+1. **Bật chế độ ngủ**: Tick vào checkbox "Bật chế độ ngủ tự động"
+
+2. **Cấu hình lịch ngủ**:
+   - **Giờ bắt đầu ngủ**: Ví dụ `23:00`
+   - **Giờ thức dậy**: Ví dụ `06:00`
+   - **Độ sáng khi ngủ**: Chọn từ dropdown
+     - `Tắt hẳn` (0)
+     - `Rất tối` (10)
+     - `Tối` (30)
+     - `Vừa phải` (50)
+
+3. **Lưu cấu hình**: Click "Lưu cấu hình ngủ"
+
+4. **Hoạt động**:
+   - Đồng hồ tự động kiểm tra mỗi phút
+   - Khi đến giờ ngủ → Giảm độ sáng hoặc tắt màn hình
+   - Khi đến giờ thức → Bật lại độ sáng bình thường
+   - Hỗ trợ lịch qua đêm (ví dụ: 23:00 → 06:00)
+
+> [!TIP]
+> **APSTA Mode**: ESP32 chạy đồng thời cả AP Mode (192.168.4.1) và STA Mode (kết nối WiFi nhà). Bạn có thể truy cập cấu hình từ cả 2 địa chỉ IP!
+
 ### Reset Về Chế Độ Cấu Hình
 
 Nếu bạn muốn đổi WiFi hoặc cấu hình lại:
@@ -378,6 +441,163 @@ const cities = [
   { name: "Thành phố mới", lat: xx.xxxx, lon: xxx.xxxx },
   // ...
 ];
+```
+
+## 🔌 API Endpoints (v2.2.x)
+
+ESP32 cung cấp các REST API endpoints để tích hợp với hệ thống khác:
+
+### Public Endpoints (không cần xác thực)
+
+#### `GET /api/wifi`
+
+Quét và trả về danh sách WiFi khả dụng
+
+**Response:**
+
+```json
+{
+  "networks": [
+    {
+      "ssid": "MyWiFi",
+      "rssi": -45,
+      "encryption": "ENCRYPTED"
+    }
+  ]
+}
+```
+
+#### `POST /api/save`
+
+Lưu cấu hình ban đầu (chỉ dùng trong AP Mode)
+
+**Request:**
+
+```json
+{
+  "ssid": "MyWiFi",
+  "password": "mypassword",
+  "adminPassword": "admin123",
+  "latitude": 21.0285,
+  "longitude": 105.8542
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success"
+}
+```
+
+### Protected Endpoints (cần HTTP Basic Auth)
+
+> Username: `admin` | Password: Mật khẩu quản trị đã setup
+
+#### `GET /api/config`
+
+Lấy cấu hình hiện tại
+
+**Response:**
+
+```json
+{
+  "ssid": "MyWiFi",
+  "latitude": 21.0285,
+  "longitude": 105.8542,
+  "brightness": 100,
+  "sleepEnabled": true,
+  "sleepHour": 23,
+  "sleepMinute": 0,
+  "wakeHour": 6,
+  "wakeMinute": 0,
+  "sleepBrightness": 10
+}
+```
+
+#### `POST /api/brightness`
+
+Cập nhật độ sáng
+
+**Request:**
+
+```json
+{
+  "brightness": 150
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success"
+}
+```
+
+#### `POST /api/sleep`
+
+Cập nhật cấu hình chế độ ngủ
+
+**Request:**
+
+```json
+{
+  "sleepEnabled": true,
+  "sleepHour": 23,
+  "sleepMinute": 0,
+  "wakeHour": 6,
+  "wakeMinute": 0,
+  "sleepBrightness": 10
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success"
+}
+```
+
+#### `POST /api/admin-password`
+
+Thay đổi mật khẩu quản trị
+
+**Request:**
+
+```json
+{
+  "newPassword": "newpassword123"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "success"
+}
+```
+
+### Ví dụ sử dụng với curl:
+
+```bash
+# Lấy cấu hình
+curl -u admin:yourpassword http://192.168.1.100/api/config
+
+# Thay đổi độ sáng
+curl -u admin:yourpassword -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"brightness":200}' \
+  http://192.168.1.100/api/brightness
+
+# Bật chế độ ngủ
+curl -u admin:yourpassword -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"sleepEnabled":true,"sleepHour":23,"sleepMinute":0,"wakeHour":6,"wakeMinute":0,"sleepBrightness":10}' \
+  http://192.168.1.100/api/sleep
 ```
 
 ### Thay Đổi Tên WiFi AP Mode

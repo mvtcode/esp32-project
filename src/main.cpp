@@ -39,6 +39,10 @@ int lunarMonth = 0;
 int lunarYear = 0;
 int lastCalculatedDay = -1; // Cache: chỉ tính lại khi sang ngày mới
 
+// Brightness and sleep mode
+bool isSleeping = false;
+unsigned long lastSleepCheck = 0;
+
 uint16_t hsvToRgb565(uint8_t hue, uint8_t sat, uint8_t val) {
   CRGB rgb;
   CHSV hsv(hue, sat, val);
@@ -271,6 +275,68 @@ void weatherUpdateTask(void *parameter) {
   }
 }
 
+// Check and apply sleep mode (called every minute)
+void checkSleepMode() {
+  if (!deviceConfig.sleepEnabled) {
+    // Sleep mode disabled
+    if (isSleeping) {
+      isSleeping = false;
+      dma_display->setBrightness8(deviceConfig.brightness);
+      Serial.println("[Sleep] Sleep mode disabled, restoring brightness");
+    }
+    return;
+  }
+
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    return; // No time available
+  }
+
+  int currentMinutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+  int sleepMinutes = deviceConfig.sleepHour * 60 + deviceConfig.sleepMinute;
+  int wakeMinutes = deviceConfig.wakeHour * 60 + deviceConfig.wakeMinute;
+
+  bool shouldSleep;
+  if (sleepMinutes < wakeMinutes) {
+    // Normal case: e.g., 23:00 - 06:00
+    shouldSleep =
+        (currentMinutes >= sleepMinutes && currentMinutes < wakeMinutes);
+  } else {
+    // Cross-midnight: e.g., 06:00 - 23:00 means sleep=OFF from 06:00-23:00
+    shouldSleep =
+        !(currentMinutes >= wakeMinutes && currentMinutes < sleepMinutes);
+  }
+
+  if (shouldSleep != isSleeping) {
+    isSleeping = shouldSleep;
+    uint8_t targetBrightness =
+        shouldSleep ? deviceConfig.sleepBrightness : deviceConfig.brightness;
+    dma_display->setBrightness8(targetBrightness);
+
+    Serial.printf("[Sleep] Mode changed: %s, brightness: %d\n",
+                  shouldSleep ? "SLEEPING" : "AWAKE", targetBrightness);
+  }
+}
+
+// Update brightness in runtime (called from web API)
+void updateBrightnessRuntime(uint8_t brightness) {
+  deviceConfig.brightness = brightness;
+
+  // Apply immediately if not sleeping
+  if (!isSleeping) {
+    dma_display->setBrightness8(brightness);
+    Serial.printf("[Brightness] Updated to %d\n", brightness);
+  } else {
+    Serial.printf("[Brightness] Config updated to %d, but in sleep mode "
+                  "(brightness: %d)\n",
+                  brightness, deviceConfig.sleepBrightness);
+  }
+
+  // Sync globalConfig in web_server
+  extern ConfigData globalConfig;
+  globalConfig.brightness = brightness;
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n=== ESP32 LED Matrix Clock v2.0 ===");
@@ -296,7 +362,8 @@ void setup() {
   if (!dma_display->begin()) {
     Serial.println("Failed to initialize DMA Display!");
   }
-  dma_display->setBrightness8(100);
+  // Set brightness from config (or default 100)
+  dma_display->setBrightness8(100); // Will be updated after config load
   dma_display->clearScreen();
 
   dma_display->setCursor(2, 8);
@@ -308,6 +375,15 @@ void setup() {
 
   // 2. Load configuration from NVS
   loadConfig(deviceConfig);
+
+  // Export config to web_server for authentication
+  extern ConfigData globalConfig;
+  globalConfig = deviceConfig;
+
+  // Apply brightness from config
+  if (deviceConfig.brightness > 0) {
+    dma_display->setBrightness8(deviceConfig.brightness);
+  }
 
   // 3. Setup reset button
   setupResetButton();
@@ -331,8 +407,8 @@ void setup() {
     dma_display->setCursor(2, 24);
     delay(1000);
 
-    // Setup AP and web server
-    setupAPMode();
+    // Setup APSTA mode and web server
+    setupAPSTAMode();
     setupWebServer();
     setupCaptivePortal(); // Enable captive portal DNS redirect
 
@@ -691,6 +767,15 @@ void loop() {
   }
 
   // Weather updates now handled by background task - no blocking calls here!
+
+  // Check sleep mode every minute
+  if (millis() - lastSleepCheck > 60000) {
+    checkSleepMode();
+    lastSleepCheck = millis();
+  }
+
+  // Handle DNS for captive portal (needed in APSTA mode)
+  handleDNS();
 
   globalHue += 1;
   delay(100);

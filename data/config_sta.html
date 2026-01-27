@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Clock - Cấu hình nâng cao</title>
+    <style>
+        :root {
+            --p: #007bff;
+            --bg: #f4f4f9;
+            --txt: #333;
+        }
+
+        body {
+            font-family: sans-serif;
+            background: var(--bg);
+            color: var(--txt);
+            padding: 20px;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: #fff;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: var(--p);
+            font-size: 1.5rem;
+        }
+
+        h3 {
+            color: #555;
+            font-size: 1.1rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 5px;
+        }
+
+        .item {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="password"],
+        input[type="time"],
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: var(--p);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .brightness-value {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--p);
+            margin: 10px 0;
+        }
+
+        .sleep-settings {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        #msg {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            display: none;
+            font-size: 0.9rem;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px 0;
+            font-size: 0.9rem;
+            color: var(--txt);
+        }
+
+        footer a {
+            color: var(--p);
+            text-decoration: none;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h2>⚙️ Cấu hình nâng cao</h2>
+            <p>Điều chỉnh các tham số hiển thị và chế độ của đồng hồ</p>
+        </div>
+
+        <!-- Display Settings -->
+        <div class="card">
+            <h3>💡 Hiển thị</h3>
+            
+            <div class="item">
+                <label>Độ sáng: <span id="brightnessValue" class="brightness-value">100</span></label>
+                <input type="range" id="brightness" min="0" max="255" value="100" 
+                       oninput="document.getElementById('brightnessValue').textContent = this.value">
+                <button onclick="updateBrightness()">Áp dụng ngay</button>
+            </div>
+        </div>
+
+        <!-- Sleep Mode -->
+        <div class="card">
+            <h3>🌙 Chế độ ngủ thông minh</h3>
+            
+            <div class="item">
+                <label>
+                    <input type="checkbox" id="sleepEnabled" onchange="toggleSleepSettings()">
+                    Bật chế độ ngủ tự động
+                </label>
+            </div>
+
+            <div id="sleepSettings" class="sleep-settings" style="display:none;">
+                <div class="item">
+                    <label>Giờ bắt đầu ngủ</label>
+                    <input type="time" id="sleepTime" value="23:00">
+                </div>
+
+                <div class="item">
+                    <label>Giờ thức dậy</label>
+                    <input type="time" id="wakeTime" value="06:00">
+                </div>
+
+                <div class="item">
+                    <label>Độ sáng khi ngủ</label>
+                    <select id="sleepBrightness">
+                        <option value="0">Tắt hẳn</option>
+                        <option value="10" selected>Rất tối (10)</option>
+                        <option value="30">Tối (30)</option>
+                        <option value="50">Vừa phải (50)</option>
+                    </select>
+                </div>
+
+                <button onclick="updateSleep()">Lưu cấu hình ngủ</button>
+            </div>
+        </div>
+
+        <div id="msg"></div>
+    </div>
+
+    <footer>
+        Power by <a href="https://www.facebook.com/mvt.hp.star/" target="_blank">Mạc Tân</a> | 
+        Mobile: <a href="tel:0964335688">0964 335 688</a>
+    </footer>
+
+    <script>
+        // Load current config on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadConfig();
+        });
+
+        function toggleSleepSettings() {
+            const enabled = document.getElementById('sleepEnabled').checked;
+            document.getElementById('sleepSettings').style.display = enabled ? 'block' : 'none';
+        }
+
+        function showMessage(message, type) {
+            const msg = document.getElementById('msg');
+            msg.textContent = message;
+            msg.className = type;
+            msg.style.display = 'block';
+            
+            setTimeout(() => {
+                msg.style.display = 'none';
+            }, 5000);
+        }
+
+        function loadConfig() {
+            fetch('/api/config')
+                .then(response => {
+                    if (!response.ok) throw new Error('Failed to load config');
+                    return response.json();
+                })
+                .then(data => {
+                    // Brightness
+                    document.getElementById('brightness').value = data.brightness || 100;
+                    document.getElementById('brightnessValue').textContent = data.brightness || 100;
+
+                    // Sleep mode
+                    document.getElementById('sleepEnabled').checked = data.sleepEnabled || false;
+                    
+                    if (data.sleepHour !== undefined && data.sleepMinute !== undefined) {
+                        const sleepTime = `${String(data.sleepHour).padStart(2, '0')}:${String(data.sleepMinute).padStart(2, '0')}`;
+                        document.getElementById('sleepTime').value = sleepTime;
+                    }
+
+                    if (data.wakeHour !== undefined && data.wakeMinute !== undefined) {
+                        const wakeTime = `${String(data.wakeHour).padStart(2, '0')}:${String(data.wakeMinute).padStart(2, '0')}`;
+                        document.getElementById('wakeTime').value = wakeTime;
+                    }
+
+                    document.getElementById('sleepBrightness').value = data.sleepBrightness || 10;
+
+                    toggleSleepSettings();
+                })
+                .catch(error => {
+                    console.error('Error loading config:', error);
+                    showMessage('Không thể tải cấu hình', 'error');
+                });
+        }
+
+        function updateBrightness() {
+            const brightness = parseInt(document.getElementById('brightness').value);
+            
+            fetch('/api/brightness', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ brightness: brightness })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showMessage(`Độ sáng đã được cập nhật: ${brightness}`, 'success');
+                } else {
+                    throw new Error('Failed to update brightness');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Lỗi khi cập nhật độ sáng', 'error');
+            });
+        }
+
+        function updateSleep() {
+            const enabled = document.getElementById('sleepEnabled').checked;
+            const sleepTime = document.getElementById('sleepTime').value.split(':');
+            const wakeTime = document.getElementById('wakeTime').value.split(':');
+            const sleepBrightness = parseInt(document.getElementById('sleepBrightness').value);
+
+            const config = {
+                sleepEnabled: enabled,
+                sleepHour: parseInt(sleepTime[0]),
+                sleepMinute: parseInt(sleepTime[1]),
+                wakeHour: parseInt(wakeTime[0]),
+                wakeMinute: parseInt(wakeTime[1]),
+                sleepBrightness: sleepBrightness
+            };
+
+            fetch('/api/sleep', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(config)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showMessage('Cấu hình chế độ ngủ đã được lưu', 'success');
+                } else {
+                    throw new Error('Failed to update sleep settings');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Lỗi khi lưu cấu hình ngủ', 'error');
+            });
+        }
+    </script>
+</body>
+</html>
