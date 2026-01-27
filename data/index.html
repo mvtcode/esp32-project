@@ -60,6 +60,11 @@
             font-size: 1rem;
         }
 
+        input:disabled {
+            background: #f0f0f0;
+            cursor: not-allowed;
+        }
+
         button {
             width: 100%;
             padding: 14px;
@@ -75,6 +80,19 @@
 
         button:disabled {
             background: #ccc;
+            cursor: not-allowed;
+        }
+
+        button:hover:not(:disabled) {
+            background: #0056b3;
+        }
+
+        button.secondary {
+            background: #6c757d;
+        }
+
+        button.secondary:hover:not(:disabled) {
+            background: #545b62;
         }
 
         #msg {
@@ -94,6 +112,11 @@
         .error {
             background: #f8d7da;
             color: #721c24;
+        }
+
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
         }
 
         footer {
@@ -118,6 +141,76 @@
         footer a:hover {
             text-decoration: underline;
         }
+
+        .wifi-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .wifi-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .wifi-item:last-child {
+            border-bottom: none;
+        }
+
+        .wifi-item:hover {
+            background: #f8f9fa;
+        }
+
+        .wifi-item.selected {
+            background: #e7f3ff;
+            border-left: 4px solid var(--p);
+        }
+
+        .wifi-info {
+            flex: 1;
+        }
+
+        .wifi-ssid {
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+
+        .wifi-signal {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .wifi-lock {
+            color: #666;
+            font-size: 1.2rem;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--p);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 
@@ -127,13 +220,21 @@
         <h2>Cấu Hình Hệ Thống</h2>
 
         <div class="item">
-            <label>Tên WiFi (SSID)</label>
-            <input type="text" id="ssid" placeholder="Nhập SSID">
+            <button id="scanBtn" class="secondary" onclick="scanWiFi()">
+                <span id="scanText">Quét WiFi</span>
+            </button>
+        </div>
+
+        <div id="wifiListContainer" class="hidden">
+            <div class="item">
+                <label>Chọn WiFi</label>
+                <div class="wifi-list" id="wifiList"></div>
+            </div>
         </div>
 
         <div class="item">
             <label>Mật khẩu</label>
-            <input type="password" id="pw" placeholder="Nhập mật khẩu">
+            <input type="password" id="pw" placeholder="Mật khẩu WiFi" disabled>
         </div>
 
         <div class="item">
@@ -158,7 +259,7 @@
     </div>
 
     <script>
-        // Danh sách thành phố (Có thể mở rộng thêm dễ dàng)
+        // Danh sách thành phố
         const cities = [
             { name: "Hà Nội", lat: 21.0285, lon: 105.8542 },
             { name: "Hải Phòng", lat: 20.8449, lon: 106.6881 },
@@ -171,6 +272,10 @@
         const citySelect = document.getElementById('city');
         const latInp = document.getElementById('lat');
         const lonInp = document.getElementById('lon');
+        const pwInp = document.getElementById('pw');
+
+        let selectedWiFi = null;
+        let wifiNetworks = [];
 
         // Khởi tạo dropdown thành phố
         cities.forEach((c, index) => {
@@ -189,26 +294,170 @@
         // Chạy lần đầu để set giá trị mặc định
         updateCoords();
 
+        function getSignalStrength(rssi) {
+            if (rssi >= -50) return "Tuyệt vời";
+            if (rssi >= -60) return "Tốt";
+            if (rssi >= -70) return "Khá";
+            return "Yếu";
+        }
+
+        function scanWiFi() {
+            const scanBtn = document.getElementById('scanBtn');
+            const scanText = document.getElementById('scanText');
+            const msg = document.getElementById('msg');
+
+            scanBtn.disabled = true;
+            scanText.innerHTML = '<span class="spinner"></span>Đang quét...';
+            msg.style.display = 'none';
+
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", "/api/wifi", true);
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {
+                    scanBtn.disabled = false;
+                    scanText.innerHTML = 'Quét WiFi';
+
+                    if (xhr.status === 200) {
+                        const data = JSON.parse(xhr.responseText);
+                        wifiNetworks = data.networks || [];
+                        displayWiFiList(wifiNetworks);
+                    } else {
+                        msg.innerHTML = "Lỗi khi quét WiFi: " + xhr.status;
+                        msg.className = 'error';
+                        msg.style.display = 'block';
+                    }
+                }
+            };
+
+            xhr.send();
+        }
+
+        function displayWiFiList(networks) {
+            const wifiList = document.getElementById('wifiList');
+            const wifiListContainer = document.getElementById('wifiListContainer');
+
+            wifiList.innerHTML = '';
+
+            if (networks.length === 0) {
+                wifiList.innerHTML = '<div style="padding:12px; text-align:center; color:#999;">Không tìm thấy WiFi nào</div>';
+                wifiListContainer.classList.remove('hidden');
+                return;
+            }
+
+            networks.forEach((network, index) => {
+                const item = document.createElement('div');
+                item.className = 'wifi-item';
+                item.onclick = () => selectWiFi(index);
+
+                const info = document.createElement('div');
+                info.className = 'wifi-info';
+
+                const ssid = document.createElement('div');
+                ssid.className = 'wifi-ssid';
+                ssid.textContent = network.ssid;
+
+                const signal = document.createElement('div');
+                signal.className = 'wifi-signal';
+                signal.textContent = `${getSignalStrength(network.rssi)} (${network.rssi} dBm)`;
+
+                info.appendChild(ssid);
+                info.appendChild(signal);
+                item.appendChild(info);
+
+                if (network.encryption !== 'OPEN') {
+                    const lock = document.createElement('div');
+                    lock.className = 'wifi-lock';
+                    lock.innerHTML = '🔒';
+                    item.appendChild(lock);
+                }
+
+                wifiList.appendChild(item);
+            });
+
+            wifiListContainer.classList.remove('hidden');
+        }
+
+        function selectWiFi(index) {
+            selectedWiFi = wifiNetworks[index];
+
+            // Update UI
+            const items = document.querySelectorAll('.wifi-item');
+            items.forEach((item, i) => {
+                if (i === index) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+
+            // Enable/disable password field based on encryption
+            if (selectedWiFi.encryption === 'OPEN') {
+                pwInp.disabled = true;
+                pwInp.value = '';
+                pwInp.placeholder = 'WiFi không yêu cầu mật khẩu';
+            } else {
+                pwInp.disabled = false;
+                pwInp.placeholder = 'Nhập mật khẩu WiFi';
+                pwInp.focus();
+            }
+        }
+
         function sendData() {
             const btn = document.getElementById('btn');
             const msg = document.getElementById('msg');
 
-            const payload = {
-                ssid: document.getElementById('ssid').value,
-                password: document.getElementById('pw').value,
-                latitude: parseFloat(latInp.value),
-                longitude: parseFloat(lonInp.value)
-            };
-
-            if (!payload.ssid) {
-                alert("Vui lòng nhập SSID");
+            // Validation
+            if (!selectedWiFi) {
+                msg.innerHTML = "Vui lòng chọn WiFi từ danh sách";
+                msg.className = 'error';
+                msg.style.display = 'block';
                 return;
             }
 
+            const password = pwInp.value;
+
+            // Validate password for encrypted networks
+            if (selectedWiFi.encryption !== 'OPEN') {
+                if (!password) {
+                    msg.innerHTML = "Vui lòng nhập mật khẩu WiFi";
+                    msg.className = 'error';
+                    msg.style.display = 'block';
+                    pwInp.focus();
+                    return;
+                }
+
+                if (password.length < 8) {
+                    msg.innerHTML = "Mật khẩu phải có ít nhất 8 ký tự";
+                    msg.className = 'error';
+                    msg.style.display = 'block';
+                    pwInp.focus();
+                    return;
+                }
+            }
+
+            // Validate coordinates
+            const latitude = parseFloat(latInp.value);
+            const longitude = parseFloat(lonInp.value);
+
+            if (isNaN(latitude) || isNaN(longitude)) {
+                msg.innerHTML = "Tọa độ không hợp lệ";
+                msg.className = 'error';
+                msg.style.display = 'block';
+                return;
+            }
+
+            const payload = {
+                ssid: selectedWiFi.ssid,
+                password: password,
+                latitude: latitude,
+                longitude: longitude
+            };
+
             btn.disabled = true;
             msg.style.display = 'block';
-            msg.innerHTML = "Đang gửi dữ liệu...";
-            msg.className = '';
+            msg.innerHTML = '<span class="spinner"></span>Đang gửi dữ liệu...';
+            msg.className = 'info';
 
             const xhr = new XMLHttpRequest();
             xhr.open("POST", "/api/save", true);

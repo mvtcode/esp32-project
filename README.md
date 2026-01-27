@@ -95,9 +95,9 @@ Luân phiên hiển thị mỗi 5 giây:
 
 ### Cải Thiện Kết Nối WiFi
 
-- [ ] **Retry Connect WiFi** (v2.0.x): Tự động thử kết nối lại WiFi khi mất kết nối hoặc kết nối thất bại, hiện tại phải nhấn phím reset để kết nối lại.
-- [ ] **WiFi Captive Portal** (v2.1.x): Tự động chuyển hướng đến trang cấu hình khi kết nối AP mode (không cần nhập địa chỉ IP thủ công)
-- [ ] **Danh sách WiFi** (v2.1.x): Hiển thị danh sách các mạng WiFi khả dụng trong trang web cấu hình để dễ dàng chọn
+- [x] **Retry Connect WiFi** (v2.0.x): Tự động thử kết nối lại WiFi khi mất kết nối hoặc kết nối thất bại, hiện tại phải nhấn phím reset để kết nối lại.
+- [x] **WiFi Captive Portal** (v2.1.x): Tự động chuyển hướng đến trang cấu hình khi kết nối AP mode (không cần nhập địa chỉ IP thủ công)
+- [x] **Danh sách WiFi** (v2.1.x): Hiển thị danh sách các mạng WiFi khả dụng trong trang web cấu hình để dễ dàng chọn
 
 ### Điều Chỉnh Hiển Thị
 
