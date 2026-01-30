@@ -199,6 +199,26 @@ void connectWiFi() {
   }
 }
 
+void setManualTime() {
+  // Set manual time to 10:20:00 for demo purposes
+  Serial.println("Setting manual demo time to 10:20:00...");
+  
+  struct tm timeinfo;
+  timeinfo.tm_year = 2026 - 1900;  // Year since 1900
+  timeinfo.tm_mon = 0;              // January (0-11)
+  timeinfo.tm_mday = 30;            // Day of month
+  timeinfo.tm_hour = 10;            // 10 AM
+  timeinfo.tm_min = 20;             // 20 minutes
+  timeinfo.tm_sec = 0;              // 0 seconds
+  
+  time_t t = mktime(&timeinfo);
+  struct timeval now = { .tv_sec = t };
+  settimeofday(&now, NULL);
+  
+  Serial.println("Manual time set successfully!");
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+}
+
 void syncTime() {
   Serial.println("Syncing time from NTP...");
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
@@ -210,6 +230,38 @@ void syncTime() {
   } else {
     Serial.println("Failed to sync time");
   }
+}
+
+void drawRolexCrown() {
+  // Draw Rolex crown logo at 12 o'clock position
+  int centerX = CLOCK_CENTER_X;
+  int centerY = CLOCK_CENTER_Y - (CLOCK_RADIUS - 30);
+  
+  // Crown body (5 points)
+  // Center point (tallest)
+  tft.fillTriangle(centerX, centerY - 8, centerX - 2, centerY - 3, centerX + 2, centerY - 3, COLOR_FACE);
+  
+  // Left outer point
+  tft.fillTriangle(centerX - 7, centerY - 5, centerX - 9, centerY - 1, centerX - 5, centerY - 1, COLOR_FACE);
+  
+  // Left inner point
+  tft.fillTriangle(centerX - 4, centerY - 6, centerX - 6, centerY - 2, centerX - 2, centerY - 2, COLOR_FACE);
+  
+  // Right inner point
+  tft.fillTriangle(centerX + 4, centerY - 6, centerX + 2, centerY - 2, centerX + 6, centerY - 2, COLOR_FACE);
+  
+  // Right outer point
+  tft.fillTriangle(centerX + 7, centerY - 5, centerX + 5, centerY - 1, centerX + 9, centerY - 1, COLOR_FACE);
+  
+  // Crown base (circle)
+  tft.drawCircle(centerX, centerY + 1, 5, COLOR_FACE);
+  tft.drawCircle(centerX, centerY + 1, 4, COLOR_FACE);
+  
+  // Draw "ROLEX" text below the crown
+  tft.setTextSize(1);
+  tft.setTextColor(COLOR_FACE);
+  tft.setCursor(centerX - 15, centerY + 10);
+  tft.print("ROLEX");
 }
 
 void drawClockFace() {
@@ -232,9 +284,9 @@ void drawClockFace() {
     tft.drawLine(x1, y1, x2, y2, COLOR_HOUR_MARK);
     tft.drawLine(x1 + 1, y1, x2 + 1, y2, COLOR_HOUR_MARK);
     
-    // Draw numbers for 12, 3, 6, 9
-    if (i == 0 || i == 3 || i == 6 || i == 9) {
-      int num = (i == 0) ? 12 : i;
+    // Draw numbers for 3, 6, 9 (skip 12 - will draw logo instead)
+    if (i == 3 || i == 6 || i == 9) {
+      int num = i;
       int numX = CLOCK_CENTER_X + (CLOCK_RADIUS - 35) * cos(angle);
       int numY = CLOCK_CENTER_Y + (CLOCK_RADIUS - 35) * sin(angle);
       
@@ -242,18 +294,13 @@ void drawClockFace() {
       tft.setTextColor(COLOR_FACE);
       
       // Center the text
-      if (num == 12) {
-        tft.setCursor(numX - 12, numY - 8);
-      } else if (num == 3) {
-        tft.setCursor(numX - 6, numY - 8);
-      } else if (num == 6) {
-        tft.setCursor(numX - 6, numY - 8);
-      } else if (num == 9) {
-        tft.setCursor(numX - 6, numY - 8);
-      }
+      tft.setCursor(numX - 6, numY - 8);
       tft.print(num);
     }
   }
+  
+  // Draw Rolex crown logo at 12 o'clock position
+  drawRolexCrown();
   
   // Draw minute marks
   for (int i = 0; i < 60; i++) {
@@ -289,6 +336,35 @@ void drawHand(int length, float angle, uint16_t color, int thickness) {
   }
 }
 
+void redrawClockMarks() {
+  // Redraw hour marks
+  for (int i = 0; i < 12; i++) {
+    float angle = (i * 30 - 90) * PI / 180.0;
+    
+    // Hour tick marks
+    int x1 = CLOCK_CENTER_X + (CLOCK_RADIUS - 10) * cos(angle);
+    int y1 = CLOCK_CENTER_Y + (CLOCK_RADIUS - 10) * sin(angle);
+    int x2 = CLOCK_CENTER_X + (CLOCK_RADIUS - 20) * cos(angle);
+    int y2 = CLOCK_CENTER_Y + (CLOCK_RADIUS - 20) * sin(angle);
+    
+    tft.drawLine(x1, y1, x2, y2, COLOR_HOUR_MARK);
+    tft.drawLine(x1 + 1, y1, x2 + 1, y2, COLOR_HOUR_MARK);
+  }
+  
+  // Redraw minute marks
+  for (int i = 0; i < 60; i++) {
+    if (i % 5 != 0) {  // Skip hour positions
+      float angle = (i * 6 - 90) * PI / 180.0;
+      int x1 = CLOCK_CENTER_X + (CLOCK_RADIUS - 5) * cos(angle);
+      int y1 = CLOCK_CENTER_Y + (CLOCK_RADIUS - 5) * sin(angle);
+      int x2 = CLOCK_CENTER_X + (CLOCK_RADIUS - 10) * cos(angle);
+      int y2 = CLOCK_CENTER_Y + (CLOCK_RADIUS - 10) * sin(angle);
+      
+      tft.drawLine(x1, y1, x2, y2, COLOR_MIN_MARK);
+    }
+  }
+}
+
 void updateClock() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
@@ -300,16 +376,57 @@ void updateClock() {
   int minutes = timeinfo.tm_min;
   int seconds = timeinfo.tm_sec;
   
-  // Calculate angles
+  // Calculate angles (1 update per second like quartz clock)
   float secondAngle = seconds * 6;
   float minuteAngle = minutes * 6 + seconds * 0.1;
   float hourAngle = hours * 30 + minutes * 0.5;
   
-  // Erase previous hands (draw in black)
+  // Erase previous hands by clearing and redrawing entire inner area
   if (!firstDraw) {
-    drawHand(SECOND_HAND_LENGTH, prevSecondX, COLOR_BACKGROUND, 1);
-    drawHand(MINUTE_HAND_LENGTH, prevMinuteX, COLOR_BACKGROUND, 3);
-    drawHand(HOUR_HAND_LENGTH, prevHourX, COLOR_BACKGROUND, 4);
+    // Fill inner circle to completely clear old hands
+    tft.fillCircle(CLOCK_CENTER_X, CLOCK_CENTER_Y, CLOCK_RADIUS - 2, COLOR_BACKGROUND);
+    
+    // Redraw hour marks and numbers
+    for (int i = 0; i < 12; i++) {
+      float angle = (i * 30 - 90) * PI / 180.0;
+      
+      // Hour tick marks
+      int x1 = CLOCK_CENTER_X + (CLOCK_RADIUS - 10) * cos(angle);
+      int y1 = CLOCK_CENTER_Y + (CLOCK_RADIUS - 10) * sin(angle);
+      int x2 = CLOCK_CENTER_X + (CLOCK_RADIUS - 20) * cos(angle);
+      int y2 = CLOCK_CENTER_Y + (CLOCK_RADIUS - 20) * sin(angle);
+      
+      tft.drawLine(x1, y1, x2, y2, COLOR_HOUR_MARK);
+      tft.drawLine(x1 + 1, y1, x2 + 1, y2, COLOR_HOUR_MARK);
+      
+      // Draw numbers for 3, 6, 9
+      if (i == 3 || i == 6 || i == 9) {
+        int num = i;
+        int numX = CLOCK_CENTER_X + (CLOCK_RADIUS - 35) * cos(angle);
+        int numY = CLOCK_CENTER_Y + (CLOCK_RADIUS - 35) * sin(angle);
+        
+        tft.setTextSize(2);
+        tft.setTextColor(COLOR_FACE);
+        tft.setCursor(numX - 6, numY - 8);
+        tft.print(num);
+      }
+    }
+    
+    // Redraw Rolex crown logo at 12 o'clock
+    drawRolexCrown();
+    
+    // Redraw minute marks
+    for (int i = 0; i < 60; i++) {
+      if (i % 5 != 0) {  // Skip hour positions
+        float angle = (i * 6 - 90) * PI / 180.0;
+        int x1 = CLOCK_CENTER_X + (CLOCK_RADIUS - 5) * cos(angle);
+        int y1 = CLOCK_CENTER_Y + (CLOCK_RADIUS - 5) * sin(angle);
+        int x2 = CLOCK_CENTER_X + (CLOCK_RADIUS - 10) * cos(angle);
+        int y2 = CLOCK_CENTER_Y + (CLOCK_RADIUS - 10) * sin(angle);
+        
+        tft.drawLine(x1, y1, x2, y2, COLOR_MIN_MARK);
+      }
+    }
   }
   
   // Draw new hands
@@ -326,15 +443,6 @@ void updateClock() {
   prevMinuteX = minuteAngle;
   prevHourX = hourAngle;
   firstDraw = false;
-  
-  // Display digital time at bottom
-  tft.fillRect(0, 210, 240, 30, COLOR_BACKGROUND);
-  tft.setTextSize(2);
-  tft.setTextColor(COLOR_TEXT);
-  tft.setCursor(45, 215);
-  char timeStr[10];
-  sprintf(timeStr, "%02d:%02d:%02d", timeinfo.tm_hour, minutes, seconds);
-  tft.print(timeStr);
 }
 
 void setup() {
@@ -354,9 +462,13 @@ void setup() {
   // Connect to WiFi
   connectWiFi();
   
-  // Sync time
+  // Sync time or set manual time for demo
   if (WiFi.status() == WL_CONNECTED) {
     syncTime();
+    delay(1000);
+  } else {
+    // Set manual demo time when WiFi is not available
+    setManualTime();
     delay(1000);
   }
   
@@ -370,7 +482,7 @@ void loop() {
   static unsigned long lastUpdate = 0;
   static unsigned long lastSync = 0;
   
-  // Update clock every second
+  // Update clock once per second (like quartz watch)
   if (millis() - lastUpdate >= 1000) {
     lastUpdate = millis();
     updateClock();
