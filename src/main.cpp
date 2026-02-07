@@ -1,7 +1,9 @@
 #include "config_manager.h"
 #include "display.h"
+#include "indoor_sensor.h"
 #include "lunar_calendar.h"
 #include "reset_button.h"
+#include "rtc_manager.h"
 #include "weather.h"
 #include "web_server.h"
 #include "wifi_manager.h"
@@ -84,9 +86,28 @@ void setup() {
     // Connect to WiFi
     connectWiFi(deviceConfig);
 
+    // Initialize RTC
+    initRTC();
+    
+    // Initialize indoor sensor
+    initIndoorSensor();
+    
+    // Start indoor sensor background task (always, regardless of WiFi)
+    startIndoorSensorTask();
+    
     // Initialize weather system
     if (WiFi.status() == WL_CONNECTED) {
       initWeather(weatherApiUrl);
+      
+      // Sync RTC from NTP (with timeout to prevent blocking)
+      Serial.println("Syncing time from NTP...");
+      struct tm timeinfo;
+      if (getLocalTime(&timeinfo, 5000)) { // 5 second timeout
+        syncRTCFromNTP(timeinfo);
+        Serial.println("RTC synced from NTP successfully");
+      } else {
+        Serial.println("NTP sync timeout, will retry later");
+      }
     }
   }
 }
@@ -193,8 +214,26 @@ void loop() {
     return; // Skip rest of loop until WiFi is connected
   }
   
+  // Get time from NTP or RTC fallback
   struct tm timeinfo;
-  bool hasTime = getLocalTime(&timeinfo);
+  bool hasTime;
+  static unsigned long lastRTCSync = 0;
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    hasTime = getLocalTime(&timeinfo);
+    
+    // Sync RTC from NTP every hour
+    if (hasTime && (millis() - lastRTCSync > 3600000)) {
+      syncRTCFromNTP(timeinfo);
+      lastRTCSync = millis();
+    }
+  } else {
+    // WiFi down - use RTC as fallback
+    hasTime = getRTCTime(timeinfo);
+    if (hasTime) {
+      Serial.println("Using RTC time (WiFi offline)");
+    }
+  }
 
   dma_display->clearScreen();
 
@@ -261,42 +300,43 @@ void loop() {
     // Vẽ dòng 2: Luân phiên giữa Thứ/Ngày và Nhiệt độ/Độ ẩm mỗi 5 giây
     dma_display->setTextSize(1);
 
-    // Tính toán chế độ hiển thị dựa trên thời gian (5 giây mỗi chế độ, 3 modes)
+    // Tính toán chế độ hiển thị dựa trên thời gian (5 giây mỗi chế độ, 4 modes)
     unsigned long currentTime = millis() / 5000; // Chia cho 5000ms = 5 giây
     int displayMode =
-        currentTime % 3; // 0 = ngày/tháng, 1 = thời tiết, 2 = âm lịch
+        currentTime % 4; // 0 = ngày/tháng, 1 = thời tiết ngoài, 2 = thời tiết trong, 3 = âm lịch
 
     // Thread-safe check for weather data availability
-    float tempDisplay = 0.0;
-    int humDisplay = 0;
-    bool showWeather = getWeatherData(tempDisplay, humDisplay);
+    float tempOutdoor = 0.0;
+    int humOutdoor = 0;
+    bool showWeather = getWeatherData(tempOutdoor, humOutdoor);
+    
+    // Pre-fetch indoor sensor data to avoid blocking during display
+    float tempIndoor = 0.0;
+    int humIndoor = 0;
+    bool showIndoor = getIndoorData(tempIndoor, humIndoor);
 
     if (displayMode == 1 && showWeather) {
+      // Mode 1: Outdoor weather (from API)
       // Hiển thị Nhiệt độ và Độ ẩm với nhãn T và H
       // Format: "T 23.1°C  H 79%" với gradient colors
 
-      // Tách phần nguyên và phần thập phân của nhiệt độ (using thread-safe
-      // copies)
-      int tempInt = (int)tempDisplay;
-      int tempDec =
-          (int)((tempDisplay - tempInt) * 10); // Lấy 1 chữ số thập phân
+      // Tách phần nguyên và phần thập phân của nhiệt độ
+      int tempInt = (int)tempOutdoor;
+      int tempDec = (int)((tempOutdoor - tempInt) * 10);
 
       char tempIntStr[5], tempDecStr[2], humStr[8];
       sprintf(tempIntStr, "%d", tempInt);
       sprintf(tempDecStr, "%d", tempDec);
-      sprintf(humStr, "%d%%", humDisplay);
+      sprintf(humStr, "%d%%", humOutdoor);
 
       // Bắt đầu từ vị trí cố định
       int currentX = 1; // Bắt đầu từ pixel 1
 
-      // Vẽ "T" với gradient
-      // dma_display->setCursor(currentX, 23);
-      // dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255,
-      // 255)); dma_display->print("T");
-      currentX += 4;
+      // Vẽ outdoor icon (3 bars)
+      drawOutdoorIcon(currentX, 24, hsvToRgb565(globalHue + currentX * 2, 255, 255));
+      currentX += 11; // Icon (5px) + space (6px) - increased by 4px
 
       // Vẽ phần nguyên (23) - từng chữ số với gradient
-      currentX -= 1;
       for (int i = 0; i < strlen(tempIntStr); i++) {
         dma_display->setCursor(currentX, 23);
         dma_display->setTextColor(
@@ -327,13 +367,7 @@ void loop() {
       dma_display->setTextColor(
           hsvToRgb565(globalHue + currentX * 2, 255, 255));
       dma_display->print("C");
-      currentX += 6 + 6; // C (6px) + space (6px)
-
-      // Vẽ "H"
-      currentX = 40;
-      // dma_display->setCursor(currentX, 23);
-      // dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255,
-      // 255)); dma_display->print("H"); currentX += 6; // H (6px)
+      currentX += 10; // C (6px) + space (4px) - decreased by 4px to keep humidity position
 
       // Vẽ độ ẩm - từng ký tự với gradient
       for (int i = 0; i < strlen(humStr); i++) {
@@ -344,7 +378,66 @@ void loop() {
         currentX += 6;
       }
     } else if (displayMode == 2) {
-      // Mode 2: Hiển thị Âm lịch
+      // Mode 2: Indoor sensor (AHT10)
+      if (showIndoor) {
+        // Tách phần nguyên và phần thập phân của nhiệt độ (using pre-fetched data)
+        int tempInt = (int)tempIndoor;
+        int tempDec = (int)((tempIndoor - tempInt) * 10);
+        
+        char tempIntStr[5], tempDecStr[2], humStr[8];
+        sprintf(tempIntStr, "%d", tempInt);
+        sprintf(tempDecStr, "%d", tempDec);
+        sprintf(humStr, "%d%%", humIndoor);
+        
+        int currentX = 1;
+        
+        // Vẽ indoor icon (home)
+        drawIndoorIcon(currentX, 23, hsvToRgb565(globalHue + currentX * 2, 255, 255));
+        currentX += 11; // Icon (5px) + space (6px) - increased by 4px
+        
+        // Vẽ phần nguyên nhiệt độ
+        for (int i = 0; i < strlen(tempIntStr); i++) {
+          dma_display->setCursor(currentX, 23);
+          dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
+          dma_display->print(tempIntStr[i]);
+          currentX += 6;
+        }
+        
+        // Vẽ dấu chấm (.) - chỉ 1 pixel
+        dma_display->drawPixel(currentX, 29, hsvToRgb565(globalHue + currentX * 2, 255, 255));
+        currentX += 2;
+        
+        // Vẽ phần thập phân
+        dma_display->setCursor(currentX, 23);
+        dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
+        dma_display->print(tempDecStr);
+        currentX += strlen(tempDecStr) * 6;
+        
+        // Vẽ ký tự độ (°)
+        dma_display->drawCircle(currentX + 1, 24, 1, hsvToRgb565(globalHue + currentX * 2, 255, 255));
+        currentX += 3;
+        
+        // Vẽ "C"
+        dma_display->setCursor(currentX, 23);
+        dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
+        dma_display->print("C");
+        currentX += 10; // C (6px) + space (4px) - decreased by 4px to keep humidity position
+        
+        // Vẽ độ ẩm
+        for (int i = 0; i < strlen(humStr); i++) {
+          dma_display->setCursor(currentX, 23);
+          dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
+          dma_display->print(humStr[i]);
+          currentX += 6;
+        }
+      } else {
+        // Sensor not ready
+        dma_display->setCursor(2, 23);
+        dma_display->setTextColor(hsvToRgb565(globalHue + 120, 255, 255));
+        dma_display->print("I:No Sensor");
+      }
+    } else if (displayMode == 3) {
+      // Mode 3: Hiển thị Âm lịch
       // Chỉ tính lại khi sang ngày mới (cache)
       if (lastCalculatedDay != timeinfo.tm_mday) {
         solarToLunar(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1,

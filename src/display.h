@@ -18,4 +18,9 @@ uint16_t hsvToRgb565(uint8_t hue, uint8_t sat, uint8_t val);
 void drawThu(int16_t x, int16_t y, uint16_t color);
 void drawACircumflexDotBelow(int16_t x, int16_t y, uint16_t color);
 
+// Weather icon drawing functions
+void drawOutdoorIcon(int16_t x, int16_t y, uint16_t color); // 3 horizontal bars (≡)
+void drawIndoorIcon(int16_t x, int16_t y, uint16_t color);  // Home icon
+
 #endif
+

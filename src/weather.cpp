@@ -68,8 +68,8 @@ static void fetchWeatherData() {
 void weatherUpdateTask(void *parameter) {
   Serial.println("[Weather Task] Started on Core " + String(xPortGetCoreID()));
 
-  // Initial fetch after 5 seconds
-  vTaskDelay(5000 / portTICK_PERIOD_MS);
+  // Initial fetch after 2 seconds (faster startup)
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
   fetchWeatherData();
 
   // Periodic updates every 10 minutes
