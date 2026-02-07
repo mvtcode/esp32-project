@@ -1,37 +1,18 @@
 #include "config_manager.h"
+#include "display.h"
 #include "lunar_calendar.h"
 #include "reset_button.h"
+#include "weather.h"
 #include "web_server.h"
+#include "wifi_manager.h"
 #include <Arduino.h>
-#include <ArduinoJson.h>
-#include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
-#include <FastLED.h>
-#include <HTTPClient.h>
 #include <WiFi.h>
 #include <time.h>
 
 // Configuration data loaded from NVS
 ConfigData deviceConfig;
-#define PANEL_RES_X 64
-#define PANEL_RES_Y 32
-#define PANEL_CHAIN 1
 
-MatrixPanel_I2S_DMA *dma_display = nullptr;
-uint8_t globalHue = 0;
-
-// Weather API URL (will be built dynamically from config)
-String weatherApiUrl = "";
 bool isConfigMode = false; // Flag to indicate if in AP config mode
-float temperature = 0.0;
-int humidity = 0;
-unsigned long lastWeatherUpdate = 0;
-const unsigned long weatherUpdateInterval =
-    600000; // 10 minutes in milliseconds
-bool hasWeatherData = false;
-
-// FreeRTOS task handle and mutex for thread-safe weather updates
-TaskHandle_t weatherTaskHandle = NULL;
-SemaphoreHandle_t weatherMutex = NULL;
 
 // Lunar calendar variables
 int lunarDay = 0;
@@ -39,302 +20,18 @@ int lunarMonth = 0;
 int lunarYear = 0;
 int lastCalculatedDay = -1; // Cache: chỉ tính lại khi sang ngày mới
 
-uint16_t hsvToRgb565(uint8_t hue, uint8_t sat, uint8_t val) {
-  CRGB rgb;
-  CHSV hsv(hue, sat, val);
-  hsv2rgb_rainbow(hsv, rgb);
-  return dma_display->color565(rgb.r, rgb.g, rgb.b);
-}
-
-// Bitmap cho chữ "Thứ" (15x8 pixels)
-// T = 84, h = 68, ứ = u + dấu
-const uint8_t thuBitmap[8] = {0b11111000, // T
-                              0b00100000, // h
-                              0b00100110, // ứ (u)
-                              0b00100110, //
-                              0b00100110, //
-                              0b00100110, //
-                              0b00100011, // dấu ứ
-                              0b00000000};
-
-// Hàm vẽ chữ "Thứ" tùy chỉnh
-void drawThu(int16_t x, int16_t y, uint16_t color) {
-  // Vẽ chữ "T"
-  dma_display->drawLine(x, y, x + 4, y, color);         // Ngang trên
-  dma_display->drawLine(x + 2, y, x + 2, y + 6, color); // Dọc
-
-  // Vẽ chữ "h"
-  dma_display->drawLine(x + 6, y, x + 6, y + 6, color); // Dọc trái
-  dma_display->drawPixel(x + 7, y + 3, color);          // Cong
-  dma_display->drawPixel(x + 8, y + 4, color);
-  dma_display->drawPixel(x + 8, y + 5, color);
-  dma_display->drawPixel(x + 8, y + 6, color);
-
-  // Vẽ chữ "ư" (u + dấu)
-  dma_display->drawLine(x + 10, y + 3, x + 10, y + 6, color); // Dọc trái
-  dma_display->drawLine(x + 13, y + 3, x + 13, y + 6, color); // Dọc phải
-  dma_display->drawPixel(x + 11, y + 6, color);               // Đáy
-  dma_display->drawPixel(x + 12, y + 6, color);
-  dma_display->drawPixel(x + 14, y + 4, color); // Dấu ngang
-
-  // Vẽ dấu sắc (/)
-  dma_display->drawPixel(x + 12, y + 1, color);
-  dma_display->drawPixel(x + 13, y, color);
-}
-
-// Hàm vẽ chữ "ậ" (a + dấu mũ + dấu nặng) tùy chỉnh
-// Dựa theo pattern 5x8 pixels từ hình mẫu
-void drawACircumflexDotBelow(int16_t x, int16_t y, uint16_t color) {
-  // Hàng 0: Dấu mũ (^) - đỉnh
-  dma_display->drawPixel(x + 2, y, color);
-
-  // Hàng 1: Dấu mũ - hai bên
-  dma_display->drawPixel(x + 1, y + 1, color);
-  dma_display->drawPixel(x + 3, y + 1, color);
-
-  // Hàng 2: Trống (khoảng cách giữa dấu mũ và chữ a)
-
-  // Hàng 3: Phần trên của chữ "a" - 3 pixel ngang
-  dma_display->drawPixel(x + 1, y + 3, color);
-  dma_display->drawPixel(x + 2, y + 3, color);
-  dma_display->drawPixel(x + 3, y + 3, color);
-  dma_display->drawPixel(x + 4, y + 3, color);
-
-  // Hàng 4: Cạnh trái và phải của "a"
-  dma_display->drawPixel(x, y + 4, color);
-  dma_display->drawPixel(x + 4, y + 4, color);
-  dma_display->drawPixel(x, y + 5, color);
-  dma_display->drawPixel(x + 4, y + 5, color);
-
-  // Hàng 5: Đáy của "a" - 3 pixel ngang ở giữa + cạnh phải
-  dma_display->drawPixel(x + 1, y + 6, color);
-  dma_display->drawPixel(x + 2, y + 6, color);
-  dma_display->drawPixel(x + 3, y + 6, color);
-  dma_display->drawPixel(x + 4, y + 6, color);
-  dma_display->drawPixel(x + 5, y + 6, color);
-
-  // Hàng 6: Trống (khoảng cách trước dấu nặng)
-
-  // Hàng 7: Trống (khoảng cách trước dấu nặng)
-
-  // Hàng 8: Dấu nặng (chấm dưới)
-  dma_display->drawPixel(x + 2, y + 8, color);
-}
-
-// Connect to WiFi using stored configuration
-// Connect to WiFi using stored configuration with retry mechanism
-void connectWiFi() {
-  static int retryCount = 0;
-  static unsigned long lastRetryTime = 0;
-
-  Serial.println("Connecting WiFi...");
-  Serial.printf("SSID: %s\n", deviceConfig.ssid);
-  Serial.printf("Retry attempt: %d\n", retryCount);
-
-  // Show "Waiting WiFi..." on LED display
-  dma_display->clearScreen();
-  dma_display->setTextSize(1);
-  dma_display->setCursor(2, 4);
-  dma_display->setTextColor(dma_display->color565(255, 165, 0)); // Orange color
-  dma_display->print("Waiting");
-  dma_display->setCursor(4, 20);
-  dma_display->print("WiFi...");
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(deviceConfig.ssid, deviceConfig.password);
-
-  // Calculate timeout based on retry count (exponential backoff)
-  // First attempt: 10s, then 11s, 12s, 13s, etc. (max 30s)
-  int timeoutSeconds = min(10 + retryCount, 30);
-  int timeout = 0;
-  int maxTimeout = timeoutSeconds * 2; // *2 because delay is 500ms
-
-  Serial.printf("Timeout: %d seconds\n", timeoutSeconds);
-  Serial.println("(Press BOOT button to enter config mode)");
-
-  while (WiFi.status() != WL_CONNECTED && timeout < maxTimeout) {
-    delay(500);
-    Serial.print(".");
-    timeout++;
-
-    // CHECK RESET BUTTON during WiFi connection!
-    checkResetButton();
-
-    // Blink display every second to show activity
-    if (timeout % 2 == 0) {
-      dma_display->clearScreen();
-    } else {
-      dma_display->setCursor(2, 4);
-      dma_display->setTextColor(dma_display->color565(255, 165, 0));
-      dma_display->print("Waiting");
-      dma_display->setCursor(4, 20);
-      dma_display->print("WiFi...");
-    }
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi Connected!");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-    configTime(7 * 3600, 0, "pool.ntp.org");
-
-    // Reset retry count on successful connection
-    retryCount = 0;
-
-    // Show success message briefly
-    dma_display->clearScreen();
-    dma_display->setCursor(2, 4);
-    dma_display->setTextColor(dma_display->color565(0, 255, 0)); // Green
-    dma_display->print("WiFi OK!");
-    delay(1000);
-  } else {
-    Serial.println("\nWiFi Failed!");
-    retryCount++;
-    
-    // Limit retry attempts to prevent infinite loop
-    if (retryCount > 10) {
-      Serial.println("Too many retries! Hold BOOT button to reconfigure...");
-      retryCount = 0; // Reset counter but keep trying
-    }
-    
-    lastRetryTime = millis();
-
-    // Show retry message
-    dma_display->clearScreen();
-    dma_display->setTextSize(1);
-    dma_display->setCursor(2, 4);
-    dma_display->setTextColor(dma_display->color565(255, 0, 0)); // Red
-    dma_display->print("WiFi");
-    dma_display->setCursor(2, 14);
-    dma_display->print("Failed");
-    dma_display->setCursor(2, 24);
-    dma_display->printf("Retry:%d", retryCount);
-    
-    // Show hint to press BOOT button
-    dma_display->setTextSize(1);
-    dma_display->setCursor(2, 4);
-    dma_display->setTextColor(dma_display->color565(255, 100, 0));
-    dma_display->print("Press");
-    dma_display->setCursor(2, 14);
-    dma_display->print("BOOT");
-    dma_display->setCursor(2, 24);
-    dma_display->print("to cfg");
-    
-    // Wait and check button during delay
-    for (int i = 0; i < 20; i++) { // 20 * 100ms = 2 seconds
-      delay(100);
-      checkResetButton();
-    }
-
-    // Disconnect before retry
-    WiFi.disconnect();
-    delay(500);
-    
-    // DON'T use recursive call - just return and let loop() handle retry
-    // This prevents stack overflow and allows reset button to work
-    return;
-  }
-}
+// Functions moved to display.cpp, wifi_manager.cpp, and weather.cpp
 
 // Lunar calendar implementation moved to lunar_calendar.cpp
-
-// Hàm lấy dữ liệu thời tiết từ Open-Meteo API (thread-safe)
-void fetchWeatherData() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected, skipping weather update");
-    return;
-  }
-
-  if (weatherApiUrl.length() == 0) {
-    Serial.println("Weather API URL not configured");
-    return;
-  }
-
-  Serial.println("[Weather Task] Fetching weather data...");
-  HTTPClient http;
-  http.begin(weatherApiUrl.c_str());
-  http.setTimeout(5000); // 5 second timeout
-  int httpCode = http.GET();
-
-  if (httpCode == 200) {
-    String payload = http.getString();
-    Serial.println("[Weather Task] API Response received");
-
-    // Parse JSON
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, payload);
-
-    if (!error) {
-      // Lock mutex before updating shared variables
-      if (xSemaphoreTake(weatherMutex, portMAX_DELAY) == pdTRUE) {
-        temperature = doc["current"]["temperature_2m"];
-        humidity = doc["current"]["relative_humidity_2m"];
-        hasWeatherData = true;
-        xSemaphoreGive(weatherMutex);
-        Serial.printf("[Weather Task] Updated: %.1f°C, %d%%\n", temperature,
-                      humidity);
-      }
-    } else {
-      Serial.print("[Weather Task] JSON parse error: ");
-      Serial.println(error.c_str());
-    }
-  } else {
-    Serial.printf("[Weather Task] HTTP GET failed, error: %d\n", httpCode);
-  }
-
-  http.end();
-  lastWeatherUpdate = millis();
-}
-
-// FreeRTOS task for background weather updates
-void weatherUpdateTask(void *parameter) {
-  Serial.println("[Weather Task] Started on Core " + String(xPortGetCoreID()));
-
-  // Initial fetch after 5 seconds
-  vTaskDelay(5000 / portTICK_PERIOD_MS);
-  fetchWeatherData();
-
-  // Periodic updates every 10 minutes
-  while (true) {
-    vTaskDelay(weatherUpdateInterval / portTICK_PERIOD_MS);
-    fetchWeatherData();
-  }
-}
+// WiFi connection moved to wifi_manager.cpp
+// Weather fetching moved to weather.cpp
 
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n=== ESP32 LED Matrix Clock v2.0 ===");
 
   // 1. Initialize LED Matrix first
-  HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, PANEL_CHAIN);
-  mxconfig.gpio.r1 = 25;
-  mxconfig.gpio.g1 = 26;
-  mxconfig.gpio.b1 = 27;
-  mxconfig.gpio.r2 = 14;
-  mxconfig.gpio.g2 = 12;
-  mxconfig.gpio.b2 = 13;
-  mxconfig.gpio.a = 23;
-  mxconfig.gpio.b = 19;
-  mxconfig.gpio.c = 5;
-  mxconfig.gpio.d = 17;
-  mxconfig.gpio.e = 18;
-  mxconfig.gpio.clk = 16;
-  mxconfig.gpio.lat = 4;
-  mxconfig.gpio.oe = 15;
-
-  dma_display = new MatrixPanel_I2S_DMA(mxconfig);
-  if (!dma_display->begin()) {
-    Serial.println("Failed to initialize DMA Display!");
-  }
-  dma_display->setBrightness8(100);
-  dma_display->clearScreen();
-
-  dma_display->setCursor(2, 8);
-  dma_display->setTextColor(dma_display->color565(255, 0, 0));
-  dma_display->print("BOOTING...");
-  dma_display->setCursor(6, 20);
-  dma_display->print("v 2.0.1");
-  delay(500);
+  initDisplay();
 
   // 2. Load configuration from NVS
   loadConfig(deviceConfig);
@@ -377,7 +74,7 @@ void setup() {
     isConfigMode = false;
 
     // Build weather API URL from stored coordinates
-    weatherApiUrl = "https://api.open-meteo.com/v1/forecast?latitude=";
+    String weatherApiUrl = "https://api.open-meteo.com/v1/forecast?latitude=";
     weatherApiUrl += String(deviceConfig.latitude, 4);
     weatherApiUrl += "&longitude=";
     weatherApiUrl += String(deviceConfig.longitude, 4);
@@ -385,25 +82,11 @@ void setup() {
     Serial.println("Weather API: " + weatherApiUrl);
 
     // Connect to WiFi
-    connectWiFi();
+    connectWiFi(deviceConfig);
 
-    // Create mutex for thread-safe weather data access
-    weatherMutex = xSemaphoreCreateMutex();
-    if (weatherMutex == NULL) {
-      Serial.println("Failed to create weather mutex!");
-    }
-
-    // Create weather update task on Core 0 (main loop runs on Core 1)
+    // Initialize weather system
     if (WiFi.status() == WL_CONNECTED) {
-      xTaskCreatePinnedToCore(weatherUpdateTask, // Task function
-                              "WeatherTask",     // Task name
-                              8192,              // Stack size (bytes)
-                              NULL,              // Task parameter
-                              1, // Priority (lower than default)
-                              &weatherTaskHandle, // Task handle
-                              0                   // Core 0
-      );
-      Serial.println("Weather task created successfully");
+      initWeather(weatherApiUrl);
     }
   }
 }
@@ -492,7 +175,7 @@ void loop() {
     if (now - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = now;
       Serial.println("WiFi disconnected, attempting to reconnect...");
-      connectWiFi();
+      connectWiFi(deviceConfig);
     }
     
     // Show "No WiFi" message while waiting
@@ -584,16 +267,9 @@ void loop() {
         currentTime % 3; // 0 = ngày/tháng, 1 = thời tiết, 2 = âm lịch
 
     // Thread-safe check for weather data availability
-    bool showWeather = false;
     float tempDisplay = 0.0;
     int humDisplay = 0;
-
-    if (xSemaphoreTake(weatherMutex, 10 / portTICK_PERIOD_MS) == pdTRUE) {
-      showWeather = hasWeatherData;
-      tempDisplay = temperature;
-      humDisplay = humidity;
-      xSemaphoreGive(weatherMutex);
-    }
+    bool showWeather = getWeatherData(tempDisplay, humDisplay);
 
     if (displayMode == 1 && showWeather) {
       // Hiển thị Nhiệt độ và Độ ẩm với nhãn T và H
