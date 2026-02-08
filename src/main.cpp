@@ -109,6 +109,11 @@ void setup() {
         Serial.println("NTP sync timeout, will retry later");
       }
     }
+    
+    // Apply initial brightness from configuration
+    Serial.printf("\n>>> Applying Initial Brightness: %d%% <<<\n", deviceConfig.brightness);
+    setDisplayBrightness(deviceConfig.brightness);
+    Serial.println(">>> Brightness Applied Successfully <<<\n");
   }
 }
 
@@ -235,6 +240,90 @@ void loop() {
     }
   }
 
+  // Apply sleep mode logic if enabled
+  if (deviceConfig.sleepEnabled && hasTime) {
+    // Calculate current time in minutes from midnight
+    uint16_t currentMinute = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+    
+    // Debug logging every 10 seconds
+    static unsigned long lastDebugPrint = 0;
+    bool shouldPrint = (millis() - lastDebugPrint > 10000);
+    
+    if (shouldPrint) {
+      Serial.printf("\n╔════════════════════════════════╗\n");
+      Serial.printf("║   SLEEP MODE DEBUG - ACTIVE   ║\n");
+      Serial.printf("╚════════════════════════════════╝\n");
+      Serial.printf("Current Time: %02d:%02d (%d min from midnight)\n", 
+        timeinfo.tm_hour, timeinfo.tm_min, currentMinute);
+      Serial.printf("Sleep Period: %02d:%02d → %02d:%02d (%d → %d min)\n",
+        deviceConfig.sleepStartMinute / 60, deviceConfig.sleepStartMinute % 60,
+        deviceConfig.sleepEndMinute / 60, deviceConfig.sleepEndMinute % 60,
+        deviceConfig.sleepStartMinute, deviceConfig.sleepEndMinute);
+      Serial.printf("Normal Brightness: %d%%\n", deviceConfig.brightness);
+      Serial.printf("Sleep Brightness: %d%%\n", deviceConfig.sleepBrightness);
+    }
+    
+    // Check if we're in sleep period (handles overnight sleep)
+    bool inSleepPeriod = false;
+    if (deviceConfig.sleepStartMinute <= deviceConfig.sleepEndMinute) {
+      // Same day sleep (e.g., 09:00 - 09:30)
+      inSleepPeriod = (currentMinute >= deviceConfig.sleepStartMinute && 
+                       currentMinute < deviceConfig.sleepEndMinute);
+    } else {
+      // Overnight sleep (e.g., 22:00 - 07:00)
+      inSleepPeriod = (currentMinute >= deviceConfig.sleepStartMinute || 
+                       currentMinute < deviceConfig.sleepEndMinute);
+    }
+    
+    if (shouldPrint) {
+      Serial.printf("─────────────────────────────────\n");
+      Serial.printf("Status: %s\n", inSleepPeriod ? "🌙 IN SLEEP MODE" : "☀️  AWAKE (Normal)");
+      Serial.printf("─────────────────────────────────\n");
+    }
+    
+    if (inSleepPeriod) {
+      if (deviceConfig.sleepBrightness == 0) {
+        // Turn off display completely
+        if (shouldPrint) {
+          Serial.println("Action: Display OFF (sleep brightness = 0)");
+          Serial.println("════════════════════════════════\n");
+        }
+        dma_display->clearScreen();
+        delay(100);
+        lastDebugPrint = millis();
+        return; // Skip rendering
+      } else {
+        // Apply sleep brightness
+        if (shouldPrint) {
+          Serial.printf("Action: Apply Sleep Brightness = %d%%\n", deviceConfig.sleepBrightness);
+          Serial.println("════════════════════════════════\n");
+        }
+        setDisplayBrightness(deviceConfig.sleepBrightness);
+      }
+    } else {
+      // Not in sleep period - use normal brightness
+      if (shouldPrint) {
+        Serial.printf("Action: Apply Normal Brightness = %d%%\n", deviceConfig.brightness);
+        Serial.println("════════════════════════════════\n");
+      }
+      setDisplayBrightness(deviceConfig.brightness);
+    }
+    
+    if (shouldPrint) {
+      lastDebugPrint = millis();
+    }
+  } else if (hasTime) {
+    // Sleep mode not enabled - still need to apply normal brightness
+    static bool printedOnce = false;
+    if (!printedOnce) {
+      Serial.println("\n⚠️  Sleep Mode: DISABLED in config");
+      Serial.println("   Using normal brightness always\n");
+      printedOnce = true;
+    }
+    // Apply normal brightness even when sleep mode is off
+    setDisplayBrightness(deviceConfig.brightness);
+  }
+
   dma_display->clearScreen();
 
   if (hasTime) {
@@ -333,7 +422,7 @@ void loop() {
       int currentX = 1; // Bắt đầu từ pixel 1
 
       // Vẽ outdoor icon (3 bars)
-      drawOutdoorIcon(currentX, 24, hsvToRgb565(globalHue + currentX * 2, 255, 255));
+      drawOutdoorIcon(currentX + 1, 24, hsvToRgb565(globalHue + currentX * 2, 255, 255));
       currentX += 11; // Icon (5px) + space (6px) - increased by 4px
 
       // Vẽ phần nguyên (23) - từng chữ số với gradient
@@ -392,7 +481,7 @@ void loop() {
         int currentX = 1;
         
         // Vẽ indoor icon (home)
-        drawIndoorIcon(currentX, 23, hsvToRgb565(globalHue + currentX * 2, 255, 255));
+        drawIndoorIcon(currentX + 1, 23, hsvToRgb565(globalHue + currentX * 2, 255, 255));
         currentX += 11; // Icon (5px) + space (6px) - increased by 4px
         
         // Vẽ phần nguyên nhiệt độ

@@ -22,5 +22,8 @@ void drawACircumflexDotBelow(int16_t x, int16_t y, uint16_t color);
 void drawOutdoorIcon(int16_t x, int16_t y, uint16_t color); // 3 horizontal bars (≡)
 void drawIndoorIcon(int16_t x, int16_t y, uint16_t color);  // Home icon
 
+// Display brightness control
+void setDisplayBrightness(uint8_t brightness); // Set brightness 10-100%
+
 #endif
 

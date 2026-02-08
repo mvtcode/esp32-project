@@ -400,15 +400,19 @@ void setupWebServer() {
       "/api/save", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        Serial.printf("API /api/save called - Received %d bytes\n", len);
+        Serial.printf("\n╔═══════════════════════════════════════╗\n");
+        Serial.printf("║  API /api/save - CONFIG RECEIVED     ║\n");
+        Serial.printf("╚═══════════════════════════════════════╝\n");
+        Serial.printf("Payload size: %d bytes\n", len);
 
         // Parse JSON payload
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
-          Serial.print("JSON parse error: ");
+          Serial.print("❌ JSON parse error: ");
           Serial.println(error.c_str());
+          Serial.println("═══════════════════════════════════════\n");
 
           AsyncWebServerResponse *response = request->beginResponse(
               400, "application/json",
@@ -418,13 +422,16 @@ void setupWebServer() {
           return;
         }
 
+        Serial.println("✅ JSON parsed successfully");
+        Serial.println("───────────────────────────────────────");
+
         // Extract configuration data
         ConfigData newConfig;
 
         if (doc.containsKey("ssid")) {
           String ssid = doc["ssid"].as<String>();
           ssid.toCharArray(newConfig.ssid, sizeof(newConfig.ssid));
-          Serial.printf("SSID: %s\n", newConfig.ssid);
+          Serial.printf("📶 SSID: %s\n", newConfig.ssid);
         } else {
           newConfig.ssid[0] = '\0';
         }
@@ -432,19 +439,46 @@ void setupWebServer() {
         if (doc.containsKey("password")) {
           String password = doc["password"].as<String>();
           password.toCharArray(newConfig.password, sizeof(newConfig.password));
-          Serial.println("Password: ***");
+          Serial.println("🔑 Password: ***");
         } else {
           newConfig.password[0] = '\0';
         }
 
         newConfig.latitude = doc["latitude"] | 0.0;
         newConfig.longitude = doc["longitude"] | 0.0;
-        Serial.printf("Coordinates: %.4f, %.4f\n", newConfig.latitude,
+        Serial.printf("📍 Coordinates: %.4f, %.4f\n", newConfig.latitude,
                       newConfig.longitude);
+
+        Serial.println("───────────────────────────────────────");
+
+        // Extract brightness settings
+        newConfig.brightness = doc["brightness"] | 100; // Default: 100%
+        Serial.printf("💡 Brightness: %d%%\n", newConfig.brightness);
+
+        Serial.println("───────────────────────────────────────");
+
+        // Extract sleep mode settings
+        newConfig.sleepEnabled = doc["sleepEnabled"] | false; // Default: disabled
+        newConfig.sleepStartMinute = doc["sleepStartMinute"] | 1320; // Default: 22:00
+        newConfig.sleepEndMinute = doc["sleepEndMinute"] | 420; // Default: 07:00
+        newConfig.sleepBrightness = doc["sleepBrightness"] | 0; // Default: 0 (off)
+        
+        Serial.printf("🌙 Sleep Mode: %s\n", newConfig.sleepEnabled ? "ENABLED" : "DISABLED");
+        if (newConfig.sleepEnabled) {
+          Serial.printf("   Start: %02d:%02d (%d min)\n",
+                        newConfig.sleepStartMinute / 60, newConfig.sleepStartMinute % 60,
+                        newConfig.sleepStartMinute);
+          Serial.printf("   End: %02d:%02d (%d min)\n",
+                        newConfig.sleepEndMinute / 60, newConfig.sleepEndMinute % 60,
+                        newConfig.sleepEndMinute);
+          Serial.printf("   Sleep Brightness: %d%%\n", newConfig.sleepBrightness);
+        }
+        Serial.println("───────────────────────────────────────");
 
         // Validate and save
         if (!isConfigValid(newConfig)) {
-          Serial.println("ERROR: Invalid configuration received");
+          Serial.println("❌ Invalid configuration received");
+          Serial.println("═══════════════════════════════════════\n");
 
           AsyncWebServerResponse *response = request->beginResponse(
               400, "application/json",
@@ -454,8 +488,13 @@ void setupWebServer() {
           return;
         }
 
+        Serial.println("✅ Configuration validated");
+        Serial.println("💾 Saving to NVS...");
+
         if (saveConfig(newConfig)) {
-          Serial.println("Configuration saved successfully!");
+          Serial.println("✅ Configuration saved to NVS!");
+          Serial.println("═══════════════════════════════════════");
+          Serial.println("🔄 Restarting ESP32 in 2 seconds...\n");
 
           AsyncWebServerResponse *response = request->beginResponse(
               200, "application/json",
@@ -464,11 +503,12 @@ void setupWebServer() {
           response->addHeader("Connection", "close");
           request->send(response);
 
-          Serial.println("Restarting in 2 seconds...");
           // Restart ESP32 after 2 seconds
           delay(2000);
           ESP.restart();
         } else {
+          Serial.println("❌ Failed to save configuration");
+          Serial.println("═══════════════════════════════════════\n");
           request->send(
               500, "application/json",
               "{\"status\":\"error\",\"message\":\"Failed to save\"}");

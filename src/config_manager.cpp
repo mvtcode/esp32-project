@@ -18,6 +18,15 @@ void loadConfig(ConfigData &config) {
   config.latitude = preferences.getFloat("latitude", 0.0);
   config.longitude = preferences.getFloat("longitude", 0.0);
   
+  // Load brightness settings
+  config.brightness = preferences.getUChar("brightness", 100); // Default: 100%
+  
+  // Load sleep mode settings
+  config.sleepEnabled = preferences.getBool("sleepEnabled", false); // Default: disabled
+  config.sleepStartMinute = preferences.getUShort("sleepStart", 1320); // Default: 22:00 (1320 minutes)
+  config.sleepEndMinute = preferences.getUShort("sleepEnd", 420); // Default: 07:00 (420 minutes)
+  config.sleepBrightness = preferences.getUChar("sleepBright", 0); // Default: 0 (off)
+  
   preferences.end();
   
   // Validate configuration
@@ -28,6 +37,15 @@ void loadConfig(ConfigData &config) {
   Serial.printf("Password: %s\n", config.password[0] ? "***" : "(empty)");
   Serial.printf("Latitude: %.4f\n", config.latitude);
   Serial.printf("Longitude: %.4f\n", config.longitude);
+  Serial.printf("Brightness: %d%%\n", config.brightness);
+  Serial.printf("Sleep Enabled: %s\n", config.sleepEnabled ? "YES" : "NO");
+  if (config.sleepEnabled) {
+    Serial.printf("  Sleep Start: %02d:%02d (%d minutes from midnight)\n", 
+      config.sleepStartMinute / 60, config.sleepStartMinute % 60, config.sleepStartMinute);
+    Serial.printf("  Sleep End: %02d:%02d (%d minutes from midnight)\n",
+      config.sleepEndMinute / 60, config.sleepEndMinute % 60, config.sleepEndMinute);
+    Serial.printf("  Sleep Brightness: %d%%\n", config.sleepBrightness);
+  }
   Serial.printf("Valid: %s\n", config.isValid ? "YES" : "NO");
   Serial.println("===========================");
 }
@@ -45,12 +63,29 @@ bool saveConfig(const ConfigData &config) {
   preferences.putFloat("latitude", config.latitude);
   preferences.putFloat("longitude", config.longitude);
   
+  // Save brightness settings
+  preferences.putUChar("brightness", config.brightness);
+  
+  // Save sleep mode settings
+  preferences.putBool("sleepEnabled", config.sleepEnabled);
+  preferences.putUShort("sleepStart", config.sleepStartMinute);
+  preferences.putUShort("sleepEnd", config.sleepEndMinute);
+  preferences.putUChar("sleepBright", config.sleepBrightness);
+  
   preferences.end();
   
   Serial.println("=== Configuration Saved ===");
   Serial.printf("SSID: %s\n", config.ssid);
   Serial.printf("Latitude: %.4f\n", config.latitude);
   Serial.printf("Longitude: %.4f\n", config.longitude);
+  Serial.printf("Brightness: %d%%\n", config.brightness);
+  Serial.printf("Sleep Enabled: %s\n", config.sleepEnabled ? "YES" : "NO");
+  if (config.sleepEnabled) {
+    Serial.printf("Sleep Time: %02d:%02d - %02d:%02d\n", 
+      config.sleepStartMinute / 60, config.sleepStartMinute % 60,
+      config.sleepEndMinute / 60, config.sleepEndMinute % 60);
+    Serial.printf("Sleep Brightness: %d%%\n", config.sleepBrightness);
+  }
   Serial.println("==========================");
   
   return true;

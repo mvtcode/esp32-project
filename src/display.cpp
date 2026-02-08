@@ -31,14 +31,15 @@ void initDisplay() {
   if (!dma_display->begin()) {
     Serial.println("Failed to initialize DMA Display!");
   }
-  dma_display->setBrightness8(100);
+  // Set temporary brightness during boot (will be overridden by config)
+  dma_display->setBrightness8(50);  // Temporary low brightness
   dma_display->clearScreen();
 
   dma_display->setCursor(2, 8);
   dma_display->setTextColor(dma_display->color565(255, 0, 0));
   dma_display->print("BOOTING...");
   dma_display->setCursor(6, 20);
-  dma_display->print("v 2.1.0");
+  dma_display->print("v 2.2.0");
   delay(500);
 }
 
@@ -117,46 +118,56 @@ void drawACircumflexDotBelow(int16_t x, int16_t y, uint16_t color) {
 // Draw outdoor weather icon (tree - 5x9 pixels)
 void drawOutdoorIcon(int16_t x, int16_t y, uint16_t color) {
   // Tree top (triangle shape)
-  dma_display->drawPixel(x + 2, y - 1, color);      // Peak
-  dma_display->drawPixel(x + 1, y, color);  // Second row
-  dma_display->drawPixel(x + 3, y, color);
+  dma_display->drawPixel(x + 3, y - 1, color);      // Peak
+  dma_display->drawPixel(x + 2, y, color);  // Second row
+  dma_display->drawPixel(x + 4, y, color);
 
-  dma_display->drawPixel(x, y + 1, color);  // third row
-  dma_display->drawPixel(x + 4, y + 1, color);
+  dma_display->drawPixel(x + 1, y + 1, color);  // third row
+  dma_display->drawPixel(x + 5, y + 1, color);
 
-  dma_display->drawLine(x - 1, y + 2, x + 5, y + 2, color); // Fourth row
+  dma_display->drawLine(x, y + 2, x + 6, y + 2, color); // Fourth row
 
-  dma_display->drawPixel(x + 1, y + 3, color);  // Fifth row
-  dma_display->drawPixel(x + 3, y + 3, color);
+  dma_display->drawPixel(x + 2, y + 3, color);  // Fifth row
+  dma_display->drawPixel(x + 4, y + 3, color);
 
-  dma_display->drawPixel(x, y + 4, color);  // Six`th row
-  dma_display->drawPixel(x + 4, y + 4, color);
+  dma_display->drawPixel(x + 1, y + 4, color);  // Six`th row
+  dma_display->drawPixel(x + 5, y + 4, color);
 
-  dma_display->drawLine(x - 1, y + 5, x + 5, y + 5, color); // Seventh row
+  dma_display->drawLine(x, y + 5, x + 6, y + 5, color); // Seventh row
 
-  dma_display->drawPixel(x + 2, y + 6, color);
+  dma_display->drawPixel(x + 3, y + 6, color);
 }
 
 // Draw indoor icon (home - 5x6 pixels)
 void drawIndoorIcon(int16_t x, int16_t y, uint16_t color) {
   // Roof (triangle)
-  dma_display->drawPixel(x + 2, y, color);      // Top peak
-  dma_display->drawPixel(x + 1, y + 1, color);  // Left slope
-  dma_display->drawPixel(x + 3, y + 1, color);  // Right slope
-  dma_display->drawPixel(x, y + 2, color);      // Left base
-  dma_display->drawPixel(x + 4, y + 2, color);  // Right base
+  dma_display->drawPixel(x + 3, y, color);      // Top peak
+  dma_display->drawPixel(x + 2, y + 1, color);  // Left slope
+  dma_display->drawPixel(x + 4, y + 1, color);  // Right slope
+  dma_display->drawPixel(x + 1, y + 2, color);      // Left base
+  dma_display->drawPixel(x + 5, y + 2, color);  // Right base
 
-  dma_display->drawPixel(x - 1 , y + 3, color);  // 
-  dma_display->drawPixel(x + 5, y + 3, color);  // 
+  dma_display->drawPixel(x, y + 3, color);  // 
+  dma_display->drawPixel(x + 6, y + 3, color);  // 
   
   // House body (square)
-  // dma_display->drawLine(x - 1, y + 3, x + 5, y + 3, color);      // line Top
-  dma_display->drawLine(x, y + 3, x, y + 6, color);      // Left wall
-  dma_display->drawLine(x + 4, y + 3, x + 4, y + 6, color); // Right wall
-  dma_display->drawLine(x, y + 6, x + 4, y + 6, color);  // Bottom
+  // dma_display->drawLine(x, y + 3, x + 6, y + 3, color);      // line Top
+  dma_display->drawLine(x + 1, y + 3, x + 1, y + 6, color);      // Left wall
+  dma_display->drawLine(x + 5, y + 3, x + 5, y + 6, color); // Right wall
+  dma_display->drawLine(x + 1, y + 6, x + 5, y + 6, color);  // Bottom
   
   // Door
-  dma_display->drawPixel(x + 2, y + 5, color);
-  dma_display->drawPixel(x + 2, y + 6, color);
+  dma_display->drawPixel(x + 3, y + 5, color);
+  dma_display->drawPixel(x + 3, y + 6, color);
 }
 
+// Set display brightness (10-100%)
+void setDisplayBrightness(uint8_t brightness) {
+  // Constrain brightness to valid range
+  if (brightness < 10) brightness = 10;
+  if (brightness > 100) brightness = 100;
+  
+  // Convert percentage (10-100) to HUB75 scale (0-255)
+  uint8_t value = (brightness * 255) / 100;
+  dma_display->setBrightness8(value);
+}
