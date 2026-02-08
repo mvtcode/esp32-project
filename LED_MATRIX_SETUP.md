@@ -20,7 +20,6 @@ LED Matrix P5 là loại màn hình LED RGB full color với khoảng cách gi�
 | **B**     | GPIO19     | Address B     | Chọn hàng bit 1                   |
 | **C**     | GPIO5      | Address C     | Chọn hàng bit 2                   |
 | **D**     | GPIO17     | Address D     | Chọn hàng bit 3                   |
-| **E**     | GPIO18     | Address E     | Chọn hàng bit 4 (panel >32 rows)  |
 | **CLK**   | GPIO16     | Clock         | Tín hiệu xung clock               |
 | **LAT**   | GPIO4      | Latch         | Tín hiệu chốt dữ liệu             |
 | **OE**    | GPIO15     | Output Enable | Kích hoạt đầu ra (active LOW)     |

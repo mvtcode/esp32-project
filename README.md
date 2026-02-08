@@ -194,7 +194,6 @@ Danh sách linh kiện - phần cứng sử dụng: [Google Sheet](https://docs.
 | B         | GPIO19     | Address B     |
 | C         | GPIO5      | Address C     |
 | D         | GPIO17     | Address D     |
-| E         | GPIO18     | Address E     |
 | CLK       | GPIO16     | Clock         |
 | LAT       | GPIO4      | Latch         |
 | OE        | GPIO15     | Output Enable |

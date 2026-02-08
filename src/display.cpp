@@ -22,7 +22,6 @@ void initDisplay() {
   mxconfig.gpio.b = 19;
   mxconfig.gpio.c = 5;
   mxconfig.gpio.d = 17;
-  mxconfig.gpio.e = 18;
   mxconfig.gpio.clk = 16;
   mxconfig.gpio.lat = 4;
   mxconfig.gpio.oe = 15;
