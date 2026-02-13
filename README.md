@@ -42,7 +42,7 @@ Luân phiên hiển thị 4 chế độ:
 ### 🌤️ Thông Tin Thời Tiết & Cảm Biến
 
 - **Ngoài trời**: Tự động lấy dữ liệu từ Open-Meteo API (cập nhật mỗi 10 phút).
-- **Trong nhà**: Đọc trực tiếp từ cảm biến AHT10 (cập nhật mỗi 5 giây).
+- **Trong nhà**: Đọc trực tiếp từ cảm biến AHT10 (cập nhật mỗi 20 giây).
 - Hiển thị nhiệt độ (°C) và độ ẩm (%).
 
 ### 📱 Cấu Hình Qua Web

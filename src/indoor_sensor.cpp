@@ -16,7 +16,7 @@ SemaphoreHandle_t indoorMutex = NULL;
 TaskHandle_t indoorTaskHandle = NULL;
 
 // Read interval
-static const unsigned long READ_INTERVAL = 5000; // Read every 5 seconds
+static const unsigned long READ_INTERVAL = 20000; // Read every 20 seconds
 
 // Initialize AHT10 indoor temperature/humidity sensor
 void initIndoorSensor() {
