@@ -1,5 +1,6 @@
 #include "AudioManager.h"
 #include "StorageManager.h"
+#include <algorithm> // For std::sort
 extern StorageManager storage;
 
 AudioManager::AudioManager()
@@ -56,9 +57,12 @@ void AudioManager::setupAudio() {
     if (!ensureSD())
       return;
 
-    // Count tracks if needed (or assume already counted)
-    if (totalTracks == 0)
-      totalTracks = countTracks();
+    // Build playlist if needed
+    if (playlist.empty()) {
+       buildPlaylist();
+    }
+    totalTracks = playlist.size();
+
     if (totalTracks == 0)
       return; // No files
 
@@ -76,8 +80,6 @@ void AudioManager::setupAudio() {
     // Setup Output
     out = new AudioOutputI2S(0, 0, 64);
     out->SetPinout(I2S_BCK, I2S_WS, I2S_DOUT);
-    float v = volume / 100.0f;
-    out->SetGain(v * v);
 
     String path = "/" + currentTitle;
     if (SD.exists(path)) {
@@ -103,6 +105,7 @@ void AudioManager::setupAudio() {
 
       // Save current track to storage for crash recovery
       storage.saveLastTrack(currentTitle);
+      storage.saveTrackIndex(currentTrackIndex);
 
       // Begin
       AudioFileSource *src =
@@ -113,7 +116,12 @@ void AudioManager::setupAudio() {
         return;
       }
 
-      // Sanitize title for UI
+      // Apply volume using the same curve as setVolume
+    float floatVol = volume / 100.0f;
+    float logVol = pow(floatVol, 1.3);
+    out->SetGain(logVol);
+
+    // Sanitize title for UI
       displayTitle = sanitizeFilename(currentTitle);
       isPlaying = true;
       lastTrackStartTime = millis();
@@ -199,7 +207,9 @@ void AudioManager::setVolume(int v) {
   if (xSemaphoreTake(mutex, portMAX_DELAY)) {
     volume = v;
     float floatVol = v / 100.0f;
-    float logVol = floatVol * floatVol;
+    // float logVol = floatVol * floatVol; // Too quiet (x^2)
+    // float logVol = floatVol; // Too loud (x^1)
+    float logVol = pow(floatVol, 1.3); // Balanced curve (x^1.3)
 
     if (currentMode == MODE_BT) {
       bt.volume(logVol);
@@ -263,92 +273,61 @@ bool AudioManager::ensureSD() {
   return true;
 }
 
-int AudioManager::countTracks() {
-  int count = 0;
+void AudioManager::buildPlaylist() {
+  playlist.clear();
   File root = SD.open("/");
   File file = root.openNextFile();
   while (file) {
     String fileName = String(file.name());
     if (!file.isDirectory() && isSupportedFile(fileName)) {
-      count++;
+      playlist.push_back(fileName);
     }
     file = root.openNextFile();
   }
-  return count;
+  // Sort alphabetically
+  std::sort(playlist.begin(), playlist.end());
+  totalTracks = playlist.size();
+  Serial.printf("Built playlist: %d songs\n", totalTracks);
+}
+
+int AudioManager::countTracks() {
+  if (playlist.empty()) {
+    buildPlaylist();
+  }
+  return playlist.size();
 }
 
 String AudioManager::getNextTrack(String current, bool next) {
-  File root = SD.open("/");
-  File file = root.openNextFile();
-  String firstFile = "";
-  String prevFile = "";
-  String targetFile = "";
-  bool foundCurrent = false;
-
-  int loopIndex = 0;
-  int foundIndex = -1;
-
-  while (file) {
-    String fileName = String(file.name());
-    if (!file.isDirectory() && isSupportedFile(fileName)) {
-      if (firstFile == "")
-        firstFile = fileName;
-
-      if (foundCurrent) {
-        if (next) {
-          targetFile = fileName;
-          foundIndex = loopIndex;
-          break;
-        }
-      }
-
-      if (fileName.equals(current)) {
-        foundCurrent = true;
-        if (!next) {
-          if (prevFile == "") {
-            File root2 = SD.open("/");
-            File file2 = root2.openNextFile();
-            String lastFile = "";
-            int count2 = 0;
-            while (file2) {
-              String fn = String(file2.name());
-              if (!file2.isDirectory() && isSupportedFile(fn)) {
-                lastFile = fn;
-                count2++;
-              }
-              file2 = root2.openNextFile();
-            }
-            targetFile = lastFile;
-            foundIndex = count2 - 1;
-          } else {
-            targetFile = prevFile;
-            foundIndex = loopIndex - 1;
-          }
-          break;
-        }
-      }
-      prevFile = fileName;
-      loopIndex++;
-    }
-    file = root.openNextFile();
+  if (playlist.empty()) {
+     buildPlaylist();
   }
+  if (playlist.empty()) return "";
 
-  if (targetFile == "") {
-    if (next && foundCurrent) {
-      targetFile = firstFile;
-      foundIndex = 0;
-    }
-    else if (targetFile == "") {
-      targetFile = firstFile;
-      foundIndex = 0;
+  int index = -1;
+  // Find current index
+  for (int i = 0; i < playlist.size(); i++) {
+    if (playlist[i].equals(current)) {
+      index = i;
+      break;
     }
   }
 
-  if (foundIndex != -1) {
-    currentTrackIndex = foundIndex;
+  int nextIndex = 0;
+  if (index == -1) {
+    // Current not found, default to 0
+    nextIndex = 0;
+  } else {
+    if (next) {
+      nextIndex = index + 1;
+      if (nextIndex >= playlist.size()) nextIndex = 0; // Wrap to start
+    } else {
+      nextIndex = index - 1;
+      if (nextIndex < 0) nextIndex = playlist.size() - 1; // Wrap to end
+    }
   }
 
-  return targetFile;
+  currentTrackIndex = nextIndex;
+  return playlist[nextIndex];
 }
 
 PlayerStatus AudioManager::getStatus() {

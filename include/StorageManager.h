@@ -13,6 +13,8 @@ public:
   void loadSettings(int &mode, int &volume);
   void saveLastTrack(String filename);
   String getLastTrack();
+  void saveTrackIndex(int index);
+  int getTrackIndex();
 
 private:
   Preferences preferences;

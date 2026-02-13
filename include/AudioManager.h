@@ -46,8 +46,10 @@ private:
   int countTracks();
   String sanitizeFilename(String filename);
   bool isSupportedFile(String fileName);
+  void buildPlaylist();
 
   // Data
+  std::vector<String> playlist;
   int currentMode;
   int volume;
   bool isPlaying;

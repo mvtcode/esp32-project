@@ -32,3 +32,16 @@ String StorageManager::getLastTrack() {
   preferences.end();
   return track;
 }
+
+void StorageManager::saveTrackIndex(int index) {
+  preferences.begin("audio-config", false);
+  preferences.putInt("trackIndex", index);
+  preferences.end();
+}
+
+int StorageManager::getTrackIndex() {
+  preferences.begin("audio-config", true);
+  int index = preferences.getInt("trackIndex", 0);
+  preferences.end();
+  return index;
+}
