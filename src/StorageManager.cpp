@@ -20,3 +20,15 @@ void StorageManager::loadSettings(int &mode, int &volume) {
   volume = preferences.getInt("volume", 80);
   preferences.end();
 }
+void StorageManager::saveLastTrack(String filename) {
+  preferences.begin("audio-config", false);
+  preferences.putString("lastTrack", filename);
+  preferences.end();
+}
+
+String StorageManager::getLastTrack() {
+  preferences.begin("audio-config", true);
+  String track = preferences.getString("lastTrack", "");
+  preferences.end();
+  return track;
+}

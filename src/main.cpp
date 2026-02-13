@@ -64,6 +64,16 @@ void setup() {
     }
   }
 
+  // Check for WDT Reset (Crash Recovery)
+  if (esp_reset_reason() == ESP_RST_SW || esp_reset_reason() == ESP_RST_WDT || esp_reset_reason() == ESP_RST_PANIC) {
+    Serial.println("Recovered from Crash!");
+    String badTrack = storage.getLastTrack();
+    if (badTrack.length() > 0) {
+      Serial.println("Skipping bad track: " + badTrack);
+      audio.setCrashRecovery(badTrack);
+    }
+  }
+
   // Audio Begin (Sets up initial state)
   audio.begin(currentMode, volume);
 

@@ -11,6 +11,8 @@ public:
   void begin();
   void saveSettings(int mode, int volume);
   void loadSettings(int &mode, int &volume);
+  void saveLastTrack(String filename);
+  String getLastTrack();
 
 private:
   Preferences preferences;

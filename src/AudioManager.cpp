@@ -1,4 +1,6 @@
 #include "AudioManager.h"
+#include "StorageManager.h"
+extern StorageManager storage;
 
 AudioManager::AudioManager()
     : bt("ESP32-Audio-Player"), gen(NULL), sourceSD(NULL), sourceID3(NULL),
@@ -80,7 +82,7 @@ void AudioManager::setupAudio() {
     String path = "/" + currentTitle;
     if (SD.exists(path)) {
       sourceSD = new AudioFileSourceSD(path.c_str());
-      buff = new AudioFileSourceBuffer(sourceSD, 16384); // 16KB Buffer
+      buff = new AudioFileSourceBuffer(sourceSD, 32768); // 32KB Buffer (Increased for stability)
 
       String ext = currentTitle;
       ext.toLowerCase();
@@ -94,14 +96,17 @@ void AudioManager::setupAudio() {
       else if (ext.endsWith(".aac") || ext.endsWith(".m4a"))
         gen = new AudioGeneratorAAC();
       else {
-        // MP3 needs ID3 parser
-        sourceID3 = new AudioFileSourceID3(buff);
+        // MP3 needs ID3 parser? skipping for now to fix WDT
+        // sourceID3 = new AudioFileSourceID3(buff);
         gen = new AudioGeneratorMP3();
       }
 
+      // Save current track to storage for crash recovery
+      storage.saveLastTrack(currentTitle);
+
       // Begin
       AudioFileSource *src =
-          (sourceID3) ? (AudioFileSource *)sourceID3 : (AudioFileSource *)buff;
+          (false) ? (AudioFileSource *)sourceID3 : (AudioFileSource *)buff;
       if (!gen->begin(src, out)) {
         Serial.println("File error/unsupported, skipping...");
         nextTrack();
@@ -280,6 +285,9 @@ String AudioManager::getNextTrack(String current, bool next) {
   String targetFile = "";
   bool foundCurrent = false;
 
+  int loopIndex = 0;
+  int foundIndex = -1;
+
   while (file) {
     String fileName = String(file.name());
     if (!file.isDirectory() && isSupportedFile(fileName)) {
@@ -289,6 +297,7 @@ String AudioManager::getNextTrack(String current, bool next) {
       if (foundCurrent) {
         if (next) {
           targetFile = fileName;
+          foundIndex = loopIndex;
           break;
         }
       }
@@ -296,34 +305,49 @@ String AudioManager::getNextTrack(String current, bool next) {
       if (fileName.equals(current)) {
         foundCurrent = true;
         if (!next) {
-          targetFile =
-              (prevFile != "") ? prevFile : fileName; // or wrap to last?
-          // To wrap to last, we need to know the last file.
-          // Simpler: stay on current or go to first if prev not found?
-          // Let's return prevFile if exists.
           if (prevFile == "") {
-            // Logic to find last file? Too slow.
-            // Just return firstFile or current.
-            targetFile = firstFile;
+            File root2 = SD.open("/");
+            File file2 = root2.openNextFile();
+            String lastFile = "";
+            int count2 = 0;
+            while (file2) {
+              String fn = String(file2.name());
+              if (!file2.isDirectory() && isSupportedFile(fn)) {
+                lastFile = fn;
+                count2++;
+              }
+              file2 = root2.openNextFile();
+            }
+            targetFile = lastFile;
+            foundIndex = count2 - 1;
           } else {
             targetFile = prevFile;
+            foundIndex = loopIndex - 1;
           }
           break;
         }
       }
       prevFile = fileName;
+      loopIndex++;
     }
     file = root.openNextFile();
   }
 
   if (targetFile == "") {
-    // If next and not found after current (eof), wrap to first
-    if (next && foundCurrent)
+    if (next && foundCurrent) {
       targetFile = firstFile;
-    // If current not found at all, return first
-    else if (targetFile == "")
+      foundIndex = 0;
+    }
+    else if (targetFile == "") {
       targetFile = firstFile;
+      foundIndex = 0;
+    }
   }
+
+  if (foundIndex != -1) {
+    currentTrackIndex = foundIndex;
+  }
+
   return targetFile;
 }
 
@@ -336,10 +360,29 @@ PlayerStatus AudioManager::getStatus() {
                                              : sanitizeFilename(currentTitle);
 
   // Calculate time
-  unsigned long now = millis();
   status.trackStartTime = trackStartTime;
   status.trackPausedTime = trackPausedTime;
   status.lastPauseStart = lastPauseStart;
 
+  status.currentTrack = currentTrackIndex + 1; // 1-based for UI
+  status.totalTracks = totalTracks;
+  status.mp3Size = audioSize;
+  status.mp3Pos = audioPos;
+
+  status.mp3Pos = audioPos;
+
   return status;
+}
+
+void AudioManager::setCrashRecovery(String badFile) {
+  // Try to find the bad file to set current index, then skip it
+  // We need SD to be ready
+  if (!ensureSD()) return;
+  
+  // Logic: set currentTitle to badFile, so nextTrack knows where we are.
+  // Then call nextTrack() to move to the NEXT file.
+  currentTitle = badFile;
+  Serial.println("CrashRecovery: Skipping " + currentTitle);
+  nextTrack(); 
+  // nextTrack will call setupAudio which calls getNextTrack(currentTitle, true)
 }

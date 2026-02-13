@@ -34,6 +34,7 @@ public:
   void prevTrack();
 
   PlayerStatus getStatus();
+  void setCrashRecovery(String badFile);
 
   // Helpers
   bool ensureSD();
