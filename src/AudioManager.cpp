@@ -36,7 +36,8 @@ void AudioManager::setupAudio() {
     bt.begin();
     bt.reconnect();
     bt.I2S(I2S_BCK, I2S_DOUT, I2S_WS);
-    bt.volume(volume / 100.0);
+    float volFloat = volume / 100.0f;
+    bt.volume(volFloat * volFloat);
     isPlaying = true;
     currentTitle = "Waiting for BT...";
     currentArtist = "";
@@ -46,10 +47,12 @@ void AudioManager::setupAudio() {
       return;
     }
 
-    // 0 = Port 0, 0 = EXTERNAL_I2S, 32 = DMA Buffer Count
-    out = new AudioOutputI2S(0, 0, 32);
+    // Increase DMA buffers to 64 for stability
+    out = new AudioOutputI2S(0, 0, 64);
     out->SetPinout(I2S_BCK, I2S_WS, I2S_DOUT);
-    out->SetGain(volume / 100.0);
+
+    float volFloat = volume / 100.0f;
+    out->SetGain(volFloat * volFloat);
 
     if (currentTitle == "" || currentTitle == "No MP3 Files" ||
         currentTitle == "File Error" || currentTitle == "SD Init Failed") {
@@ -66,8 +69,13 @@ void AudioManager::setupAudio() {
       if (SD.exists(path)) {
         sourceSD = new AudioFileSourceSD(path.c_str());
         sourceID3 = new AudioFileSourceID3(sourceSD);
+
+        // Use Buffer for MP3 to prevent pops
+        buff = new AudioFileSourceBuffer(sourceID3, 16384);
+
         mp3 = new AudioGeneratorMP3();
-        mp3->begin(sourceID3, out); // Use ID3 source
+        mp3->begin(buff, out); // Use Buffer
+
         isPlaying = true;
         // Reset Timing
         trackStartTime = millis();
@@ -81,9 +89,11 @@ void AudioManager::setupAudio() {
       }
     }
   } else if (currentMode == MODE_RADIO) {
-    out = new AudioOutputI2S(0, 0, 32);
+    out = new AudioOutputI2S(0, 0, 64);
     out->SetPinout(I2S_BCK, I2S_WS, I2S_DOUT);
-    out->SetGain(volume / 100.0);
+
+    float volFloat = volume / 100.0f;
+    out->SetGain(volFloat * volFloat);
 
     sourceStream = new AudioFileSourceICYStream(RADIO_URL);
     buff = new AudioFileSourceBuffer(sourceStream, 1024 * 16);
@@ -188,11 +198,15 @@ void AudioManager::setMode(int mode) {
 void AudioManager::setVolume(int v) {
   if (xSemaphoreTake(mutex, portMAX_DELAY)) {
     volume = v;
+    // Logarithmic volume control: (v/100)^2
+    float volFloat = volume / 100.0f;
+    float volLog = volFloat * volFloat;
+
     if (currentMode == MODE_BT) {
-      bt.volume(volume / 100.0);
+      bt.volume(volLog);
     } else {
       if (out)
-        out->SetGain(volume / 100.0);
+        out->SetGain(volLog);
     }
     xSemaphoreGive(mutex);
   }
@@ -257,17 +271,20 @@ void AudioManager::nextTrack() {
         currentTitle.startsWith("/") ? currentTitle : "/" + currentTitle, true);
     if (next != "") {
       stopAudio();
-      out = new AudioOutputI2S(0, 0, 32);
+      out = new AudioOutputI2S(0, 0, 64);
       out->SetPinout(I2S_BCK, I2S_WS, I2S_DOUT);
-      out->SetGain(volume / 100.0);
+
+      float volFloat = volume / 100.0f;
+      out->SetGain(volFloat * volFloat);
 
       if (!next.startsWith("/"))
         next = "/" + next;
 
       sourceSD = new AudioFileSourceSD(next.c_str());
       sourceID3 = new AudioFileSourceID3(sourceSD);
+      buff = new AudioFileSourceBuffer(sourceID3, 16384);
       mp3 = new AudioGeneratorMP3();
-      mp3->begin(sourceID3, out);
+      mp3->begin(buff, out);
       isPlaying = true;
       currentTitle = next.substring(1);
 
@@ -290,17 +307,20 @@ void AudioManager::prevTrack() {
                              false);
     if (prev != "") {
       stopAudio();
-      out = new AudioOutputI2S(0, 0, 32);
+      out = new AudioOutputI2S(0, 0, 64);
       out->SetPinout(I2S_BCK, I2S_WS, I2S_DOUT);
-      out->SetGain(volume / 100.0);
+
+      float volFloat = volume / 100.0f;
+      out->SetGain(volFloat * volFloat);
 
       if (!prev.startsWith("/"))
         prev = "/" + prev;
 
       sourceSD = new AudioFileSourceSD(prev.c_str());
       sourceID3 = new AudioFileSourceID3(sourceSD);
+      buff = new AudioFileSourceBuffer(sourceID3, 16384);
       mp3 = new AudioGeneratorMP3();
-      mp3->begin(sourceID3, out);
+      mp3->begin(buff, out);
       isPlaying = true;
       currentTitle = prev.substring(1);
 

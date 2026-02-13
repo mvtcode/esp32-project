@@ -71,7 +71,7 @@ void setup() {
   input.begin();
 
   // Create Tasks
-  xTaskCreatePinnedToCore(processAudioTask, "AudioTask", 20000, NULL, 3,
+  xTaskCreatePinnedToCore(processAudioTask, "AudioTask", 20000, NULL, 5,
                           &TaskAudioHandle, 0 // Core 0 (High Priority)
   );
 
