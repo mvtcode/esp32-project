@@ -13,7 +13,11 @@
 #include <AudioFileSourceICYStream.h>
 #include <AudioFileSourceID3.h>
 #include <AudioFileSourceSD.h>
+#include <AudioGenerator.h>
+#include <AudioGeneratorAAC.h>
+#include <AudioGeneratorFLAC.h>
 #include <AudioGeneratorMP3.h>
+#include <AudioGeneratorWAV.h>
 #include <AudioOutputI2S.h>
 
 class AudioManager {
@@ -37,14 +41,17 @@ public:
 private:
   void setupAudio();
   void stopAudio();
-  String getNextMP3(String current, bool next);
+  String getNextTrack(String current, bool next);
   int countTracks();
+  String sanitizeFilename(String filename);
+  bool isSupportedFile(String fileName);
 
   // Data
   int currentMode;
   int volume;
   bool isPlaying;
-  String currentTitle;
+  String currentTitle; // Tên file gốc (để mở file)
+  String displayTitle; // Tên file hiển thị (đã sanitize)
   String currentArtist;
   int currentTrackIndex;
   int totalTracks;
@@ -53,12 +60,13 @@ private:
   unsigned long trackStartTime;
   unsigned long trackPausedTime;
   unsigned long lastPauseStart;
-  volatile uint32_t mp3Pos;
-  volatile uint32_t mp3Size;
+  unsigned long lastTrackStartTime; // Để phát hiện file lỗi
+  volatile uint32_t audioPos;
+  volatile uint32_t audioSize;
 
   // Audio Objects
   btAudio bt;
-  AudioGeneratorMP3 *mp3;
+  AudioGenerator *gen; // Con trỏ đa năng
   AudioFileSourceSD *sourceSD;
   AudioFileSourceID3 *sourceID3;
   AudioFileSourceICYStream *sourceStream;
