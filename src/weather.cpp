@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 
 // Global variables
 float temperature = 0.0;
@@ -29,9 +30,14 @@ static void fetchWeatherData() {
   }
 
   Serial.println("[Weather Task] Fetching weather data...");
+  
+  WiFiClientSecure client;
+  client.setInsecure(); // Skip certificate validation
+  
   HTTPClient http;
-  http.begin(weatherApiUrl.c_str());
-  http.setTimeout(5000); // 5 second timeout
+  http.begin(client, weatherApiUrl.c_str());
+  http.setTimeout(20000); // 20 second timeout for slower networks
+  
   int httpCode = http.GET();
 
   if (httpCode == 200) {
@@ -58,6 +64,10 @@ static void fetchWeatherData() {
     }
   } else {
     Serial.printf("[Weather Task] HTTP GET failed, error: %d\n", httpCode);
+    if (httpCode > 0) {
+      String payload = http.getString();
+      Serial.println(payload);
+    }
   }
 
   http.end();

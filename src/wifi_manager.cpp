@@ -55,10 +55,15 @@ void connectWiFi(const ConfigData& config) {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi Connected!");
+    Serial.println("WiFi Connected!");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
-    configTime(7 * 3600, 0, "pool.ntp.org");
+    
+    // Configure time with multiple NTP servers for better reliability
+    // 1. vn.pool.ntp.org (Vietnam - lowest latency)
+    // 2. pool.ntp.org (Global - backup)
+    // 3. time.google.com (Google - reliable backup)
+    configTime(7 * 3600, 0, "vn.pool.ntp.org", "pool.ntp.org", "time.google.com");
 
     // Reset retry count on successful connection
     retryCount = 0;

@@ -225,18 +225,33 @@ void loop() {
   static unsigned long lastRTCSync = 0;
   
   if (WiFi.status() == WL_CONNECTED) {
-    hasTime = getLocalTime(&timeinfo);
+    // Try to get NTP time with a short timeout to avoid blocking the display loop
+    hasTime = getLocalTime(&timeinfo, 100);
     
-    // Sync RTC from NTP every hour
-    if (hasTime && (millis() - lastRTCSync > 3600000)) {
-      syncRTCFromNTP(timeinfo);
-      lastRTCSync = millis();
+    if (hasTime) {
+      // Sync RTC from NTP every hour
+      if (millis() - lastRTCSync > 3600000) {
+        syncRTCFromNTP(timeinfo);
+        lastRTCSync = millis();
+      }
+    } else {
+      // WiFi connected but NTP not synced yet - fallback to RTC
+      hasTime = getRTCTime(timeinfo);
+      static unsigned long lastNtpFailPrint = 0;
+      if (hasTime && millis() - lastNtpFailPrint > 10000) {
+        Serial.println("NTP failed (WiFi connected), using RTC");
+        lastNtpFailPrint = millis();
+      }
     }
   } else {
     // WiFi down - use RTC as fallback
     hasTime = getRTCTime(timeinfo);
     if (hasTime) {
-      Serial.println("Using RTC time (WiFi offline)");
+      static unsigned long lastOfflinePrint = 0;
+      if (millis() - lastOfflinePrint > 10000) {
+        Serial.println("Using RTC time (WiFi offline)");
+        lastOfflinePrint = millis();
+      }
     }
   }
 
