@@ -1,33 +1,59 @@
 #include <Arduino.h>
+#include "hardware_config.h"
+#include "ui_manager.h"
+#include "voice_manager.h"
 
-// LED built-in trên ESP32 thường ở GPIO 2
-#define LED_BUILTIN 2
+// List of controlled GPIOs
+const int control_pins[] = {RELAY_1, RELAY_2, RELAY_3, RELAY_4, RELAY_5, RELAY_6};
+const int num_pins = sizeof(control_pins) / sizeof(control_pins[0]);
+
+// Command Handler
+void handle_voice_command(int command_id) {
+    Serial.printf("Received Command ID: %d\n", command_id);
+    
+    // Example: Command IDs 0-5 turn ON, 10-15 turn OFF
+    if (command_id >= 0 && command_id < num_pins) {
+        digitalWrite(control_pins[command_id], HIGH);
+        ui_show_message("Device ON");
+    } else if (command_id >= 10 && command_id < 10 + num_pins) {
+        digitalWrite(control_pins[command_id - 10], LOW);
+        ui_show_message("Device OFF");
+    }
+}
 
 void setup() {
-  // Khởi tạo Serial
-  Serial.begin(115200);
-  delay(1000); // Đợi Serial ổn định
+    Serial.begin(115200);
+    
+    // Initialize GPIOs
+    for (int i = 0; i < num_pins; i++) {
+        pinMode(control_pins[i], OUTPUT);
+        digitalWrite(control_pins[i], LOW);
+    }
+    pinMode(LED_STATUS, OUTPUT);
+    digitalWrite(LED_STATUS, HIGH); // Status LED ON
 
-  Serial.println("\n\n=================================");
-  Serial.println("✅ Kết nối thành công!");
-  Serial.println("ESP32 đã sẵn sàng hoạt động");
-  Serial.println("=================================\n");
+    // Initialize UI
+    ui_init();
+    ui_show_message("Initializing...");
 
-  // Cấu hình LED built-in là OUTPUT
-  pinMode(LED_BUILTIN, OUTPUT);
+    // Initialize Voice
+    voice_init();
+    voice_set_command_callback(handle_voice_command);
 
-  Serial.println("LED built-in đang nhấp nháy...");
-  Serial.println("(Mỗi giây bật/tắt một lần)\n");
+    ui_show_message("Ready: Say Command");
+    Serial.println("System Ready");
 }
 
 void loop() {
-  // Bật LED
-  digitalWrite(LED_BUILTIN, HIGH);
-  Serial.println("💡 LED: BẬT");
-  delay(1000);
+    ui_update();
+    voice_update();
+    
+    // Check buttons
+    if (digitalRead(BTN_WAKE) == LOW) {
+        ui_show_message("Listening...");
+        // In real ESP-SR, this would trigger a manual wake
+        delay(200); 
+    }
 
-  // Tắt LED
-  digitalWrite(LED_BUILTIN, LOW);
-  Serial.println("⚫ LED: TẮT");
-  delay(1000);
+    delay(5);
 }
