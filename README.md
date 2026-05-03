@@ -22,7 +22,7 @@ brew install platformio
 ## Cấu trúc dự án
 
 ```
-P5_Matrix/
+esp32-project/
 ├── platformio.ini      # File cấu hình dự án
 ├── src/                # Thư mục chứa source code
 │   └── main.cpp        # File code chính (thay thế .ino)
@@ -30,6 +30,43 @@ P5_Matrix/
 ├── include/            # Thư mục chứa header files
 └── .pio/               # Thư mục build (tự động tạo)
 ```
+
+## Sơ đồ chân (Wiring Diagram)
+
+Mạch ESP32 tích hợp LCD 3.5 inch (Mã board: **ESP32-3248S035** / CYD 3.5") có các kết nối phần cứng thực tế như sau:
+
+### 1. Màn hình TFT LCD (Driver: ST7796, 320x480)
+
+- **TFT_MISO**: 12
+- **TFT_MOSI**: 13
+- **TFT_SCLK**: 14
+- **TFT_CS**: 15
+- **TFT_DC**: 2
+- **TFT_RST**: -1 (Dùng chung chân EN/RESET của ESP32)
+- **TFT_BL**: 27 (Backlight / Đèn nền)
+
+### 2. Cảm ứng điện trở (Resistive Touch - XPT2046)
+
+- **TOUCH_CS**: 33
+- Cảm ứng sử dụng **chung đường SPI** với màn hình TFT (MOSI=13, MISO=12, SCLK=14), không cần khai báo thêm SPI riêng.
+
+### 3. Khay thẻ nhớ SD (SPI)
+
+- **SD_CS**: 5
+- **SD_MOSI**: 23
+- **SD_MISO**: 19
+- **SD_SCLK**: 18
+
+### 4. Các module tích hợp khác (Lưu ý: Tuỳ phiên bản board)
+
+- **Audio Output (Speaker)**: 26 (Dùng DAC nội của ESP32)
+- **LDR (Cảm biến ánh sáng quang trở)**: 34 (0 = Sáng, số cao = Tối)
+- **LED / RGB LED**: Chân 21 (và có thể một số chân khác) được đấu với LED RGB trên board.
+- **DHT11 / Extended IO**: 22
+
+### 5. Cảnh báo lỗi phần cứng (Hardware Bug)
+
+- **Chip Flash ngoài (W25Q32FWSSIG)**: Trên bo mạch CYD 3.5 inch, nhà sản xuất đã thiết kế thêm một chip nhớ Flash ngoài W25Q32. Tuy nhiên, mạch này có một **lỗi thiết kế (design flaw)** nghiêm trọng: Chân CS (Chip Select) của con chip này bị nối chung với chân CS của Flash nội bộ bên trong module ESP32. Hậu quả là bạn **không thể sử dụng** con chip này. Bất kỳ nỗ lực nào cố gắng đọc/ghi vào nó sẽ gây xung đột dữ liệu với hệ điều hành và làm crash ESP32. Giải pháp là phớt lờ nó, hoặc nếu mạch bị lỗi nạp code, nhiều người phải nhổ (desolder) con chip này vứt đi. Dữ liệu mở rộng hãy lưu vào thẻ nhớ SD.
 
 ## Các lệnh cơ bản
 
