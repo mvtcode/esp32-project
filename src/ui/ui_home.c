@@ -14,6 +14,7 @@ lv_obj_t * ui_Switch1 = NULL;
 lv_obj_t * ui_Button4 = NULL;
 lv_obj_t * ui_Label1 = NULL;
 lv_obj_t * ui_Slider1 = NULL;
+lv_obj_t * ui_Label3 = NULL;
 // event funtions
 
 // build funtions
@@ -83,6 +84,15 @@ void ui_home_screen_init(void)
     lv_obj_set_y(ui_Slider1, 29);
     lv_obj_set_align(ui_Slider1, LV_ALIGN_CENTER);
 
+    ui_Label3 = lv_label_create(ui_home);
+    lv_obj_set_width(ui_Label3, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Label3, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_Label3, 171);
+    lv_obj_set_y(ui_Label3, -147);
+    lv_obj_set_align(ui_Label3, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label3, "");
+    lv_obj_set_style_text_font(ui_Label3, &ui_font_IconWifi, LV_PART_MAIN | LV_STATE_DEFAULT);
+
     uic_Button4 = ui_Button4;
 
 }
@@ -101,5 +111,6 @@ void ui_home_screen_destroy(void)
     ui_Button4 = NULL;
     ui_Label1 = NULL;
     ui_Slider1 = NULL;
+    ui_Label3 = NULL;
 
 }

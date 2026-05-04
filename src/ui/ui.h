@@ -28,7 +28,6 @@ extern "C" {
 ///////////////////// SCREENS ////////////////////
 
 #include "ui_home.h"
-#include "ui_Screen4.h"
 
 ///////////////////// VARIABLES ////////////////////
 
@@ -36,6 +35,9 @@ extern "C" {
 // EVENTS
 
 extern lv_obj_t * ui____initial_actions0;
+
+// FONTS
+LV_FONT_DECLARE(ui_font_IconWifi);
 
 // UI INIT
 void ui_init(void);

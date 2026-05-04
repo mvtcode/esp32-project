@@ -21,6 +21,7 @@ extern lv_obj_t * ui_Switch1;
 extern lv_obj_t * ui_Button4;
 extern lv_obj_t * ui_Label1;
 extern lv_obj_t * ui_Slider1;
+extern lv_obj_t * ui_Label3;
 // CUSTOM VARIABLES
 extern lv_obj_t * uic_Button4;
 
