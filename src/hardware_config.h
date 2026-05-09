@@ -1,31 +1,56 @@
+/**
+ * hardware_config.h — Central pin & peripheral configuration
+ * IoT Voice Command System — ESP32-S3-N16R8
+ *
+ * Tất cả pin numbers và thông số phần cứng tập trung ở đây.
+ * Các module khác KHÔNG được hardcode pin/constants.
+ */
 #ifndef HARDWARE_CONFIG_H
 #define HARDWARE_CONFIG_H
 
-// OLED I2C Pins (SH1106)
-#define I2C_SDA 8
-#define I2C_SCL 9
+// ─── OLED SH1106 1.3" (I2C Software) ────────────────────────────────────────
+#define OLED_SDA        8
+#define OLED_SCL        9
+#define OLED_I2C_ADDR   0x3C   // SH1106 default address
+#define OLED_WIDTH      128
+#define OLED_HEIGHT     64
 
-// I2S Microphone Pins (INMP441)
-#define I2S_WS 42
-#define I2S_SD 2
-#define I2S_SCK 41
+// ─── Microphone INMP441 (I2S) ────────────────────────────────────────────────
+#define MIC_WS          42     // Word Select (LRCLK)
+#define MIC_SD          2      // Serial Data (DOUT)
+#define MIC_SCK         41     // Serial Clock (BCLK)
 
-// Buttons
-#define BTN_UP    10
-#define BTN_DOWN  11
-#define BTN_ENTER 12
-#define BTN_BACK  13
-#define BTN_WAKE  0
+#define I2S_SAMPLE_RATE     16000  // Hz — required by ESP-SR
+#define I2S_BITS            32     // INMP441 outputs 32-bit frames
+#define I2S_DMA_BUF_COUNT   8
+#define I2S_DMA_BUF_LEN    64     // samples per DMA buffer
 
-// LED
-#define LED_STATUS 48 // Common RGB LED on S3 Devkits or Built-in
+// ─── Buttons ─────────────────────────────────────────────────────────────────
+#define BTN_UP          10
+#define BTN_DOWN        11
+#define BTN_ENTER       12
+#define BTN_BACK        13
+#define BTN_WAKE         0     // Boot button — manual wake trigger
 
-// GPIOs to control (Relays/LEDs)
-#define RELAY_1 1
-#define RELAY_2 3
-#define RELAY_3 4
-#define RELAY_4 5
-#define RELAY_5 6
-#define RELAY_6 7
+// ─── Status LED ──────────────────────────────────────────────────────────────
+#define LED_STATUS      48     // Built-in RGB LED on ESP32-S3 devkits
 
-#endif
+// ─── Relay / Output GPIOs ────────────────────────────────────────────────────
+#define NUM_RELAYS       6
+#define RELAY_1          1
+#define RELAY_2          3
+#define RELAY_3          4
+#define RELAY_4          5
+#define RELAY_5          6
+#define RELAY_6          7
+
+// ─── FreeRTOS Task Config ────────────────────────────────────────────────────
+#define VOICE_TASK_CORE     1      // Core 1: voice/audio processing
+#define VOICE_TASK_STACK    8192
+#define VOICE_TASK_PRIO     5
+
+#define UI_TASK_CORE        0      // Core 0: UI updates
+#define UI_TASK_STACK       8192
+#define UI_TASK_PRIO        3
+
+#endif // HARDWARE_CONFIG_H

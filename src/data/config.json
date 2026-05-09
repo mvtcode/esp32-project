@@ -1,0 +1,28 @@
+{
+  "gpios": [
+    {
+      "gpio": 1,
+      "name": "QUAT TRAN"
+    },
+    {
+      "gpio": 3,
+      "name": "DEN BAN"
+    },
+    {
+      "gpio": 4,
+      "name": "DEN NGU"
+    },
+    {
+      "gpio": 5,
+      "name": "BOM NUOC"
+    },
+    {
+      "gpio": 6,
+      "name": "DEN VUON"
+    },
+    {
+      "gpio": 7,
+      "name": "QUAT NGU"
+    }
+  ]
+}
