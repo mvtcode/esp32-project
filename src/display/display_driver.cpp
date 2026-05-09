@@ -66,6 +66,7 @@ void display_init() {
     Serial.println("[DISP] Calling u8g2.begin()...");
     Serial.flush();
     
+    _u8g2.setBusClock(400000); // Set fast clock for U8g2
     _u8g2.begin();
     _u8g2.setContrast(200);
     _u8g2.clearBuffer();

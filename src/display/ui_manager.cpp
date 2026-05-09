@@ -53,7 +53,7 @@ static int g_list_cursor = 0;
 
 // State for GPIO Detail
 static int g_detail_cursor = 0;
-static bool g_voice_enabled[MAX_LIST_ITEMS] = {true, true, true, false, true, true}; // Mock state
+static bool g_voice_enabled[MAX_LIST_ITEMS] = {true, true, true, false, true, true, true}; // Mock state
 
 // State for Voice Change
 static int g_voice_change_step = 0; // 0: start, 1: 1/3, 2: 2/3, 3: 3/3, 4: done
@@ -114,7 +114,16 @@ bool ui_manager_is_sleeping() {
 
 static void reset_activity() {
     g_last_activity_time = millis();
-    g_sleep_mode = false;
+}
+
+static void wake_up() {
+    g_last_activity_time = millis();
+    if (g_sleep_mode) {
+        g_sleep_mode = false;
+        display_get().setContrast(200);
+        g_ui_needs_refresh = true;
+        Serial.println("[UI] Device Woken Up!");
+    }
 }
 
 static bool check_voice_cmd_exists(int gpio_idx, bool on_cmd) {
@@ -135,7 +144,6 @@ void go_screen_gpio_list() {
 
 void go_screen_gpio_detail() {
     g_current_screen = SCREEN_GPIO_DETAIL;
-    g_detail_cursor = 0;
     g_ui_needs_refresh = true;
 }
 
@@ -143,6 +151,23 @@ void go_screen_voice_change() {
     g_current_screen = SCREEN_VOICE_CHANGE;
     g_voice_change_step = 0;
     g_ui_needs_refresh = true;
+}
+
+static void draw_visualizer(uint8_t bases, uint8_t cx) {
+    int rms = voice_engine_get_last_rms();
+    if (rms > 200) { // Only show if there's actual sound signal
+        // Scale RMS to bar height (e.g., 600 -> 12px)
+        int h = rms / 50; 
+        if (h > 24) h = 24; // Cap height
+        
+        // Draw 3 dynamic bars responding to the same volume with slight variations
+        display_box(cx - 15, bases - (h/2), 6, h);
+        display_box(cx - 2,  bases - (h*0.8), 6, h*1.6);
+        display_box(cx + 11, bases - (h/1.5), 6, h/1.5 * 2);
+    } else {
+        // Flat line if silent
+        display_hline(cx - 20, bases, 40);
+    }
 }
 
 // ─── Screen 0: HOME ──────────────────────────────────────────────────────────
@@ -189,27 +214,16 @@ void draw_home_screen() {
             draw_centered(10, "LISTENING");
             display_hline(0, 13, 128);
 
-            // Real-time sound visualizer (responsive to MIC volume)
-            int rms = voice_engine_get_last_rms();
-            const uint8_t cx = 64;
-            const uint8_t bases = 44;
-            
-            if (rms > 200) { // Only show if there's actual sound signal
-                // Scale RMS to bar height (e.g., 600 -> 12px)
-                int h = rms / 50; 
-                if (h > 24) h = 24; // Cap height
-                
-                // Draw 3 dynamic bars responding to the same volume with slight variations
-                display_box(cx - 15, bases - (h/2), 6, h);
-                display_box(cx - 2,  bases - (h*0.8), 6, h*1.6);
-                display_box(cx + 11, bases - (h/1.5), 6, h/1.5 * 2);
-            } else {
-                // Flat line if silent
-                display_hline(cx - 20, bases, 40);
-            }
+            draw_visualizer(44, 64);
 
             display_font_small();
-            draw_centered(60, "Listening...");
+            if (voice_engine_is_processing()) {
+                draw_centered(60, "Processing...");
+            } else if (voice_engine_is_speaking()) {
+                draw_centered(60, "Listening...");
+            } else {
+                draw_centered(60, "Ready");
+            }
         }
     }
     display_flush();
@@ -235,6 +249,7 @@ void list_on_enter() {
         voice_engine_start_training(VOICE_CMD_WAKE, true);
         go_screen_voice_change();
     } else {
+        g_detail_cursor = 0;
         go_screen_gpio_detail();
     }
 }
@@ -406,27 +421,13 @@ void draw_voice_change_screen() {
         draw_centered(32, "Dang ghi...");
         draw_centered(44, "(Hay noi lenh)");
         
-        // Real-time reactive waveform
-        const uint8_t cx = 64;
-        int live_rms = voice_engine_get_last_rms();
-        
-        // Scale RMS (400 to 4000) to height (2 to 15)
-        int h = 2 + (live_rms / 300);
-        if (h > 15) h = 15;
-
-        display_box(cx - 15, 56 - (h/2), 4, h/2);
-        display_box(cx - 5,  56 - h,     4, h * 2);
-        display_box(cx + 5,  56 - (h+2), 4, (h+2) * 2);
-        display_box(cx + 15, 56 - (h/3), 4, h/3);
+        draw_visualizer(56, 64);
     } else {
         draw_centered(32, "Da thu am!");
         draw_centered(44, "ENTER: Luu | BACK: Huy");
 
-        // Static waveform
-        const uint8_t cx = 64;
-        display_box(cx - 10, 56 - 6, 4, 12);
-        display_box(cx,      56 - 8, 4, 16);
-        display_box(cx + 10, 56 - 6, 4, 12);
+        // Static visualizer (horizontal line)
+        display_hline(64 - 20, 56, 40);
     }
 
     display_flush();
@@ -441,29 +442,28 @@ void ui_manager_init() {
 }
 
 void ui_manager_loop() {
+    // Just prevent sleep if user is speaking, don't wake up!
+    if (voice_engine_is_speaking() || voice_engine_is_processing()) {
+        reset_activity(); 
+    }
+
     if (millis() - g_last_activity_time > 30000 && !g_sleep_mode && g_current_screen == SCREEN_HOME) {
         g_sleep_mode = true;
+        display_get().setContrast(1); // Dim the screen
         g_ui_needs_refresh = true;
-    }
-    
-    // Auto refresh animation for listening
-    if (!g_sleep_mode && g_current_screen == SCREEN_HOME && g_cmd_show_start == 0) {
-        static uint32_t last_anim = 0;
-        if (millis() - last_anim > 100) {
-            last_anim = millis();
-            g_ui_needs_refresh = true;
-        }
-    }
-    if (!g_sleep_mode && g_current_screen == SCREEN_VOICE_CHANGE && voice_engine_get_training_progress() > 0 && voice_engine_get_training_progress() <= 3) {
-        static uint32_t last_anim2 = 0;
-        if (millis() - last_anim2 > 100) {
-            last_anim2 = millis();
-            g_ui_needs_refresh = true;
-        }
     }
     
     if (g_cmd_show_start != 0 && millis() - g_cmd_show_start >= 2000) {
         g_ui_needs_refresh = true;
+    }
+
+    // Auto refresh animation for visualizer (10 FPS to prevent I2C blocking)
+    if (!g_sleep_mode && (g_current_screen == SCREEN_HOME || g_current_screen == SCREEN_VOICE_CHANGE)) {
+        static uint32_t last_viz_anim = 0;
+        if (millis() - last_viz_anim > 100) {
+            last_viz_anim = millis();
+            g_ui_needs_refresh = true;
+        }
     }
 
     if (g_ui_needs_refresh) {
@@ -475,9 +475,9 @@ void ui_manager_loop() {
 }
 
 void ui_manager_handle_button(UIButtonEvent event) {
-    reset_activity();
-
-    if (event == BTN_EVENT_BOOT) {
+    wake_up(); // Any button press wakes up the device
+    
+    if (g_current_screen == SCREEN_HOME && event == BTN_EVENT_BOOT) {
         if (g_sleep_mode) {
             g_sleep_mode = false;
             g_ui_needs_refresh = true;
@@ -512,7 +512,9 @@ void ui_manager_request_refresh() {
     g_ui_needs_refresh = true;
 }
 
+
 void ui_manager_set_command(const char* cmd_name) {
+    reset_activity(); // Voice command counts as activity
     strncpy(g_last_cmd, cmd_name ? cmd_name : "", sizeof(g_last_cmd) - 1);
     g_cmd_show_start = millis();
     g_ui_needs_refresh = true;

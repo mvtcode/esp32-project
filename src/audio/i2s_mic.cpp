@@ -72,7 +72,7 @@ int i2s_mic_read(int16_t* buf, int num_samples) {
         int batch = num_samples - total_read;
         if (batch > MAX_BATCH) batch = MAX_BATCH;
 
-        int32_t raw[MAX_BATCH];
+        static int32_t raw[MAX_BATCH];
         size_t bytes_read = 0;
 
         esp_err_t err = i2s_read(
@@ -80,7 +80,7 @@ int i2s_mic_read(int16_t* buf, int num_samples) {
             raw,
             batch * sizeof(int32_t),
             &bytes_read,
-            portMAX_DELAY
+            pdMS_TO_TICKS(100) // Avoid portMAX_DELAY to prevent hanging
         );
 
         if (err != ESP_OK || bytes_read == 0) break;

@@ -11,10 +11,11 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_dsp.h>
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 #define SIMILARITY_THRESHOLD  0.75f  // Lower is easier to match
-#define VAD_THRESHOLD         600    // Higher is less sensitive to noise
+#define VAD_THRESHOLD         500    // Lowered for better sensitivity
 #define VAD_SILENCE_MS        1500   // 1.5s silence to finalize
 #define SAMPLES_PER_CMD       1
 
@@ -44,34 +45,73 @@ static bool  _off_loaded[VOICE_CMD_COUNT] = {false};
 static float _wake_vector[VECTOR_DIM];
 static bool  _wake_loaded = false;
 
+static volatile bool  _is_processing = false;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+#define NUM_FRAMES 16
+#define FFT_SIZE 256
+#define BINS_PER_FRAME 16
+
 static void extract_embedding(const int16_t* audio, int len, float* vector_out) {
-    if (len == 0) return;
-
-    // 1. Simple DC Offset Removal & Energy Calc
-    int64_t sum = 0;
-    for(int i=0; i<len; i++) sum += audio[i];
-    int16_t dc_offset = sum / len;
-
-    uint32_t hash = 0;
-    float energy = 0;
-    for(int i=0; i<len; i++) {
-        int16_t val = audio[i] - dc_offset;
-        hash = hash * 31 + abs(val);
-        energy += (float)val * val;
-    }
-    
-    // 2. Mock Embedding (Using hash to seed, but influenced by length and energy)
-    srand(hash + len);
-    for(int i=0; i<VECTOR_DIM; i++) {
-        vector_out[i] = (float)rand() / (float)RAND_MAX;
+    if (len < FFT_SIZE) {
+        memset(vector_out, 0, VECTOR_DIM * sizeof(float));
+        return;
     }
 
-    // 3. Normalization (L2 Norm) — Crucial for Cosine Similarity
-    float norm = 0;
-    for(int i=0; i<VECTOR_DIM; i++) norm += vector_out[i] * vector_out[i];
-    norm = sqrt(norm);
+    float* fft_work = (float*)malloc(FFT_SIZE * 2 * sizeof(float));
+    if (!fft_work) {
+        memset(vector_out, 0, VECTOR_DIM * sizeof(float));
+        return;
+    }
+
+    int step = (len - FFT_SIZE) / NUM_FRAMES;
+    if (step < 1) step = 1;
+
+    for (int i = 0; i < NUM_FRAMES; i++) {
+        int start_idx = i * step;
+        if (start_idx + FFT_SIZE > len) start_idx = len - FFT_SIZE;
+
+        // --- Frame-level Noise Gate ---
+        int32_t frame_sum = 0;
+        for (int j = 0; j < FFT_SIZE; j++) {
+            frame_sum += abs(audio[start_idx + j]);
+        }
+        int32_t frame_rms = frame_sum / FFT_SIZE;
+
+        // If this specific frame is just background noise, zero it out completely.
+        // This prevents short table knocks (which are mostly silence) from matching long voice commands.
+        if (frame_rms < 300) { // Slightly lower than global VAD to preserve word endings
+            for (int b = 0; b < BINS_PER_FRAME; b++) {
+                vector_out[i * BINS_PER_FRAME + b] = 0.0f;
+            }
+            continue;
+        }
+
+        for (int j = 0; j < FFT_SIZE; j++) {
+            fft_work[j * 2 + 0] = (float)audio[start_idx + j]; // Real
+            fft_work[j * 2 + 1] = 0.0f;                        // Imag
+        }
+
+        dsps_fft2r_fc32(fft_work, FFT_SIZE);
+        dsps_bit_rev_fc32(fft_work, FFT_SIZE);
+
+        for (int b = 0; b < BINS_PER_FRAME; b++) {
+            float band_energy = 0;
+            for (int k = 0; k < 8; k++) {
+                int bin_idx = b * 8 + k;
+                float re = fft_work[bin_idx * 2 + 0];
+                float im = fft_work[bin_idx * 2 + 1];
+                band_energy += (re * re + im * im);
+            }
+            vector_out[i * BINS_PER_FRAME + b] = log10f(band_energy + 1.0f);
+        }
+    }
+
+    free(fft_work);
+
+    // Normalize the entire vector to unit length for the fast dot product
+    float norm = vector_magnitude(vector_out, VECTOR_DIM);
     if (norm > 0) {
         for(int i=0; i<VECTOR_DIM; i++) vector_out[i] /= norm;
     }
@@ -80,6 +120,11 @@ static void extract_embedding(const int16_t* audio, int len, float* vector_out) 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 bool voice_engine_init() {
+    esp_err_t ret = dsps_fft2r_init_fc32(NULL, 4096);
+    if (ret != ESP_OK) {
+        Serial.printf("[VOICE] DSP FFT init failed: %d\n", ret);
+    }
+
     bool mic_ok = i2s_mic_init();
     bool storage_ok = vector_storage_init();
     if (!mic_ok || !storage_ok) return false;
@@ -129,6 +174,13 @@ void voice_engine_stop_training(bool save) {
             }
             avg_vector[d] /= _training_progress;
         }
+
+        // Pre-normalize the averaged vector for ultra-fast dot product later
+        float norm = vector_magnitude(avg_vector, VECTOR_DIM);
+        if (norm > 0) {
+            for(int d=0; d<VECTOR_DIM; d++) avg_vector[d] /= norm;
+        }
+
         if (_training_gpio == VOICE_CMD_WAKE) {
             vector_storage_save(VOICE_CMD_WAKE, true, avg_vector);
             memcpy(_wake_vector, avg_vector, sizeof(_wake_vector));
@@ -163,19 +215,29 @@ int voice_engine_get_last_rms() {
 
 void voice_engine_force_finalize() {
     if (_is_training && _is_speaking && _training_progress == 0) {
-        _training_progress = 1;
-        _is_speaking = false;
-        _silence_start_ms = 0;
+        _silence_start_ms = 1; // Force timeout next loop
         Serial.println("[VOICE] Force finalized by user.");
     }
 }
 
 bool voice_engine_has_command(int gpio_idx, bool on_cmd) {
-    return vector_storage_exists(gpio_idx, on_cmd);
+    if (gpio_idx == VOICE_CMD_WAKE) return _wake_loaded;
+    if (gpio_idx >= 0 && gpio_idx < VOICE_CMD_COUNT) {
+        return on_cmd ? _on_loaded[gpio_idx] : _off_loaded[gpio_idx];
+    }
+    return false;
 }
 
 bool voice_engine_is_listening() {
-    return _listening;
+    return _recognition_enabled && !_is_training;
+}
+
+bool voice_engine_is_speaking() {
+    return _is_speaking;
+}
+
+bool voice_engine_is_processing() {
+    return _is_processing;
 }
 
 const char* voice_engine_cmd_name(int cmd_id) {
@@ -192,7 +254,17 @@ const char* voice_engine_cmd_name(int cmd_id) {
 void voice_engine_task(void* arg) {
     const int FRAME_SAMPLES = 480; // 30ms
     int16_t audio_buf[FRAME_SAMPLES];
-    static float current_vector[VECTOR_DIM]; // Static to prevent stack overflow
+    static float current_vector[VECTOR_DIM];
+
+    #define MAX_AUDIO_SAMPLES (16000 * 2) // 2 seconds max
+    int16_t* s_audio_buffer = (int16_t*)heap_caps_malloc(MAX_AUDIO_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM);
+    if (!s_audio_buffer) s_audio_buffer = (int16_t*)malloc(MAX_AUDIO_SAMPLES * sizeof(int16_t));
+    int s_audio_len = 0;
+
+    // --- Pre-record buffer (Lookback) to catch leading consonants ---
+    const int PRE_CHUNKS = 5; // 5 * 30ms = 150ms pre-roll
+    int16_t pre_record[PRE_CHUNKS][FRAME_SAMPLES];
+    int pre_idx = 0;
 
     while (true) {
         int n = i2s_mic_read(audio_buf, FRAME_SAMPLES);
@@ -200,6 +272,10 @@ void voice_engine_task(void* arg) {
             vTaskDelay(pdMS_TO_TICKS(10));
             continue;
         }
+
+        // Save current frame to ring buffer
+        memcpy(pre_record[pre_idx], audio_buf, FRAME_SAMPLES * sizeof(int16_t));
+        pre_idx = (pre_idx + 1) % PRE_CHUNKS;
 
         int32_t rms = 0;
         for (int i = 0; i < n; i++) rms += abs(audio_buf[i]);
@@ -213,6 +289,7 @@ void voice_engine_task(void* arg) {
         if (!_is_training && !_recognition_enabled) {
             _is_speaking = false;
             _silence_start_ms = 0;
+            s_audio_len = 0;
         } else {
             if (rms > VAD_THRESHOLD) {
                 if (!_is_speaking) {
@@ -221,88 +298,119 @@ void voice_engine_task(void* arg) {
                     } else {
                         _is_speaking = true;
                         _silence_start_ms = 0;
+                        s_audio_len = 0;
+                        
+                        // Copy the past 150ms from ring buffer to capture soft leading consonants!
+                        for (int i = 0; i < PRE_CHUNKS - 1; i++) {
+                            int idx = (pre_idx + i) % PRE_CHUNKS;
+                            memcpy(&s_audio_buffer[s_audio_len], pre_record[idx], FRAME_SAMPLES * sizeof(int16_t));
+                            s_audio_len += FRAME_SAMPLES;
+                        }
+
                         if (_is_training) Serial.println("[VOICE] Training: Speaking...");
                         else Serial.println("[VOICE] Recognition: Listening...");
                     }
                 } else {
                     _silence_start_ms = 0; 
                 }
-            } else if (_is_speaking) {
-                if (_silence_start_ms == 0) {
-                    _silence_start_ms = millis();
-                } else if (millis() - _silence_start_ms > VAD_SILENCE_MS) {
-                    // 1. Trimming: Find the actual end of speech (remove trailing silence)
-                    int speech_end = n;
-                    const int noise_floor = VAD_THRESHOLD / 2;
-                    for (int i = n - 1; i >= 0; i--) {
-                        if (abs(audio_buf[i]) > noise_floor) {
-                            speech_end = i + 1;
-                            break;
-                        }
-                    }
-                    
-                    if (speech_end > 0) {
-                        Serial.printf("[VOICE] Processing %d samples (Trimmed %d silence)\n", speech_end, n - speech_end);
-                        extract_embedding(audio_buf, speech_end, current_vector);
-                        
-                        if (_is_training) {
-                            if (_training_progress < SAMPLES_PER_CMD) {
-                                memcpy(_training_vectors[_training_progress], current_vector, sizeof(current_vector));
-                                _training_progress++;
-                            }
-                        } else {
-                            _last_recog_ms = millis();
-                            bool recognized = false;
-                            bool is_sleeping = ui_manager_is_sleeping();
+            } 
+            
+            if (_is_speaking) {
+                // Accumulate audio samples
+                if (s_audio_len + n <= MAX_AUDIO_SAMPLES) {
+                    memcpy(&s_audio_buffer[s_audio_len], audio_buf, n * sizeof(int16_t));
+                    s_audio_len += n;
+                }
 
-                            if (is_sleeping) {
-                                // 1. SLEEP MODE: ONLY check Wake Word (RAM)
-                                if (_wake_loaded) {
-                                    float score = vector_cosine_similarity(current_vector, _wake_vector, VECTOR_DIM);
-                                    if (score > SIMILARITY_THRESHOLD) {
-                                        Serial.printf("[VOICE] Recognized: WAKE WORD (score: %.2f)\n", score);
-                                        if (_cmd_cb) _cmd_cb(VOICE_CMD_WAKE, "WAKE WORD");
-                                        recognized = true;
-                                    }
+                if (rms <= VAD_THRESHOLD) {
+                    if (_silence_start_ms == 0) {
+                        _silence_start_ms = millis();
+                    } else if (millis() - _silence_start_ms > VAD_SILENCE_MS || _silence_start_ms == 1) {
+                        _is_processing = true; 
+                        
+                        // 1. Trimming trailing silence
+                        int speech_end = s_audio_len;
+                        const int noise_floor = VAD_THRESHOLD / 2;
+                        for (int i = s_audio_len - 1; i >= 0; i--) {
+                            if (abs(s_audio_buffer[i]) > noise_floor) {
+                                speech_end = i + 1;
+                                break;
+                            }
+                        }
+
+                        // 2. Trimming leading silence
+                        int speech_start = 0;
+                        for (int i = 0; i < speech_end; i++) {
+                            if (abs(s_audio_buffer[i]) > noise_floor) {
+                                speech_start = i;
+                                break;
+                            }
+                        }
+                        
+                        int final_len = speech_end - speech_start;
+
+                        if (final_len > 0) {
+                            Serial.printf("[VOICE] Speech ended. Length: %d ms. Processing...\n", (final_len * 1000) / 16000);
+                            extract_embedding(&s_audio_buffer[speech_start], final_len, current_vector);
+                            
+                            if (_is_training) {
+                                if (_training_progress < SAMPLES_PER_CMD) {
+                                    memcpy(_training_vectors[_training_progress], current_vector, sizeof(current_vector));
+                                    _training_progress++;
+                                    Serial.printf("[VOICE] Captured sample %d/%d\n", _training_progress, SAMPLES_PER_CMD);
                                 }
                             } else {
-                                // 2. NORMAL MODE: ONLY check GPIO Commands (RAM)
-                                for (int i = 0; i < VOICE_CMD_COUNT; i++) {
-                                    // Check ON
-                                    if (_on_loaded[i]) {
-                                        float score = vector_cosine_similarity(current_vector, _on_vectors[i], VECTOR_DIM);
+                                bool is_sleeping = ui_manager_is_sleeping();
+                                float best_score = 0;
+                                int best_cmd = -1;
+
+                                if (is_sleeping) {
+                                    // ─── SLEEP: Wake Word Only ───
+                                    if (_wake_loaded) {
+                                        float score = vector_cosine_similarity(current_vector, _wake_vector, VECTOR_DIM);
+                                        Serial.printf("[VOICE] Sleep Mode - Wake Word Score: %.2f\n", score);
                                         if (score > SIMILARITY_THRESHOLD) {
-                                            Serial.printf("[VOICE] Recognized: GPIO %d ON (score: %.2f)\n", i, score);
-                                            if (_cmd_cb) _cmd_cb(i, voice_engine_cmd_name(i));
-                                            recognized = true;
-                                            break;
+                                            best_score = score;
+                                            best_cmd = VOICE_CMD_WAKE;
                                         }
                                     }
-                                    // Check OFF
-                                    if (_off_loaded[i]) {
-                                        float score = vector_cosine_similarity(current_vector, _off_vectors[i], VECTOR_DIM);
-                                        if (score > SIMILARITY_THRESHOLD) {
-                                            Serial.printf("[VOICE] Recognized: GPIO %d OFF (score: %.2f)\n", i, score);
-                                            if (_cmd_cb) _cmd_cb(i + 10, voice_engine_cmd_name(i + 10));
-                                            recognized = true;
-                                            break;
+                                } else {
+                                    // ─── AWAKE: All GPIO Commands ───
+                                    for (int i = 0; i < VOICE_CMD_COUNT; i++) {
+                                        if (_on_loaded[i]) {
+                                            float s = vector_cosine_similarity(current_vector, _on_vectors[i], VECTOR_DIM);
+                                            if (s > best_score) { best_score = s; best_cmd = i; }
+                                        }
+                                        if (_off_loaded[i]) {
+                                            float s = vector_cosine_similarity(current_vector, _off_vectors[i], VECTOR_DIM);
+                                            if (s > best_score) { best_score = s; best_cmd = i + 10; }
                                         }
                                     }
                                 }
 
-                                if (!recognized) {
-                                    Serial.println("[VOICE] No match.");
+                                if (best_cmd != -1 && best_score > SIMILARITY_THRESHOLD) {
+                                    _last_recog_ms = millis();
+                                    if (best_cmd == VOICE_CMD_WAKE) {
+                                        Serial.println("[VOICE] MATCH: WAKE WORD!");
+                                        if (_cmd_cb) _cmd_cb(VOICE_CMD_WAKE, "WAKE WORD");
+                                    } else {
+                                        Serial.printf("[VOICE] MATCH: ID %d (Score: %.2f)\n", best_cmd, best_score);
+                                        if (_cmd_cb) _cmd_cb(best_cmd, voice_engine_cmd_name(best_cmd));
+                                    }
+                                } else {
+                                    Serial.printf("[VOICE] No match (Best: %.2f)\n", best_score);
                                     if (_cmd_cb) _cmd_cb(-1, "NO MATCH");
                                 }
                             }
                         }
+                        _is_processing = false;
+                        _is_speaking = false;
+                        _silence_start_ms = 0;
+                        s_audio_len = 0;
                     }
-                    _is_speaking = false;
-                    _silence_start_ms = 0;
                 }
             }
         }
-
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }

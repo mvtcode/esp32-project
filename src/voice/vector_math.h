@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define VECTOR_DIM 1024
+#define VECTOR_DIM 256
 
 /**
  * Calculate Cosine Similarity between two vectors.

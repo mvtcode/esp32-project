@@ -30,7 +30,7 @@ void voice_engine_set_callback(voice_cmd_cb_t cb);
 // ─── Training API ────────────────────────────────────────────────────────────
 /**
  * Start training mode for a specific GPIO command.
- * Will expect 3 voice samples.
+ * Will expect 1 voice sample.
  */
 void voice_engine_start_training(int gpio_idx, bool on_cmd);
 void voice_engine_stop_training(bool save);
@@ -47,6 +47,8 @@ void voice_engine_task(void* arg);
 
 // ─── State query ─────────────────────────────────────────────────────────────
 bool voice_engine_is_listening();
+bool voice_engine_is_speaking();
+bool voice_engine_is_processing();
 const char* voice_engine_cmd_name(int cmd_id);
 bool voice_engine_has_command(int gpio_idx, bool on_cmd);
 
