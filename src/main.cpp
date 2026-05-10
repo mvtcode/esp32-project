@@ -63,7 +63,7 @@ static void ui_update_task(void* arg) {
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
 void setup() {
-    Serial.begin(115200);
+    Serial.begin(921600);
     delay(1000); // Đợi hardware UART ổn định
     
     Serial.println("\n======================================");
@@ -138,6 +138,12 @@ void setup() {
 }
 
 void loop() {
-    // Everything is handled in FreeRTOS tasks.
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    // Cho phép nhấn Enter từ bàn phím để dừng thu âm
+    if (Serial.available()) {
+        char c = Serial.read();
+        if (c == '\n' || c == '\r') {
+            voice_engine_stop_speaking();
+        }
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
 }

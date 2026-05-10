@@ -1,19 +1,9 @@
-/**
- * i2s_mic.cpp — INMP441 microphone driver (I2S)
- * IoT Voice Command System
- *
- * INMP441 xuất dữ liệu 32-bit frames, dữ liệu 24-bit nằm ở MSB.
- * Driver đọc 32-bit, shift phải 14 bit để lấy int16_t phù hợp với ESP-SR.
- */
 #include "i2s_mic.h"
 #include "../hardware_config.h"
 #include <Arduino.h>
 #include <driver/i2s.h>
 
-// ─── Private constants ────────────────────────────────────────────────────────
 static constexpr i2s_port_t I2S_PORT = I2S_NUM_0;
-
-// ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 bool i2s_mic_init() {
     const i2s_config_t cfg = {
@@ -25,9 +15,7 @@ bool i2s_mic_init() {
         .intr_alloc_flags     = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count        = I2S_DMA_BUF_COUNT,
         .dma_buf_len          = I2S_DMA_BUF_LEN,
-        .use_apll             = false,
-        .tx_desc_auto_clear   = false,
-        .fixed_mclk           = 0
+        .use_apll             = false
     };
 
     const i2s_pin_config_t pins = {
@@ -37,24 +25,10 @@ bool i2s_mic_init() {
         .data_in_num  = MIC_SD
     };
 
-    esp_err_t err = i2s_driver_install(I2S_PORT, &cfg, 0, NULL);
-    if (err != ESP_OK) {
-        Serial.printf("[MIC] i2s_driver_install failed: %d\n", err);
-        return false;
-    }
-
-    err = i2s_set_pin(I2S_PORT, &pins);
-    if (err != ESP_OK) {
-        Serial.printf("[MIC] i2s_set_pin failed: %d\n", err);
-        return false;
-    }
+    if (i2s_driver_install(I2S_PORT, &cfg, 0, NULL) != ESP_OK) return false;
+    if (i2s_set_pin(I2S_PORT, &pins) != ESP_OK) return false;
 
     i2s_zero_dma_buffer(I2S_PORT);
-    
-    // Kéo chân SD xuống GND để tránh nhiễu khi Mic ở trạng thái nghỉ
-    gpio_set_pull_mode((gpio_num_t)MIC_SD, GPIO_PULLDOWN_ONLY);
-
-    Serial.println("[MIC] INMP441 initialized OK");
     return true;
 }
 
@@ -62,63 +36,36 @@ void i2s_mic_deinit() {
     i2s_driver_uninstall(I2S_PORT);
 }
 
-// ─── Audio read ──────────────────────────────────────────────────────────────
-
 int i2s_mic_read(int16_t* buf, int num_samples) {
     if (!buf || num_samples <= 0) return 0;
 
-    // Cấp phát tạm thời trên stack cho 32-bit samples
-    // Giới hạn kích thước để tránh stack overflow
-    const int MAX_BATCH = 512;
-    int total_read = 0;
+    size_t bytes_read = 0;
+    static int32_t raw_data[1024]; 
+    static float dc_offset = 0; // BẮT BUỘC PHẢI CÓ để khử nhiễu nền
+    
+    int to_read = (num_samples > 1024) ? 1024 : num_samples;
+    esp_err_t err = i2s_read(I2S_PORT, raw_data, to_read * sizeof(int32_t), &bytes_read, pdMS_TO_TICKS(100));
 
-    while (total_read < num_samples) {
-        int batch = num_samples - total_read;
-        if (batch > MAX_BATCH) batch = MAX_BATCH;
-
-        static int32_t raw[MAX_BATCH];
-        size_t bytes_read = 0;
-
-        esp_err_t err = i2s_read(
-            I2S_PORT,
-            raw,
-            batch * sizeof(int32_t),
-            &bytes_read,
-            pdMS_TO_TICKS(100) // Avoid portMAX_DELAY to prevent hanging
-        );
-
-        if (err != ESP_OK || bytes_read == 0) break;
-
-        int samples_read = (int)(bytes_read / sizeof(int32_t));
-        
-        // Bỏ qua 200ms đầu tiên kể từ khi bật nguồn để tránh nhiễu khởi động (Warm-up)
-        static uint32_t start_time = millis();
-        bool is_warming_up = (millis() - start_time < 200);
-
-        for (int i = 0; i < samples_read; i++) {
-            if (is_warming_up) {
-                buf[total_read + i] = 0;
-                continue;
-            }
-
-            // Thuật toán lấy 16-bit MSB chuẩn Philips:
-            // 1. Dịch trái 1 bit để đưa bit 30 (MSB của INMP441) về bit 31
-            // 2. Dịch phải 16 bit để lấy 16 bit cao nhất làm int16_t
-            int32_t sample = raw[i] << 1;
-            int16_t s16 = (int16_t)(sample >> 16);
-
-            // Tăng âm lượng lên x10 bằng phép nhân (an toàn hơn dịch bit)
-            int32_t final_val = (int32_t)s16 * 10;
-
-            // Giới hạn (Clamp)
-            if (final_val > 32767) final_val = 32767;
-            if (final_val < -32768) final_val = -32768;
+    if (err == ESP_OK && bytes_read > 0) {
+        int count = bytes_read / 4;
+        for (int i = 0; i < count; i++) {
+            // Dùng >> 16 chuẩn xác như bản Test bạn đã ưng ý
+            int16_t s16 = (int16_t)(raw_data[i] >> 16);
             
-            buf[total_read + i] = (int16_t)final_val;
+            // Khử DC Offset: Đưa mức im lặng về 0 (đóng vai trò như bộ lọc High-pass nhẹ)
+            dc_offset = 0.999f * dc_offset + 0.001f * s16;
+            int32_t val = (int32_t)s16 - (int32_t)dc_offset;
+
+            // Khuếch đại x32 để nghe rõ âm thanh thật sự (không bị méo tiếng do lỗi đảo byte)
+            val = val * 32;
+
+            // Giới hạn để chống tràn số 16-bit (Clipping an toàn)
+            if (val > 32767) val = 32767;
+            if (val < -32768) val = -32768;
+
+            buf[i] = (int16_t)val;
         }
-
-        total_read += samples_read;
+        return count;
     }
-
-    return total_read;
+    return 0;
 }

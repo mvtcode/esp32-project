@@ -46,7 +46,7 @@
 
 // ─── FreeRTOS Task Config ────────────────────────────────────────────────────
 #define VOICE_TASK_CORE     1      // Core 1: voice/audio processing
-#define VOICE_TASK_STACK    16384  // Tăng stack để tránh Crash
+#define VOICE_TASK_STACK    32768  // Tăng lên 32KB cho an toàn tuyệt đối
 #define VOICE_TASK_PRIO     5
 
 #define UI_TASK_CORE        0      // Core 0: UI updates

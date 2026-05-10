@@ -34,6 +34,7 @@ void voice_engine_set_callback(voice_cmd_cb_t cb);
  */
 void voice_engine_start_training(int gpio_idx, bool on_cmd);
 void voice_engine_stop_training(bool save);
+void voice_engine_stop_speaking();
 
 /**
  * Returns: 0 (not training), 1, 2, 3 (samples captured), 4 (done/saving)

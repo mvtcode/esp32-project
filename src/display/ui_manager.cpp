@@ -155,9 +155,9 @@ void go_screen_voice_change() {
 
 static void draw_visualizer(uint8_t bases, uint8_t cx) {
     int rms = voice_engine_get_last_rms();
-    if (rms > 200) { // Only show if there's actual sound signal
-        // Scale RMS to bar height (e.g., 600 -> 12px)
-        int h = rms / 50; 
+    if (rms > 50) { // Hạ ngưỡng hiển thị xuống 50 để nhạy hơn
+        // Tăng tỉ lệ vẽ sóng
+        int h = rms / 40; 
         if (h > 24) h = 24; // Cap height
         
         // Draw 3 dynamic bars responding to the same volume with slight variations
@@ -389,21 +389,15 @@ void change_on_back() {
 }
 
 void change_on_enter() {
-    int progress = voice_engine_get_training_progress();
-    
-    if (progress > 0) {
-        // Da thu xong -> Luu va Thoat
+    if (voice_engine_is_speaking()) {
+        voice_engine_stop_speaking();
+    } else if (voice_engine_get_training_progress() > 0) {
+        // Đã thu xong và đang đợi xác nhận lưu
         voice_engine_stop_training(true);
-        if (g_list_cursor == 6) {
-            go_screen_gpio_list();
-        } else {
-            go_screen_gpio_detail();
-        }
-    } else {
-        // Chua thu xong -> Thu ket thuc thu am ngay lap tuc
-        voice_engine_force_finalize();
-        g_ui_needs_refresh = true;
+        if (g_list_cursor == 6) go_screen_gpio_list();
+        else go_screen_gpio_detail();
     }
+    g_ui_needs_refresh = true;
 }
 
 void draw_voice_change_screen() {
@@ -420,7 +414,8 @@ void draw_voice_change_screen() {
     int progress = voice_engine_get_training_progress();
     if (progress == 0) {
         draw_centered(32, "Dang ghi...");
-        draw_centered(44, "(Hay noi lenh)");
+        display_font_small();
+        draw_centered(44, "ENTER: Dung | BACK: Huy");
         
         draw_visualizer(56, 64);
     } else {
