@@ -52,14 +52,14 @@ int i2s_mic_read(int16_t* buf, int num_samples) {
             // Dùng >> 16 chuẩn xác như bản Test bạn đã ưng ý
             int16_t s16 = (int16_t)(raw_data[i] >> 16);
             
-            // Khử DC Offset: Đưa mức im lặng về 0 (đóng vai trò như bộ lọc High-pass nhẹ)
-            dc_offset = 0.999f * dc_offset + 0.001f * s16;
+            // Khử DC Offset: Làm mịn hơn để tránh tiếng dè (humming)
+            dc_offset = 0.9995f * dc_offset + 0.0005f * s16;
             int32_t val = (int32_t)s16 - (int32_t)dc_offset;
 
-            // Khuếch đại x32 để nghe rõ âm thanh thật sự (không bị méo tiếng do lỗi đảo byte)
-            val = val * 32;
+            // Khuếch đại nhẹ x8 để âm thanh to rõ hơn mà không gây méo
+            val = val * 8;
 
-            // Giới hạn để chống tràn số 16-bit (Clipping an toàn)
+            // Giới hạn để chống tràn số 16-bit
             if (val > 32767) val = 32767;
             if (val < -32768) val = -32768;
 

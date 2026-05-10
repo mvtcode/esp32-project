@@ -20,6 +20,12 @@
 #define VOICE_CMD_COUNT      6
 #define VOICE_CMD_WAKE       20
 
+// ─── UI Visualizer Config ───────────────────────────────────────────────────
+#define UI_VISUALIZER_THRESHOLD 100    // Ngưỡng âm thanh để sóng bắt đầu nhảy
+#define UI_VISUALIZER_DIVISOR   8     // Càng nhỏ sóng càng cao (rms/divisor)
+#define UI_VISUALIZER_OFFSET    60    // Giá trị trừ đi trước khi chia để sóng mượt
+#define UI_VISUALIZER_MAX_H     10    // Hạ xuống 20 cho vừa màn hình 64px
+
 // ─── Callback type ───────────────────────────────────────────────────────────
 typedef void (*voice_cmd_cb_t)(int cmd_id, const char* cmd_name);
 
@@ -27,11 +33,18 @@ typedef void (*voice_cmd_cb_t)(int cmd_id, const char* cmd_name);
 bool voice_engine_init();
 void voice_engine_set_callback(voice_cmd_cb_t cb);
 
+// ─── Debug/Dump Control ──────────────────────────────────────────────────────
+void voice_engine_set_dump_training(bool enable);
+void voice_engine_set_dump_recognition(bool enable);
+bool voice_engine_get_dump_training();
+bool voice_engine_get_dump_recognition();
+
 // ─── Training API ────────────────────────────────────────────────────────────
 /**
  * Start training mode for a specific GPIO command.
  * Will expect 1 voice sample.
  */
+void voice_engine_start_training_wake();
 void voice_engine_start_training(int gpio_idx, bool on_cmd);
 void voice_engine_stop_training(bool save);
 void voice_engine_stop_speaking();
@@ -50,7 +63,9 @@ void voice_engine_task(void* arg);
 bool voice_engine_is_listening();
 bool voice_engine_is_speaking();
 bool voice_engine_is_processing();
+bool voice_engine_has_wake_word();
 const char* voice_engine_cmd_name(int cmd_id);
 bool voice_engine_has_command(int gpio_idx, bool on_cmd);
+void voice_engine_clear_all_data();
 
 #endif // VOICE_ENGINE_H

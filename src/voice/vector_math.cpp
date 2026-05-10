@@ -19,9 +19,10 @@ float vector_magnitude(const float* v, int dim) {
 }
 
 float vector_cosine_similarity(const float* v1, const float* v2, int dim) {
-    // Note: This implementation now ASSUMES that v1 and v2 are ALREADY NORMALIZED
-    // (i.e. vector_magnitude = 1.0f).
-    // The Cosine Similarity of two normalized vectors is exactly their dot product.
-    // This optimization saves 66% of processing time during real-time inference.
-    return vector_dot_product(v1, v2, dim);
+    float dot = vector_dot_product(v1, v2, dim);
+    float mag1 = vector_magnitude(v1, dim);
+    float mag2 = vector_magnitude(v2, dim);
+    
+    if (mag1 < 0.0001f || mag2 < 0.0001f) return 0.0f;
+    return dot / (mag1 * mag2);
 }

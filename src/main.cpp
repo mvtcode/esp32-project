@@ -3,6 +3,7 @@
  * IoT Voice Command System — ESP32-S3-N16R8
  */
 #include <Arduino.h>
+#include <esp_log.h>
 #include "hardware_config.h"
 #include "display/display_driver.h"
 #include "display/ui_manager.h"
@@ -64,9 +65,13 @@ static void ui_update_task(void* arg) {
 
 void setup() {
     Serial.begin(921600);
-    delay(1000); // Đợi hardware UART ổn định
+    delay(500); 
     
-    Serial.println("\n======================================");
+    // Tắt toàn bộ log hệ thống của ESP-IDF để tránh hiện các dòng rác E (1...
+    esp_log_level_set("*", ESP_LOG_NONE);
+    
+    Serial.println("\n\n\n"); // Đẩy phần rác khởi động của ROM lên trên
+    Serial.println("======================================");
     Serial.println("[SYS] ESP32-S3 Voice Project Booting");
     Serial.println("======================================");
     Serial.flush();
@@ -143,6 +148,11 @@ void loop() {
         char c = Serial.read();
         if (c == '\n' || c == '\r') {
             voice_engine_stop_speaking();
+            // Clear Serial buffer to prevent multiple triggers
+            while(Serial.available()) Serial.read();
+        } else if (c == 'C') {
+            // Nhấn 'C' viết hoa để xóa sạch dữ liệu training
+            voice_engine_clear_all_data();
         }
     }
     vTaskDelay(pdMS_TO_TICKS(50));

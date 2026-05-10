@@ -155,17 +155,21 @@ void go_screen_voice_change() {
 
 static void draw_visualizer(uint8_t bases, uint8_t cx) {
     int rms = voice_engine_get_last_rms();
-    if (rms > 50) { // Hạ ngưỡng hiển thị xuống 50 để nhạy hơn
-        // Tăng tỉ lệ vẽ sóng
-        int h = rms / 40; 
-        if (h > 24) h = 24; // Cap height
+    if (rms > UI_VISUALIZER_THRESHOLD) { 
+        // Sử dụng các hằng số từ config
+        int h = (rms - UI_VISUALIZER_OFFSET) / UI_VISUALIZER_DIVISOR; 
+        if (h > UI_VISUALIZER_MAX_H) h = UI_VISUALIZER_MAX_H; 
+        if (h < 3) h = 3;
         
-        // Draw 3 dynamic bars responding to the same volume with slight variations
-        display_box(cx - 15, bases - (h/2), 6, h);
-        display_box(cx - 2,  bases - (h*0.8), 6, h*1.6);
-        display_box(cx + 11, bases - (h/1.5), 6, h/1.5 * 2);
+        int r1 = rand() % 5;
+        int r2 = rand() % 8;
+        int r3 = rand() % 4;
+
+        // Vẽ 3 cột với tỉ lệ vừa phải (h tối đa 20 -> cột cao nhất là 40)
+        display_box(cx - 15, bases - h - r1, 6, h + r1);
+        display_box(cx - 2,  bases - h*2 - r2, 6, h*2 + r2);
+        display_box(cx + 11, bases - h*1.5 - r3, 6, h*1.5 + r3);
     } else {
-        // Flat line if silent
         display_hline(cx - 20, bases, 40);
     }
 }
@@ -246,8 +250,8 @@ void list_on_down() {
 
 void list_on_enter() {
     if (g_list_cursor == 6) {
-        // Wake word training
-        voice_engine_start_training(VOICE_CMD_WAKE, true);
+        // Wake word training sử dụng API riêng biệt
+        voice_engine_start_training_wake();
         go_screen_voice_change();
     } else {
         g_detail_cursor = 0;
@@ -258,7 +262,7 @@ void list_on_enter() {
 void draw_gpio_list_screen() {
     display_clear();
     display_font_medium();
-    draw_centered(10, "GPIO SETTING");
+    draw_centered(10, "SETTING");
     display_hline(0, 13, 128);
 
     display_font_small();
@@ -275,7 +279,7 @@ void draw_gpio_list_screen() {
         char buf[32];
         
         const char* name = (idx == 6) ? "WAKE WORD" : relay_get_alias(idx);
-        bool has_cmd = (idx == 6) ? voice_engine_has_command(VOICE_CMD_WAKE, true) : (check_voice_cmd_exists(idx, true) || check_voice_cmd_exists(idx, false));
+        bool has_cmd = (idx == 6) ? voice_engine_has_wake_word() : (check_voice_cmd_exists(idx, true) || check_voice_cmd_exists(idx, false));
         const char* status = (idx == 6) ? (has_cmd ? "SET" : "--") : (has_cmd ? (relay_get(idx) ? "ON" : "OFF") : "--");
 
         snprintf(buf, sizeof(buf), "%s [%s] %s", 
@@ -441,6 +445,11 @@ void ui_manager_loop() {
     // Just prevent sleep if user is speaking, don't wake up!
     if (voice_engine_is_speaking() || voice_engine_is_processing()) {
         reset_activity(); 
+    }
+
+    // Skip heavy drawing if voice engine is actively recording to avoid I2C noise/jitter
+    if (voice_engine_is_speaking()) {
+        return;
     }
 
     if (millis() - g_last_activity_time > 30000 && !g_sleep_mode && g_current_screen == SCREEN_HOME) {
