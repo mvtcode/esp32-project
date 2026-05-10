@@ -25,3 +25,5 @@ __pycache__/
 # Backup files
 *.bak
 *~
+.venv/
+records

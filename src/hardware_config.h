@@ -23,7 +23,7 @@
 #define I2S_SAMPLE_RATE     16000  // Hz — required by ESP-SR
 #define I2S_BITS            32     // INMP441 outputs 32-bit frames
 #define I2S_DMA_BUF_COUNT   8
-#define I2S_DMA_BUF_LEN    64     // samples per DMA buffer
+#define I2S_DMA_BUF_LEN    256     // Tăng lên để tránh mất dữ liệu gây rè
 
 // ─── Buttons ─────────────────────────────────────────────────────────────────
 #define BTN_UP          10
@@ -46,7 +46,7 @@
 
 // ─── FreeRTOS Task Config ────────────────────────────────────────────────────
 #define VOICE_TASK_CORE     1      // Core 1: voice/audio processing
-#define VOICE_TASK_STACK    8192
+#define VOICE_TASK_STACK    16384  // Tăng stack để tránh Crash
 #define VOICE_TASK_PRIO     5
 
 #define UI_TASK_CORE        0      // Core 0: UI updates

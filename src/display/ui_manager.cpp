@@ -197,10 +197,11 @@ void draw_home_screen() {
     if (g_sleep_mode) {
         // Sleep screen
         display_font_medium();
-        draw_centered(32, "SLEEP MODE");
+        draw_centered(10, "SLEEP MODE");
+        display_hline(0, 13, 128);
         display_font_small();
         draw_centered(46, "Hay noi 'hey esp'");
-        draw_centered(56, "hoac nhan nut BOOT");
+        draw_centered(56, "hoac nhan BOOT");
     } else {
         if (g_cmd_show_start != 0 && (millis() - g_cmd_show_start < 2000)) {
             // Show command popup

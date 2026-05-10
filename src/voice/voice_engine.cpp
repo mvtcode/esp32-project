@@ -15,7 +15,7 @@
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 #define SIMILARITY_THRESHOLD  0.75f  // Lower is easier to match
-#define VAD_THRESHOLD         500    // Lowered for better sensitivity
+#define VAD_THRESHOLD         1000   // Increased to match higher digital gain
 #define VAD_SILENCE_MS        1500   // 1.5s silence to finalize
 #define SAMPLES_PER_CMD       1
 
@@ -81,7 +81,7 @@ static void extract_embedding(const int16_t* audio, int len, float* vector_out) 
 
         // If this specific frame is just background noise, zero it out completely.
         // This prevents short table knocks (which are mostly silence) from matching long voice commands.
-        if (frame_rms < 300) { // Slightly lower than global VAD to preserve word endings
+        if (frame_rms < (VAD_THRESHOLD / 2)) { // Slightly lower than global VAD to preserve word endings
             for (int b = 0; b < BINS_PER_FRAME; b++) {
                 vector_out[i * BINS_PER_FRAME + b] = 0.0f;
             }
@@ -351,9 +351,13 @@ void voice_engine_task(void* arg) {
 
                         if (final_len > 0) {
                             Serial.printf("[VOICE] Speech ended. Length: %d ms. Processing...\n", (final_len * 1000) / 16000);
+
                             extract_embedding(&s_audio_buffer[speech_start], final_len, current_vector);
                             
+                            char audio_label[64] = "unknown";
+                            
                             if (_is_training) {
+                                snprintf(audio_label, sizeof(audio_label), "train_gpio%d_%s", _training_gpio, _training_on_cmd ? "ON" : "OFF");
                                 if (_training_progress < SAMPLES_PER_CMD) {
                                     memcpy(_training_vectors[_training_progress], current_vector, sizeof(current_vector));
                                     _training_progress++;
@@ -391,17 +395,40 @@ void voice_engine_task(void* arg) {
                                 if (best_cmd != -1 && best_score > SIMILARITY_THRESHOLD) {
                                     _last_recog_ms = millis();
                                     if (best_cmd == VOICE_CMD_WAKE) {
+                                        snprintf(audio_label, sizeof(audio_label), "match_WAKE");
                                         Serial.println("[VOICE] MATCH: WAKE WORD!");
                                         if (_cmd_cb) _cmd_cb(VOICE_CMD_WAKE, "WAKE WORD");
                                     } else {
+                                        snprintf(audio_label, sizeof(audio_label), "match_ID%d", best_cmd);
                                         Serial.printf("[VOICE] MATCH: ID %d (Score: %.2f)\n", best_cmd, best_score);
                                         if (_cmd_cb) _cmd_cb(best_cmd, voice_engine_cmd_name(best_cmd));
                                     }
                                 } else {
+                                    snprintf(audio_label, sizeof(audio_label), "unrecognized");
                                     Serial.printf("[VOICE] No match (Best: %.2f)\n", best_score);
                                     if (_cmd_cb) _cmd_cb(-1, "NO MATCH");
                                 }
                             }
+
+                            // --- DUMP AUDIO QUA SERIAL VỚI LABEL ---
+                            bool dump_audio = true; 
+                            if (dump_audio) {
+                                Serial.printf("---AUDIO_START:%s---\n", audio_label);
+                                int16_t* ptr = &s_audio_buffer[speech_start];
+                                for (int i = 0; i < final_len; i += 32) {
+                                    char hex_buf[130];
+                                    int idx = 0;
+                                    for (int j = 0; j < 32 && (i + j) < final_len; j++) {
+                                        sprintf(&hex_buf[idx], "%04X", (uint16_t)ptr[i + j]);
+                                        idx += 4;
+                                    }
+                                    hex_buf[idx] = '\0';
+                                    Serial.println(hex_buf);
+                                    vTaskDelay(pdMS_TO_TICKS(5)); // Prevent watchdog
+                                }
+                                Serial.println("---AUDIO_END---");
+                            }
+                            // ---------------------------------------
                         }
                         _is_processing = false;
                         _is_speaking = false;

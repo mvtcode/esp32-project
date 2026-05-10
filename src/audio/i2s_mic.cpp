@@ -50,6 +50,10 @@ bool i2s_mic_init() {
     }
 
     i2s_zero_dma_buffer(I2S_PORT);
+    
+    // Kéo chân SD xuống GND để tránh nhiễu khi Mic ở trạng thái nghỉ
+    gpio_set_pull_mode((gpio_num_t)MIC_SD, GPIO_PULLDOWN_ONLY);
+
     Serial.println("[MIC] INMP441 initialized OK");
     return true;
 }
@@ -86,11 +90,31 @@ int i2s_mic_read(int16_t* buf, int num_samples) {
         if (err != ESP_OK || bytes_read == 0) break;
 
         int samples_read = (int)(bytes_read / sizeof(int32_t));
+        
+        // Bỏ qua 200ms đầu tiên kể từ khi bật nguồn để tránh nhiễu khởi động (Warm-up)
+        static uint32_t start_time = millis();
+        bool is_warming_up = (millis() - start_time < 200);
 
-        // Chuyển đổi 32-bit → 16-bit:
-        // INMP441: data 24-bit nằm ở [31:8], shift right 14 để vừa int16_t
         for (int i = 0; i < samples_read; i++) {
-            buf[total_read + i] = (int16_t)(raw[i] >> 14);
+            if (is_warming_up) {
+                buf[total_read + i] = 0;
+                continue;
+            }
+
+            // Thuật toán lấy 16-bit MSB chuẩn Philips:
+            // 1. Dịch trái 1 bit để đưa bit 30 (MSB của INMP441) về bit 31
+            // 2. Dịch phải 16 bit để lấy 16 bit cao nhất làm int16_t
+            int32_t sample = raw[i] << 1;
+            int16_t s16 = (int16_t)(sample >> 16);
+
+            // Tăng âm lượng lên x10 bằng phép nhân (an toàn hơn dịch bit)
+            int32_t final_val = (int32_t)s16 * 10;
+
+            // Giới hạn (Clamp)
+            if (final_val > 32767) final_val = 32767;
+            if (final_val < -32768) final_val = -32768;
+            
+            buf[total_read + i] = (int16_t)final_val;
         }
 
         total_read += samples_read;
