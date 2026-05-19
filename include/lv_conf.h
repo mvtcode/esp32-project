@@ -17,8 +17,8 @@
 /*=========================
    MEMORY SETTINGS
  *=========================*/
-#define LV_MEM_CUSTOM 0
-#define LV_MEM_SIZE (32U * 1024U)
+#define LV_MEM_CUSTOM 1
+#define LV_MEM_SIZE (16U * 1024U)
 #define LV_MEM_ADR 0
 #define LV_MEM_POOL_INCLUDE_FREE 0
 
@@ -92,7 +92,14 @@
 /*==================
  *   FONT USAGE
  *==================*/
+#define LV_FONT_MONTSERRAT_12 1
 #define LV_FONT_MONTSERRAT_14 1
+#define LV_FONT_MONTSERRAT_16 1
+#define LV_FONT_MONTSERRAT_20 1
+#define LV_FONT_MONTSERRAT_24 1
+#define LV_FONT_MONTSERRAT_32 1
+#define LV_FONT_MONTSERRAT_40 1
+#define LV_FONT_MONTSERRAT_48 1
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
 /*==================
