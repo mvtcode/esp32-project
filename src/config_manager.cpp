@@ -27,6 +27,10 @@ void loadConfig(ConfigData &config) {
   config.sleepEndMinute = preferences.getUShort("sleepEnd", 420); // Default: 07:00 (420 minutes)
   config.sleepBrightness = preferences.getUChar("sleepBright", 0); // Default: 0 (off)
   
+  // Load marquee running text
+  String marquee = preferences.getString("marquee", "Chào mừng bạn đến với ESP32 LED Matrix Clock!");
+  marquee.toCharArray(config.marqueeText, sizeof(config.marqueeText));
+  
   preferences.end();
   
   // Validate configuration
@@ -46,6 +50,7 @@ void loadConfig(ConfigData &config) {
       config.sleepEndMinute / 60, config.sleepEndMinute % 60, config.sleepEndMinute);
     Serial.printf("  Sleep Brightness: %d%%\n", config.sleepBrightness);
   }
+  Serial.printf("Marquee: %s\n", config.marqueeText);
   Serial.printf("Valid: %s\n", config.isValid ? "YES" : "NO");
   Serial.println("===========================");
 }
@@ -72,6 +77,9 @@ bool saveConfig(const ConfigData &config) {
   preferences.putUShort("sleepEnd", config.sleepEndMinute);
   preferences.putUChar("sleepBright", config.sleepBrightness);
   
+  // Save marquee running text
+  preferences.putString("marquee", String(config.marqueeText));
+  
   preferences.end();
   
   Serial.println("=== Configuration Saved ===");
@@ -86,6 +94,7 @@ bool saveConfig(const ConfigData &config) {
       config.sleepEndMinute / 60, config.sleepEndMinute % 60);
     Serial.printf("Sleep Brightness: %d%%\n", config.sleepBrightness);
   }
+  Serial.printf("Marquee: %s\n", config.marqueeText);
   Serial.println("==========================");
   
   return true;

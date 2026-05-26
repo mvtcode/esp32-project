@@ -14,35 +14,38 @@ Video demo trên tiktok:
 
 ## ✨ Tính Năng
 
-### 🕐 Hiển Thị Đồng Hồ
+### 🕐 Bố cục 4 hàng hiển thị đồng thời (v3.0.0)
 
-- **Giờ:Phút** với font chữ lớn (size 2) và hiệu ứng gradient rainbow
-- **Giây** hiển thị ở góc phải với font nhỏ (size 1)
-- Dấu hai chấm `:` với hiệu ứng chuyển động động (ping-pong animation)
-- Tự động đồng bộ thời gian qua NTP (Network Time Protocol)
-- **Backup Thời Gian Thực (RTC)**: Tích hợp module DS1302 giúp giữ giờ chính xác ngay cả khi mất điện hoặc mất WiFi. Tự động đồng bộ từ NTP sang RTC mỗi giờ.
-- Múi giờ GMT+7 (Việt Nam)
+Màn hình được thiết kế chia làm 4 hàng độc lập trên lưới 128x96 hiển thị song song toàn bộ thông tin:
 
-### 📅 Hiển Thị Luân Phiên (Mỗi 5 giây)
+1. **Hàng 1 (Y: 0..31): Đồng Hồ Thời Gian**
+   - Định dạng `Giờ:Phút:Giây` với font chữ lớn **Verdana Bold 14pt Việt Hóa**.
+   - Dấu hai chấm `:` chuyển động trượt dọc mượt mà (sliding animation).
+   - Tự động đồng bộ thời gian qua NTP (Network Time Protocol) và sao lưu vào **RTC DS1302** (Backup thời gian thực khi mất điện).
+   
+2. **Hàng 2 (Y: 32..47): Lịch Dương & Lịch Âm**
+   - Phía trái hiển thị Thứ và Ngày/Tháng (`T.Hai, 26/05` hoặc `CN, 26/05`).
+   - Phía phải hiển thị ngày âm lịch dạng ngày/tháng (`AL:10/04`).
+   - Sử dụng font **Verdana 8pt Việt Hóa** hiển thị tiếng Việt có dấu hoàn hảo.
 
-Luân phiên hiển thị 4 chế độ:
+3. **Hàng 3 (Y: 48..63): Thời Tiết & Cảm Biến**
+   - Phía trái: Nhiệt độ & Độ ẩm thực tế trong phòng đọc từ cảm biến **AHT10** kèm biểu tượng Ngôi nhà (🏠).
+   - Phía phải: Nhiệt độ & Độ ẩm ngoài trời lấy từ **Open-Meteo API** kèm biểu tượng Cây thông (🌲).
+   - Sử dụng font **Verdana 8pt Việt Hóa** sắc nét.
 
-1. **Thứ và Ngày/Tháng**: "Thứ 2, 18/01" hoặc "CNhật, 18/01"
-2. **Thời Tiết Ngoài Trời**: Biểu tượng cây (🌲) kèm nhiệt độ/độ ẩm từ API.
-3. **Môi Trường Trong Nhà**: Biểu tượng nhà (🏠) kèm nhiệt độ/độ ẩm thực tế từ cảm biến AHT10.
-4. **Âm Lịch**: "AL18/12/26" (ngày/tháng/năm âm lịch)
+4. **Hàng 4 (Y: 64..95): Chữ chạy Marquee tự chọn**
+   - Chữ chạy ngang cuộn từ phải sang trái mượt mà với font **Verdana 10pt Việt Hóa** lớn, dễ đọc.
+   - Nội dung chữ chạy được người dùng thay đổi trực tiếp qua giao diện Web UI.
 
-### 🌈 Hiệu Ứng & Giao Diện
-
-- Gradient màu rainbow tự động chuyển đổi giữa các chế độ.
-- Biểu tượng (Icons) tùy chỉnh thay thế cho các nhãn văn bản (O:, I:).
-- Spacing tối ưu, dấu chấm thập phân chỉ chiếm 1 pixel giúp hiển thị gọn gàng.
-- **Background Tasks**: Sử dụng FreeRTOS Tasks để đọc cảm biến và lấy dữ liệu thời tiết ở background, đảm bảo màn hình LED không bao giờ bị nháy (flicker).
+### 🌈 Hiệu ứng & Hiển thị nâng cao
+- **Anti-Jitter:** Các số giờ, phút, giây được vẽ ở vị trí cố định để chống rung/lắc chữ khi số thay đổi.
+- **Gradient Rainbow:** Các vùng chữ tự động đổi sắc màu theo dải màu HSV uyển chuyển.
+- **Double Buffering:** Tránh hiện tượng nháy màn hình nhờ cơ chế quét DMA của ESP32 kết hợp background tasks (FreeRTOS).
+- **Phông chữ Verdana Việt Hóa:** Đã tích hợp bộ font Unicode tiếng Việt đầy đủ dấu (Verdana 8pt, 10pt, 14pt Bold).
 
 ### 🌤️ Thông Tin Thời Tiết & Cảm Biến
-
 - **Ngoài trời**: Tự động lấy dữ liệu từ Open-Meteo API (cập nhật mỗi 10 phút).
-- **Trong nhà**: Đọc trực tiếp từ cảm biến AHT10 (cập nhật mỗi 20 giây).
+- **Trong nhà**: Đọc trực tiếp từ cảm biến AHT10 (cập nhật mỗi 20 giây ở background).
 - Hiển thị nhiệt độ (°C) và độ ẩm (%).
 
 ### 📱 Cấu Hình Qua Web
@@ -64,6 +67,17 @@ Luân phiên hiển thị 4 chế độ:
 - Tự động chuyển sang AP Mode để cấu hình lại.
 
 ## ✅ Checklist Tính Năng Đã Hoàn Thành
+
+### Lưới 128x96 & Font Việt Hóa (v3.0.0)
+
+- [x] Ánh xạ tọa độ ảo sang chuỗi panel vật lý ghép nối tiếp (Serpentine 3x2)
+- [x] Hỗ trợ hiển thị đồng thời 4 hàng thông tin độc lập không cần luân phiên
+- [x] Đồng hồ số lớn bằng font Verdana 14pt Bold
+- [x] Lịch âm và lịch dương hiển thị song song
+- [x] Nhiệt độ/độ ẩm cảm biến trong nhà và ngoài trời hiển thị song song kèm icon
+- [x] Chữ chạy (marquee) tiếng Việt hàng 4 với font Verdana 10pt
+- [x] Tích hợp ô chỉnh chữ chạy tùy chọn trên Web UI và lưu vào NVS
+- [x] Chuyển đổi mã Unicode tiếng Việt sang bảng mã custom 8-bit
 
 ### Hiển Thị & Giao Diện (v2.1.0)
 
@@ -170,61 +184,78 @@ Danh sách linh kiện - phần cứng sử dụng: [Google Sheet](https://docs.
 
 ### Linh Kiện Chính
 
-| Linh Kiện         | Mô Tả                             |
-| ----------------- | --------------------------------- |
-| ESP32 DevKit V1   | Board điều khiển chính            |
-| LED Matrix P5     | 64x32 pixels, HUB75 interface     |
-| Module RTC DS1302 | Giữ giờ khi mất điện              |
-| Cảm biến AHT10    | Đo nhiệt độ/độ ẩm trong nhà (I2C) |
-| Nguồn 5V/5A       | Cấp nguồn cho LED Matrix và ESP32 |
+| Linh Kiện         | Mô Tả                                                                        |
+| ----------------- | ---------------------------------------------------------------------------- |
+| ESP32-S3 / ESP32  | Khuyên dùng ESP32-S3 (bản 16MB Flash, 8MB PSRAM) để chạy mượt mà nhất        |
+| LED Matrix P5     | 6 panel 64x32 pixels ghép thành lưới 128x96 (3 panel ngang, 2 hàng dọc)      |
+| Module RTC DS1302 | Giữ giờ khi mất điện                                                         |
+| Cảm biến AHT10    | Đo nhiệt độ/độ ẩm trong nhà (I2C)                                            |
+| Nguồn 5V/10A+     | Cấp nguồn cho 6 panel LED Matrix và ESP32 (Dòng tải khuyên dùng >= 10A)        |
 
 ### Sơ Đồ Kết Nối
 
 #### 1. LED Matrix (HUB75)
 
-| HUB75 Pin | ESP32 GPIO | Chức Năng     |
-| --------- | ---------- | ------------- |
-| R1        | GPIO25     | Red Data 1    |
-| G1        | GPIO26     | Green Data 1  |
-| B1        | GPIO27     | Blue Data 1   |
-| R2        | GPIO14     | Red Data 2    |
-| G2        | GPIO12     | Green Data 2  |
-| B2        | GPIO13     | Blue Data 2   |
-| A         | GPIO23     | Address A     |
-| B         | GPIO19     | Address B     |
-| C         | GPIO5      | Address C     |
-| D         | GPIO17     | Address D     |
-| CLK       | GPIO16     | Clock         |
-| LAT       | GPIO4      | Latch         |
-| OE        | GPIO15     | Output Enable |
-| GND       | GND        | Ground        |
+| HUB75 Pin | ESP32-S3 GPIO | ESP32 (Thường) | Chức Năng     |
+| --------- | ------------- | -------------- | ------------- |
+| **R1**    | GPIO4         | GPIO25         | Red Data 1    |
+| **G1**    | GPIO5         | GPIO26         | Green Data 1  |
+| **B1**    | GPIO6         | GPIO27         | Blue Data 1   |
+| **R2**    | GPIO7         | GPIO14         | Red Data 2    |
+| **G2**    | GPIO15        | GPIO12         | Green Data 2  |
+| **B2**    | GPIO16        | GPIO13         | Blue Data 2   |
+| **A**     | GPIO18        | GPIO23         | Address A     |
+| **B**     | GPIO8         | GPIO19         | Address B     |
+| **C**     | GPIO3         | GPIO5          | Address C     |
+| **D**     | GPIO42        | GPIO17         | Address D     |
+| **CLK**   | GPIO41        | GPIO16         | Clock         |
+| **LAT**   | GPIO40        | GPIO4          | Latch         |
+| **OE**    | GPIO2         | GPIO15         | Output Enable |
+| **GND**   | GND           | GND            | Ground        |
+
+#### Sơ đồ lắp đặt chuỗi Panel (Serpentine Mapping):
+Các panel được kết nối nối tiếp bằng cáp HUB75 theo thứ tự từ nguồn phát tín hiệu (ESP32):
+```text
+  [ESP32] ──► Panel 1 (Top-Left) ──► Panel 2 (Top-Right)
+                                          │
+  [Cáp nối hàng] ◄────────────────────────┘
+        │
+        ▼
+  Panel 4 (Mid-Left)  ◄───────────── Panel 3 (Mid-Right)
+        │
+  [Cáp nối hàng] 
+        ▼
+  Panel 5 (Bot-Left)  ─────────────► Panel 6 (Bot-Right)
+```
+*Lớp `CustomMatrixPanel` trong dự án tự động chuyển đổi tọa độ ảo (0-127, 0-95) thành địa chỉ pixel vật lý phù hợp với sơ đồ đi dây này.*
 
 #### 2. Module RTC DS1302
 
-| DS1302 Pin | ESP32 GPIO |
-| ---------- | ---------- |
-| VCC        | 3.3V       |
-| GND        | GND        |
-| CLK        | GPIO32     |
-| DAT        | GPIO33     |
-| RST        | GPIO2      |
+| DS1302 Pin | ESP32-S3 / ESP32 GPIO |
+| ---------- | --------------------- |
+| VCC        | 3.3V                  |
+| GND        | GND                   |
+| CLK        | GPIO32                |
+| DAT        | GPIO33                |
+| RST        | GPIO2                 |
 
 #### 3. Cảm biến AHT10 (I2C)
 
-| AHT10 Pin | ESP32 GPIO |
-| --------- | ---------- |
-| VCC       | 3.3V       |
-| GND       | GND        |
-| SDA       | GPIO21     |
-| SCL       | GPIO22     |
+| AHT10 Pin | ESP32-S3 GPIO | ESP32 (Thường) |
+| --------- | ------------- | -------------- |
+| VCC       | 3.3V          | 3.3V           |
+| GND       | GND           | GND            |
+| SDA       | GPIO8 / SDA   | GPIO21         |
+| SCL       | GPIO9 / SCL   | GPIO22         |
 
-#### 4. Nút Reset
+#### 4. Nút Reset Cấu Hình
 
 - Sử dụng nút **BOOT** có sẵn trên board ESP32 (GPIO 0)
-- Nhấn một lần để reset về chế độ cấu hình
+- Nhấn một lần để reset về chế độ cấu hình AP Mode
 
 > [!CAUTION]
-> **KHÔNG** cấp nguồn cho LED Matrix từ ESP32! LED Matrix cần nguồn 5V riêng biệt với dòng điện lớn (2-4A). ESP32 chỉ cung cấp tín hiệu điều khiển.
+> **KHÔNG** cấp nguồn cho LED Matrix từ ESP32! Chuỗi 6 panel LED Matrix cần nguồn 5V riêng biệt với dòng điện lớn (tối thiểu 10A ở độ sáng cao). ESP32 chỉ cung cấp tín hiệu điều khiển.
+> Nối chung chân GND của nguồn, LED Matrix và ESP32.
 
 Chi tiết kết nối phần cứng: xem [LED_MATRIX_SETUP.md](LED_MATRIX_SETUP.md)
 

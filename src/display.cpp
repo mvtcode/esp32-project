@@ -3,15 +3,34 @@
 
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 32
-#define PANEL_CHAIN 1
+#define PANEL_CHAIN 6
 
 // Global variables
 MatrixPanel_I2S_DMA *dma_display = nullptr;
+CustomMatrixPanel *virtual_display = nullptr;
 uint8_t globalHue = 0;
 
 // Initialize LED Matrix display with HUB75 configuration
 void initDisplay() {
   HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, PANEL_CHAIN);
+  
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+  // Default ESP32-S3 HUB75 pins
+  mxconfig.gpio.r1 = 4;
+  mxconfig.gpio.g1 = 5;
+  mxconfig.gpio.b1 = 6;
+  mxconfig.gpio.r2 = 7;
+  mxconfig.gpio.g2 = 15;
+  mxconfig.gpio.b2 = 16;
+  mxconfig.gpio.a = 18;
+  mxconfig.gpio.b = 8;
+  mxconfig.gpio.c = 3;
+  mxconfig.gpio.d = 42;
+  mxconfig.gpio.clk = 41;
+  mxconfig.gpio.lat = 40;
+  mxconfig.gpio.oe = 2;
+#else
+  // Original ESP32 DevKit pins
   mxconfig.gpio.r1 = 25;
   mxconfig.gpio.g1 = 26;
   mxconfig.gpio.b1 = 27;
@@ -25,20 +44,25 @@ void initDisplay() {
   mxconfig.gpio.clk = 16;
   mxconfig.gpio.lat = 4;
   mxconfig.gpio.oe = 15;
+#endif
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   if (!dma_display->begin()) {
     Serial.println("Failed to initialize DMA Display!");
   }
+  
+  // Initialize virtual display for 128x96 mapping
+  virtual_display = new CustomMatrixPanel(dma_display, 128, 96);
+  
   // Set temporary brightness during boot (will be overridden by config)
   dma_display->setBrightness8(50);  // Temporary low brightness
-  dma_display->clearScreen();
+  virtual_display->fillScreen(virtual_display->color565(0, 0, 0));
 
-  dma_display->setCursor(2, 8);
-  dma_display->setTextColor(dma_display->color565(255, 0, 0));
-  dma_display->print("BOOTING...");
-  dma_display->setCursor(6, 20);
-  dma_display->print("v 2.2.0");
+  virtual_display->setCursor(16, 20);
+  virtual_display->setTextColor(virtual_display->color565(255, 0, 0));
+  virtual_display->print("BOOTING...");
+  virtual_display->setCursor(20, 36);
+  virtual_display->print("v 3.0.0 (128x96)");
   delay(500);
 }
 
@@ -117,47 +141,46 @@ void drawACircumflexDotBelow(int16_t x, int16_t y, uint16_t color) {
 // Draw outdoor weather icon (tree - 5x9 pixels)
 void drawOutdoorIcon(int16_t x, int16_t y, uint16_t color) {
   // Tree top (triangle shape)
-  dma_display->drawPixel(x + 3, y - 1, color);      // Peak
-  dma_display->drawPixel(x + 2, y, color);  // Second row
-  dma_display->drawPixel(x + 4, y, color);
+  virtual_display->drawPixel(x + 3, y - 1, color);      // Peak
+  virtual_display->drawPixel(x + 2, y, color);  // Second row
+  virtual_display->drawPixel(x + 4, y, color);
 
-  dma_display->drawPixel(x + 1, y + 1, color);  // third row
-  dma_display->drawPixel(x + 5, y + 1, color);
+  virtual_display->drawPixel(x + 1, y + 1, color);  // third row
+  virtual_display->drawPixel(x + 5, y + 1, color);
 
-  dma_display->drawLine(x, y + 2, x + 6, y + 2, color); // Fourth row
+  virtual_display->drawLine(x, y + 2, x + 6, y + 2, color); // Fourth row
 
-  dma_display->drawPixel(x + 2, y + 3, color);  // Fifth row
-  dma_display->drawPixel(x + 4, y + 3, color);
+  virtual_display->drawPixel(x + 2, y + 3, color);  // Fifth row
+  virtual_display->drawPixel(x + 4, y + 3, color);
 
-  dma_display->drawPixel(x + 1, y + 4, color);  // Six`th row
-  dma_display->drawPixel(x + 5, y + 4, color);
+  virtual_display->drawPixel(x + 1, y + 4, color);  // Six`th row
+  virtual_display->drawPixel(x + 5, y + 4, color);
 
-  dma_display->drawLine(x, y + 5, x + 6, y + 5, color); // Seventh row
+  virtual_display->drawLine(x, y + 5, x + 6, y + 5, color); // Seventh row
 
-  dma_display->drawPixel(x + 3, y + 6, color);
+  virtual_display->drawPixel(x + 3, y + 6, color);
 }
 
 // Draw indoor icon (home - 5x6 pixels)
 void drawIndoorIcon(int16_t x, int16_t y, uint16_t color) {
   // Roof (triangle)
-  dma_display->drawPixel(x + 3, y, color);      // Top peak
-  dma_display->drawPixel(x + 2, y + 1, color);  // Left slope
-  dma_display->drawPixel(x + 4, y + 1, color);  // Right slope
-  dma_display->drawPixel(x + 1, y + 2, color);      // Left base
-  dma_display->drawPixel(x + 5, y + 2, color);  // Right base
+  virtual_display->drawPixel(x + 3, y, color);      // Top peak
+  virtual_display->drawPixel(x + 2, y + 1, color);  // Left slope
+  virtual_display->drawPixel(x + 4, y + 1, color);  // Right slope
+  virtual_display->drawPixel(x + 1, y + 2, color);      // Left base
+  virtual_display->drawPixel(x + 5, y + 2, color);  // Right base
 
-  dma_display->drawPixel(x, y + 3, color);  // 
-  dma_display->drawPixel(x + 6, y + 3, color);  // 
+  virtual_display->drawPixel(x, y + 3, color);  // 
+  virtual_display->drawPixel(x + 6, y + 3, color);  // 
   
   // House body (square)
-  // dma_display->drawLine(x, y + 3, x + 6, y + 3, color);      // line Top
-  dma_display->drawLine(x + 1, y + 3, x + 1, y + 6, color);      // Left wall
-  dma_display->drawLine(x + 5, y + 3, x + 5, y + 6, color); // Right wall
-  dma_display->drawLine(x + 1, y + 6, x + 5, y + 6, color);  // Bottom
+  virtual_display->drawLine(x + 1, y + 3, x + 1, y + 6, color);      // Left wall
+  virtual_display->drawLine(x + 5, y + 3, x + 5, y + 6, color); // Right wall
+  virtual_display->drawLine(x + 1, y + 6, x + 5, y + 6, color);  // Bottom
   
   // Door
-  dma_display->drawPixel(x + 3, y + 5, color);
-  dma_display->drawPixel(x + 3, y + 6, color);
+  virtual_display->drawPixel(x + 3, y + 5, color);
+  virtual_display->drawPixel(x + 3, y + 6, color);
 }
 
 // Set display brightness (10-100%)

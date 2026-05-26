@@ -475,6 +475,16 @@ void setupWebServer() {
         }
         Serial.println("───────────────────────────────────────");
 
+        // Extract marquee running text
+        if (doc.containsKey("marqueeText")) {
+          String marquee = doc["marqueeText"].as<String>();
+          marquee.toCharArray(newConfig.marqueeText, sizeof(newConfig.marqueeText));
+          Serial.printf("📝 Marquee: %s\n", newConfig.marqueeText);
+        } else {
+          strcpy(newConfig.marqueeText, "Chào mừng bạn đến với ESP32 LED Matrix Clock!");
+        }
+        Serial.println("───────────────────────────────────────");
+
         // Validate and save
         if (!isConfigValid(newConfig)) {
           Serial.println("❌ Invalid configuration received");

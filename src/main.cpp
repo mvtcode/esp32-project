@@ -11,6 +11,12 @@
 #include <WiFi.h>
 #include <time.h>
 
+// Custom Vietnamese fonts and mapper
+#include "Verdana_Vietnamese8pt.h"
+#include "Verdana_Vietnamese10pt.h"
+#include "Verdana_Bold14pt.h"
+#include "vietnamese_helper.h"
+
 // Configuration data loaded from NVS
 ConfigData deviceConfig;
 
@@ -22,15 +28,23 @@ int lunarMonth = 0;
 int lunarYear = 0;
 int lastCalculatedDay = -1; // Cache: chỉ tính lại khi sang ngày mới
 
-// Functions moved to display.cpp, wifi_manager.cpp, and weather.cpp
-
-// Lunar calendar implementation moved to lunar_calendar.cpp
-// WiFi connection moved to wifi_manager.cpp
-// Weather fetching moved to weather.cpp
+// Helper function to get day of week string in Vietnamese
+String getDayOfWeekStr(int wday) {
+  switch (wday) {
+    case 0: return "CN";
+    case 1: return "T.Hai";
+    case 2: return "T.Ba";
+    case 3: return "T.Tư";
+    case 4: return "T.Năm";
+    case 5: return "T.Sáu";
+    case 6: return "T.Bảy";
+    default: return "";
+  }
+}
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n\n=== ESP32 LED Matrix Clock v2.0 ===");
+  Serial.println("\n\n=== ESP32 LED Matrix Clock 128x96 ===");
 
   // 1. Initialize LED Matrix first
   initDisplay();
@@ -49,15 +63,16 @@ void setup() {
 
     isConfigMode = true;
 
-    // Display CONFIG MODE on LED matrix
-    dma_display->clearScreen();
-    dma_display->setTextSize(1);
-    dma_display->setCursor(2, 4);
-    dma_display->setTextColor(dma_display->color565(255, 128, 0));
-    dma_display->print("CONFIG");
-    dma_display->setCursor(2, 14);
-    dma_display->print("MODE");
-    dma_display->setCursor(2, 24);
+    // Display AP mode status on virtual screen
+    virtual_display->fillScreen(virtual_display->color565(0, 0, 0));
+    virtual_display->setTextSize(1);
+    virtual_display->setTextColor(virtual_display->color565(255, 128, 0));
+    virtual_display->setCursor(4, 20);
+    virtual_display->print("CONFIG MODE");
+    virtual_display->setCursor(4, 40);
+    virtual_display->print("AP: Clock-2026");
+    virtual_display->setCursor(4, 60);
+    virtual_display->print("IP: 192.168.4.1");
     delay(1000);
 
     // Setup AP and web server
@@ -65,7 +80,7 @@ void setup() {
     setupWebServer();
     setupCaptivePortal(); // Enable captive portal DNS redirect
 
-    Serial.println("\nConnect to WiFi: ESP32-Clock-Config");
+    Serial.println("\nConnect to WiFi: Clock-2026");
     Serial.println("Then visit: http://192.168.4.1");
     Serial.println("\nWaiting for configuration...\n");
   } else {
@@ -92,14 +107,14 @@ void setup() {
     // Initialize indoor sensor
     initIndoorSensor();
     
-    // Start indoor sensor background task (always, regardless of WiFi)
+    // Start indoor sensor background task
     startIndoorSensorTask();
     
     // Initialize weather system
     if (WiFi.status() == WL_CONNECTED) {
       initWeather(weatherApiUrl);
       
-      // Sync RTC from NTP (with timeout to prevent blocking)
+      // Sync RTC from NTP
       Serial.println("Syncing time from NTP...");
       struct tm timeinfo;
       if (getLocalTime(&timeinfo, 5000)) { // 5 second timeout
@@ -130,60 +145,23 @@ void loop() {
       blinkState = !blinkState;
       lastBlink = millis();
 
-      dma_display->clearScreen();
-      dma_display->setTextSize(1);
+      virtual_display->fillScreen(virtual_display->color565(0, 0, 0));
+      virtual_display->setFont(&Verdana_Vietnamese8pt);
+      
+      // Line 1: Header (orange)
+      virtual_display->setTextColor(virtual_display->color565(255, 128, 0));
+      virtual_display->setCursor(4, 22);
+      virtual_display->print(utf8ToCustom("Cấu hình WiFi:"));
 
-      // Dòng 1: "Conf wifi:" - cố định, không nháy
-      dma_display->setCursor(2, 4);
-      dma_display->setTextColor(
-          dma_display->color565(255, 128, 0)); // Màu cam cố định
-      dma_display->print("Conf wifi:");
+      // Line 2: AP name (blinking white/gray)
+      virtual_display->setTextColor(blinkState ? virtual_display->color565(255, 255, 255) : virtual_display->color565(64, 64, 64));
+      virtual_display->setCursor(4, 46);
+      virtual_display->print(utf8ToCustom("WiFi: Clock-2026"));
 
-      // Dòng 2: "Clock-2026" - nháy
-      dma_display->setCursor(2, 14);
-      dma_display->setTextColor(
-          blinkState ? dma_display->color565(255, 255, 255)
-                     : dma_display->color565(64, 64, 64)); // Màu trắng nháy
-      dma_display->print("Clock-2026");
-
-      // Dòng 3: Hiển thị IP address với dấu chấm chỉ 1 pixel
-      uint16_t ipColor = dma_display->color565(0, 255, 255);
-      int currentX = 5;
-
-      // "192"
-      dma_display->setCursor(currentX, 24);
-      dma_display->setTextColor(ipColor);
-      dma_display->print("192");
-      currentX += 18; // 3 chữ số * 6 pixels = 18px
-
-      // Dấu chấm (1 pixel)
-      dma_display->drawPixel(currentX, 30, ipColor);
-      currentX += 2; // 1px cho chấm + 1px khoảng cách
-
-      // "168"
-      dma_display->setCursor(currentX, 24);
-      dma_display->setTextColor(ipColor);
-      dma_display->print("168");
-      currentX += 18; // 3 chữ số * 6 pixels = 18px
-
-      // Dấu chấm (1 pixel)
-      dma_display->drawPixel(currentX, 30, ipColor);
-      currentX += 2;
-
-      // "4"
-      dma_display->setCursor(currentX, 24);
-      dma_display->setTextColor(ipColor);
-      dma_display->print("4");
-      currentX += 6; // 1 chữ số * 6 pixels = 6px
-
-      // Dấu chấm (1 pixel)
-      dma_display->drawPixel(currentX, 30, ipColor);
-      currentX += 2;
-
-      // "1"
-      dma_display->setCursor(currentX, 24);
-      dma_display->setTextColor(ipColor);
-      dma_display->print("1");
+      // Line 3: IP address (cyan)
+      virtual_display->setTextColor(virtual_display->color565(0, 255, 255));
+      virtual_display->setCursor(4, 70);
+      virtual_display->print(utf8ToCustom("Web: 192.168.4.1"));
     }
 
     handleDNS(); // Process DNS requests for captive portal
@@ -191,8 +169,7 @@ void loop() {
     return;
   }
 
-  // Normal operation mode - but check WiFi first
-  // If WiFi is disconnected, try to reconnect
+  // Normal operation mode - check WiFi connection
   if (WiFi.status() != WL_CONNECTED) {
     static unsigned long lastReconnectAttempt = 0;
     unsigned long now = millis();
@@ -204,19 +181,32 @@ void loop() {
       connectWiFi(deviceConfig);
     }
     
-    // Show "No WiFi" message while waiting
-    dma_display->clearScreen();
-    dma_display->setTextSize(1);
-    dma_display->setCursor(2, 4);
-    dma_display->setTextColor(dma_display->color565(255, 100, 0));
-    dma_display->print("No WiFi");
-    dma_display->setCursor(2, 14);
-    dma_display->print("Press");
-    dma_display->setCursor(2, 24);
-    dma_display->print("BOOT");
+    // Show premium "No WiFi" reconnection status screen
+    static int dots = 0;
+    static unsigned long lastDot = 0;
+    if (millis() - lastDot > 500) {
+      dots = (dots + 1) % 4;
+      lastDot = millis();
+    }
+
+    virtual_display->fillScreen(virtual_display->color565(0, 0, 0));
+    virtual_display->setFont(&Verdana_Vietnamese8pt);
+    
+    virtual_display->setTextColor(virtual_display->color565(255, 100, 0));
+    virtual_display->setCursor(10, 36);
+    virtual_display->print(utf8ToCustom("Mất kết nối WiFi"));
+    
+    virtual_display->setTextColor(virtual_display->color565(200, 200, 200));
+    virtual_display->setCursor(10, 56);
+    virtual_display->print(utf8ToCustom("Đang kết nối lại"));
+    
+    virtual_display->setCursor(10, 76);
+    String dotStr = "";
+    for (int d = 0; d < dots; d++) dotStr += ".";
+    virtual_display->print(dotStr);
     
     delay(100);
-    return; // Skip rest of loop until WiFi is connected
+    return;
   }
   
   // Get time from NTP or RTC fallback
@@ -225,7 +215,6 @@ void loop() {
   static unsigned long lastRTCSync = 0;
   
   if (WiFi.status() == WL_CONNECTED) {
-    // Try to get NTP time with a short timeout to avoid blocking the display loop
     hasTime = getLocalTime(&timeinfo, 100);
     
     if (hasTime) {
@@ -235,92 +224,40 @@ void loop() {
         lastRTCSync = millis();
       }
     } else {
-      // WiFi connected but NTP not synced yet - fallback to RTC
       hasTime = getRTCTime(timeinfo);
-      static unsigned long lastNtpFailPrint = 0;
-      if (hasTime && millis() - lastNtpFailPrint > 10000) {
-        Serial.println("NTP failed (WiFi connected), using RTC");
-        lastNtpFailPrint = millis();
-      }
     }
   } else {
-    // WiFi down - use RTC as fallback
     hasTime = getRTCTime(timeinfo);
-    if (hasTime) {
-      static unsigned long lastOfflinePrint = 0;
-      if (millis() - lastOfflinePrint > 10000) {
-        Serial.println("Using RTC time (WiFi offline)");
-        lastOfflinePrint = millis();
-      }
-    }
   }
 
   // Apply sleep mode logic if enabled
   if (deviceConfig.sleepEnabled && hasTime) {
-    // Calculate current time in minutes from midnight
     uint16_t currentMinute = timeinfo.tm_hour * 60 + timeinfo.tm_min;
     
-    // Debug logging every 10 seconds
     static unsigned long lastDebugPrint = 0;
     bool shouldPrint = (millis() - lastDebugPrint > 10000);
     
-    if (shouldPrint) {
-      Serial.printf("\n╔════════════════════════════════╗\n");
-      Serial.printf("║   SLEEP MODE DEBUG - ACTIVE   ║\n");
-      Serial.printf("╚════════════════════════════════╝\n");
-      Serial.printf("Current Time: %02d:%02d (%d min from midnight)\n", 
-        timeinfo.tm_hour, timeinfo.tm_min, currentMinute);
-      Serial.printf("Sleep Period: %02d:%02d → %02d:%02d (%d → %d min)\n",
-        deviceConfig.sleepStartMinute / 60, deviceConfig.sleepStartMinute % 60,
-        deviceConfig.sleepEndMinute / 60, deviceConfig.sleepEndMinute % 60,
-        deviceConfig.sleepStartMinute, deviceConfig.sleepEndMinute);
-      Serial.printf("Normal Brightness: %d%%\n", deviceConfig.brightness);
-      Serial.printf("Sleep Brightness: %d%%\n", deviceConfig.sleepBrightness);
-    }
-    
-    // Check if we're in sleep period (handles overnight sleep)
     bool inSleepPeriod = false;
     if (deviceConfig.sleepStartMinute <= deviceConfig.sleepEndMinute) {
-      // Same day sleep (e.g., 09:00 - 09:30)
       inSleepPeriod = (currentMinute >= deviceConfig.sleepStartMinute && 
                        currentMinute < deviceConfig.sleepEndMinute);
     } else {
-      // Overnight sleep (e.g., 22:00 - 07:00)
       inSleepPeriod = (currentMinute >= deviceConfig.sleepStartMinute || 
                        currentMinute < deviceConfig.sleepEndMinute);
     }
     
-    if (shouldPrint) {
-      Serial.printf("─────────────────────────────────\n");
-      Serial.printf("Status: %s\n", inSleepPeriod ? "🌙 IN SLEEP MODE" : "☀️  AWAKE (Normal)");
-      Serial.printf("─────────────────────────────────\n");
-    }
-    
     if (inSleepPeriod) {
       if (deviceConfig.sleepBrightness == 0) {
-        // Turn off display completely
-        if (shouldPrint) {
-          Serial.println("Action: Display OFF (sleep brightness = 0)");
-          Serial.println("════════════════════════════════\n");
-        }
-        dma_display->clearScreen();
+        virtual_display->fillScreen(0);
         delay(100);
-        lastDebugPrint = millis();
+        if (shouldPrint) {
+          lastDebugPrint = millis();
+        }
         return; // Skip rendering
       } else {
-        // Apply sleep brightness
-        if (shouldPrint) {
-          Serial.printf("Action: Apply Sleep Brightness = %d%%\n", deviceConfig.sleepBrightness);
-          Serial.println("════════════════════════════════\n");
-        }
         setDisplayBrightness(deviceConfig.sleepBrightness);
       }
     } else {
-      // Not in sleep period - use normal brightness
-      if (shouldPrint) {
-        Serial.printf("Action: Apply Normal Brightness = %d%%\n", deviceConfig.brightness);
-        Serial.println("════════════════════════════════\n");
-      }
       setDisplayBrightness(deviceConfig.brightness);
     }
     
@@ -328,300 +265,185 @@ void loop() {
       lastDebugPrint = millis();
     }
   } else if (hasTime) {
-    // Sleep mode not enabled - still need to apply normal brightness
-    static bool printedOnce = false;
-    if (!printedOnce) {
-      Serial.println("\n⚠️  Sleep Mode: DISABLED in config");
-      Serial.println("   Using normal brightness always\n");
-      printedOnce = true;
-    }
-    // Apply normal brightness even when sleep mode is off
     setDisplayBrightness(deviceConfig.brightness);
   }
 
-  dma_display->clearScreen();
-
-  if (hasTime) {
-    // Phần vẽ đồng hồ (Giữ nguyên logic cũ của bạn)
-    char hStr[3], mStr[3], sStr[3];
-    sprintf(hStr, "%02d", timeinfo.tm_hour);
-    sprintf(mStr, "%02d", timeinfo.tm_min);
-    sprintf(sStr, "%02d", timeinfo.tm_sec);
-
-    dma_display->setTextSize(2);
-    // Vẽ Giờ
-    dma_display->setCursor(1, 2);
-    dma_display->setTextColor(hsvToRgb565(globalHue, 255, 255));
-    dma_display->print(hStr);
-    // Dấu :
-    // dma_display->setCursor(21, 2);
-    // dma_display->print(":");
-    // Dấu : với hiệu ứng chạy vào nhau
-    // Tính toán vị trí dựa trên millisecond trong giây (0-999ms)
-    unsigned long ms = millis() % 1000; // Lặp lại mỗi giây
-    float progress = ms / 1000.0;       // 0.0 -> 1.0
-
-    // Tạo hiệu ứng đi xuống rồi lên (ping-pong)
-    float offset;
-    if (progress < 0.5) {
-      // Nửa đầu: chạy vào nhau (0 -> 1)
-      offset = progress * 2.0; // 0.0 -> 1.0
-    } else {
-      // Nửa sau: chạy ra (1 -> 0)
-      offset = (1.0 - progress) * 2.0; // 1.0 -> 0.0
-    }
-
-    // Vị trí gốc của dấu : khi size=2 là tại (21, 2)
-    // Với textSize(2), mỗi pixel có kích thước 2x2
-    int baseX = 25;      // Tâm của dấu :
-    int topDotY = 4;     // Vị trí gốc của chấm trên
-    int bottomDotY = 12; // Vị trí gốc của chấm dưới
-    int maxMove = 5;     // Khoảng cách tối đa di chuyển (pixels)
-
-    // Tính vị trí hiện tại
-    int currentTopY = topDotY + (int)(offset * maxMove);
-    int currentBottomY = bottomDotY - (int)(offset * maxMove);
-
-    // Vẽ hai chấm với kích thước 2x2 (giống textSize(2))
-    uint16_t colonColor = hsvToRgb565(globalHue + 20, 255, 255);
-    dma_display->fillRect(baseX, currentTopY, 2, 2, colonColor);
-    dma_display->fillRect(baseX, currentBottomY, 2, 2, colonColor);
-    // Vẽ Phút
-    dma_display->setCursor(29, 2);
-    dma_display->setTextColor(hsvToRgb565(globalHue + 40, 255, 255));
-    dma_display->print(mStr);
-    // Vẽ Giây (với gradient cho từng chữ số)
-    dma_display->setTextSize(1);
-    // Chữ số giây thứ nhất
-    dma_display->setCursor(52, 9);
-    dma_display->setTextColor(hsvToRgb565(globalHue + 80, 255, 255));
-    dma_display->print(sStr[0]);
-    // Chữ số giây thứ hai
-    dma_display->setCursor(58, 9);
-    dma_display->setTextColor(hsvToRgb565(globalHue + 100, 255, 255));
-    dma_display->print(sStr[1]);
-
-    // Vẽ dòng 2: Luân phiên giữa Thứ/Ngày và Nhiệt độ/Độ ẩm mỗi 5 giây
-    dma_display->setTextSize(1);
-
-    // Tính toán chế độ hiển thị dựa trên thời gian (5 giây mỗi chế độ, 4 modes)
-    unsigned long currentTime = millis() / 5000; // Chia cho 5000ms = 5 giây
-    int displayMode =
-        currentTime % 4; // 0 = ngày/tháng, 1 = thời tiết ngoài, 2 = thời tiết trong, 3 = âm lịch
-
-    // Thread-safe check for weather data availability
-    float tempOutdoor = 0.0;
-    int humOutdoor = 0;
-    bool showWeather = getWeatherData(tempOutdoor, humOutdoor);
+  // Non-blocking render timer (~28 FPS / 35ms tick)
+  static unsigned long lastRender = 0;
+  if (millis() - lastRender >= 35) {
+    lastRender = millis();
     
-    // Pre-fetch indoor sensor data to avoid blocking during display
-    float tempIndoor = 0.0;
-    int humIndoor = 0;
-    bool showIndoor = getIndoorData(tempIndoor, humIndoor);
+    // Increment global hue for gradient transitions
+    globalHue += 1;
+    
+    // Clear screen
+    virtual_display->fillScreen(virtual_display->color565(0, 0, 0));
 
-    if (displayMode == 1 && showWeather) {
-      // Mode 1: Outdoor weather (from API)
-      // Hiển thị Nhiệt độ và Độ ẩm với nhãn T và H
-      // Format: "T 23.1°C  H 79%" với gradient colors
+    if (hasTime) {
+      // ==========================================
+      // ROW 1: Time (HH:MM:SS) (Y: 0..31)
+      // ==========================================
+      char hStr[3], mStr[3], sStr[3];
+      sprintf(hStr, "%02d", timeinfo.tm_hour);
+      sprintf(mStr, "%02d", timeinfo.tm_min);
+      sprintf(sStr, "%02d", timeinfo.tm_sec);
 
-      // Tách phần nguyên và phần thập phân của nhiệt độ
-      int tempInt = (int)tempOutdoor;
-      int tempDec = (int)((tempOutdoor - tempInt) * 10);
+      virtual_display->setFont(&Verdana_Bold14pt);
+      
+      // Draw Hour (X: 16)
+      virtual_display->setCursor(16, 22);
+      virtual_display->setTextColor(hsvToRgb565(globalHue, 255, 255));
+      virtual_display->print(hStr);
 
-      char tempIntStr[5], tempDecStr[2], humStr[8];
-      sprintf(tempIntStr, "%d", tempInt);
-      sprintf(tempDecStr, "%d", tempDec);
-      sprintf(humStr, "%d%%", humOutdoor);
+      // Draw Minute (X: 54)
+      virtual_display->setCursor(54, 22);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 40, 255, 255));
+      virtual_display->print(mStr);
 
-      // Bắt đầu từ vị trí cố định
-      int currentX = 1; // Bắt đầu từ pixel 1
+      // Draw Second (X: 92)
+      virtual_display->setCursor(92, 22);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 80, 255, 255));
+      virtual_display->print(sStr);
 
-      // Vẽ outdoor icon (3 bars)
-      drawOutdoorIcon(currentX + 1, 24, hsvToRgb565(globalHue + currentX * 2, 255, 255));
-      currentX += 11; // Icon (5px) + space (6px) - increased by 4px
+      // Draw Blinking/Animating Colons (X: 46 and 84)
+      unsigned long ms = millis() % 1000;
+      float progress = ms / 1000.0;
+      float offset = (progress < 0.5) ? (progress * 2.0) : ((1.0 - progress) * 2.0); // 0.0 -> 1.0 -> 0.0
+      int maxMove = 4;
+      
+      int currentTopY = 9 + (int)(offset * maxMove);
+      int currentBottomY = 17 - (int)(offset * maxMove);
+      
+      uint16_t colonColor = hsvToRgb565(globalHue + 20, 255, 255);
+      virtual_display->fillRect(46, currentTopY, 2, 2, colonColor);
+      virtual_display->fillRect(46, currentBottomY, 2, 2, colonColor);
+      virtual_display->fillRect(84, currentTopY, 2, 2, colonColor);
+      virtual_display->fillRect(84, currentBottomY, 2, 2, colonColor);
 
-      // Vẽ phần nguyên (23) - từng chữ số với gradient
-      for (int i = 0; i < strlen(tempIntStr); i++) {
-        dma_display->setCursor(currentX, 23);
-        dma_display->setTextColor(
-            hsvToRgb565(globalHue + currentX * 2, 255, 255));
-        dma_display->print(tempIntStr[i]);
-        currentX += 6;
-      }
+      // ==========================================
+      // ROW 2: Calendar (Solar & Lunar) (Y: 32..47)
+      // ==========================================
+      virtual_display->setFont(&Verdana_Vietnamese8pt);
 
-      // Vẽ dấu chấm (.) - chỉ 1 pixel
-      dma_display->drawPixel(currentX, 29,
-                             hsvToRgb565(globalHue + currentX * 2, 255, 255));
-      currentX += 2;
+      // 1. Solar Date (Left Side)
+      String solarStr = getDayOfWeekStr(timeinfo.tm_wday) + ", " + String(timeinfo.tm_mday) + "/" + String(timeinfo.tm_mon + 1);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 10, 255, 255));
+      virtual_display->setCursor(2, 43);
+      virtual_display->print(utf8ToCustom(solarStr));
 
-      // Vẽ phần thập phân (1)
-      dma_display->setCursor(currentX, 23);
-      dma_display->setTextColor(
-          hsvToRgb565(globalHue + currentX * 2, 255, 255));
-      dma_display->print(tempDecStr);
-      currentX += strlen(tempDecStr) * 6;
-
-      // Vẽ ký tự độ (°) - vòng tròn nhỏ
-      dma_display->drawCircle(currentX + 1, 24, 1,
-                              hsvToRgb565(globalHue + currentX * 2, 255, 255));
-      currentX += 3;
-
-      // Vẽ "C"
-      dma_display->setCursor(currentX, 23);
-      dma_display->setTextColor(
-          hsvToRgb565(globalHue + currentX * 2, 255, 255));
-      dma_display->print("C");
-      currentX += 10; // C (6px) + space (4px) - decreased by 4px to keep humidity position
-
-      // Vẽ độ ẩm - từng ký tự với gradient
-      for (int i = 0; i < strlen(humStr); i++) {
-        dma_display->setCursor(currentX, 23);
-        dma_display->setTextColor(
-            hsvToRgb565(globalHue + currentX * 2, 255, 255));
-        dma_display->print(humStr[i]);
-        currentX += 6;
-      }
-    } else if (displayMode == 2) {
-      // Mode 2: Indoor sensor (AHT10)
-      if (showIndoor) {
-        // Tách phần nguyên và phần thập phân của nhiệt độ (using pre-fetched data)
-        int tempInt = (int)tempIndoor;
-        int tempDec = (int)((tempIndoor - tempInt) * 10);
-        
-        char tempIntStr[5], tempDecStr[2], humStr[8];
-        sprintf(tempIntStr, "%d", tempInt);
-        sprintf(tempDecStr, "%d", tempDec);
-        sprintf(humStr, "%d%%", humIndoor);
-        
-        int currentX = 1;
-        
-        // Vẽ indoor icon (home)
-        drawIndoorIcon(currentX + 1, 23, hsvToRgb565(globalHue + currentX * 2, 255, 255));
-        currentX += 11; // Icon (5px) + space (6px) - increased by 4px
-        
-        // Vẽ phần nguyên nhiệt độ
-        for (int i = 0; i < strlen(tempIntStr); i++) {
-          dma_display->setCursor(currentX, 23);
-          dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
-          dma_display->print(tempIntStr[i]);
-          currentX += 6;
-        }
-        
-        // Vẽ dấu chấm (.) - chỉ 1 pixel
-        dma_display->drawPixel(currentX, 29, hsvToRgb565(globalHue + currentX * 2, 255, 255));
-        currentX += 2;
-        
-        // Vẽ phần thập phân
-        dma_display->setCursor(currentX, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
-        dma_display->print(tempDecStr);
-        currentX += strlen(tempDecStr) * 6;
-        
-        // Vẽ ký tự độ (°)
-        dma_display->drawCircle(currentX + 1, 24, 1, hsvToRgb565(globalHue + currentX * 2, 255, 255));
-        currentX += 3;
-        
-        // Vẽ "C"
-        dma_display->setCursor(currentX, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
-        dma_display->print("C");
-        currentX += 10; // C (6px) + space (4px) - decreased by 4px to keep humidity position
-        
-        // Vẽ độ ẩm
-        for (int i = 0; i < strlen(humStr); i++) {
-          dma_display->setCursor(currentX, 23);
-          dma_display->setTextColor(hsvToRgb565(globalHue + currentX * 2, 255, 255));
-          dma_display->print(humStr[i]);
-          currentX += 6;
-        }
-      } else {
-        // Sensor not ready
-        dma_display->setCursor(2, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + 120, 255, 255));
-        dma_display->print("I:No Sensor");
-      }
-    } else if (displayMode == 3) {
-      // Mode 3: Hiển thị Âm lịch
-      // Chỉ tính lại khi sang ngày mới (cache)
+      // 2. Lunar Date (Right Side)
       if (lastCalculatedDay != timeinfo.tm_mday) {
         solarToLunar(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1,
                      timeinfo.tm_mday, lunarDay, lunarMonth, lunarYear);
         lastCalculatedDay = timeinfo.tm_mday;
       }
-
       char lunarStr[16];
-      sprintf(lunarStr, "AL%02d/%02d/%02d", lunarDay, lunarMonth,
-              lunarYear % 100);
+      sprintf(lunarStr, "AL:%02d/%02d", lunarDay, lunarMonth);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 40, 255, 255));
+      virtual_display->setCursor(74, 43);
+      virtual_display->print(utf8ToCustom(lunarStr));
 
-      // Hiển thị với gradient
-      int currentX = 2;
+      // ==========================================
+      // ROW 3: Sensors & Weather (Y: 48..63)
+      // ==========================================
+      float tempOutdoor = 0.0;
+      int humOutdoor = 0;
+      bool showWeather = getWeatherData(tempOutdoor, humOutdoor);
+      
+      float tempIndoor = 0.0;
+      int humIndoor = 0;
+      bool showIndoor = getIndoorData(tempIndoor, humIndoor);
 
-      for (int i = 0; i < strlen(lunarStr); i++) {
-        dma_display->setCursor(currentX, 23);
-        dma_display->setTextColor(
-            hsvToRgb565(globalHue + currentX * 2, 255, 255));
-        dma_display->print(lunarStr[i]);
-        currentX += 6;
-      }
-    } else {
-      // Hiển thị Thứ và Ngày/Tháng - từng ký tự với gradient theo vị trí X
+      // 1. Indoor Data (Left Side)
+      uint16_t indoorColor = hsvToRgb565(globalHue + 60, 255, 255);
+      drawIndoorIcon(2, 50, indoorColor);
 
-      if (timeinfo.tm_wday == 0) {
-        // Chủ nhật - hiển thị "CNhật" với gradient từng ký tự
-        dma_display->setCursor(2, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + 2 * 2, 255, 255));
-        dma_display->print("C");
-
-        dma_display->setCursor(8, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + 8 * 2, 255, 255));
-        dma_display->print("N");
-
-        dma_display->setCursor(14, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + 14 * 2, 255, 255));
-        dma_display->print("h");
-
-        // Vẽ chữ "ậ" tùy chỉnh
-        drawACircumflexDotBelow(20, 23,
-                                hsvToRgb565(globalHue + 20 * 2, 255, 255));
-
-        dma_display->setCursor(26, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + 26 * 2, 255, 255));
-        dma_display->print("t");
+      char inTempStr[16];
+      if (showIndoor) {
+        sprintf(inTempStr, "%.1f", tempIndoor);
       } else {
-        // Thứ 2-7 - vẽ "Thứ" + số với gradient theo vị trí
-        // Vẽ "Thứ" tùy chỉnh - màu dựa trên vị trí x=2
-        drawThu(2, 23, hsvToRgb565(globalHue + 2 * 2, 255, 255));
+        sprintf(inTempStr, "--.-");
+      }
+      virtual_display->setTextColor(indoorColor);
+      virtual_display->setCursor(11, 59);
+      virtual_display->print(utf8ToCustom(inTempStr));
+      
+      int curX = virtual_display->getCursorX();
+      virtual_display->drawCircle(curX + 1, 51, 1, indoorColor); // Degree circle
+      
+      virtual_display->setCursor(curX + 4, 59);
+      char inHumStr[16];
+      if (showIndoor) {
+        sprintf(inHumStr, "C %d%%", humIndoor);
+      } else {
+        sprintf(inHumStr, "C --%%");
+      }
+      virtual_display->print(utf8ToCustom(inHumStr));
 
-        dma_display->setCursor(18, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + 18 * 2, 255, 255));
-        dma_display->print(timeinfo.tm_wday + 1); // 1->2, 2->3, ..., 6->7
+      // 2. Outdoor Data (Right Side)
+      uint16_t outdoorColor = hsvToRgb565(globalHue + 100, 255, 255);
+      drawOutdoorIcon(72, 50, outdoorColor);
 
-        // Dấu phẩy sau thứ - vị trí x=24
-        dma_display->setCursor(24, 23);
-        dma_display->setTextColor(hsvToRgb565(globalHue + 24 * 2, 255, 255));
-        dma_display->print(",");
+      char outTempStr[16];
+      if (showWeather) {
+        sprintf(outTempStr, "%.1f", tempOutdoor);
+      } else {
+        sprintf(outTempStr, "--.-");
+      }
+      virtual_display->setTextColor(outdoorColor);
+      virtual_display->setCursor(81, 59);
+      virtual_display->print(utf8ToCustom(outTempStr));
+      
+      int curX2 = virtual_display->getCursorX();
+      virtual_display->drawCircle(curX2 + 1, 51, 1, outdoorColor); // Degree circle
+      
+      virtual_display->setCursor(curX2 + 4, 59);
+      char outHumStr[16];
+      if (showWeather) {
+        sprintf(outHumStr, "C %d%%", humOutdoor);
+      } else {
+        sprintf(outHumStr, "C --%%");
+      }
+      virtual_display->print(utf8ToCustom(outHumStr));
+
+      // ==========================================
+      // ROW 4: Marquee Scrolling Text (Y: 64..95)
+      // ==========================================
+      static float scrollX = 128.0;
+      scrollX -= 0.8; // Adjust speed (pixels per frame)
+
+      static String cachedRawMarquee = "";
+      static String cachedCustomMsg = "";
+      static uint16_t cachedTextWidth = 0;
+
+      String rawMarquee = String(deviceConfig.marqueeText);
+      if (rawMarquee != cachedRawMarquee) {
+        cachedRawMarquee = rawMarquee;
+        cachedCustomMsg = utf8ToCustom(rawMarquee);
+        
+        // Measure width using the correct font
+        virtual_display->setFont(&Verdana_Vietnamese10pt);
+        int16_t bx, by;
+        uint16_t bw, bh;
+        virtual_display->getTextBounds(cachedCustomMsg, 0, 84, &bx, &by, &bw, &bh);
+        cachedTextWidth = bw;
       }
 
-      // Hiển thị ngày/tháng DD/MM ở vị trí cố định với gradient từng ký tự
-      char dateStr[12];
-      sprintf(dateStr, "%02d/%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1);
-      int currentX = 34; // Vị trí cố định
-      for (int i = 0; i < strlen(dateStr); i++) {
-        dma_display->setCursor(currentX, 23);
-        dma_display->setTextColor(
-            hsvToRgb565(globalHue + currentX * 2, 255, 255));
-        dma_display->print(dateStr[i]);
-        currentX += 6;
+      if (scrollX < -cachedTextWidth) {
+        scrollX = 128.0; // Reset scroll position to right edge
       }
+
+      virtual_display->setFont(&Verdana_Vietnamese10pt);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 120, 255, 255));
+      virtual_display->setCursor((int)scrollX, 84);
+      virtual_display->print(cachedCustomMsg);
+
+    } else {
+      // Offline / waiting for time sync
+      virtual_display->setFont(&Verdana_Vietnamese8pt);
+      virtual_display->setTextColor(virtual_display->color565(255, 255, 0));
+      virtual_display->setCursor(10, 48);
+      virtual_display->print(utf8ToCustom("Đang đồng bộ thời gian..."));
     }
-  } else {
-    // No time available yet - WiFi connection is being handled by connectWiFi()
-    // Just wait a bit before next iteration
-    delay(100);
   }
-
-  // Weather updates now handled by background task - no blocking calls here!
-
-  globalHue += 1;
-  delay(100);
 }

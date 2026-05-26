@@ -19,6 +19,7 @@ struct ConfigData {
   uint16_t sleepStartMinute;    // Sleep start time in minutes from midnight 0-1439 (default: 1320 = 22:00)
   uint16_t sleepEndMinute;      // Sleep end time in minutes from midnight 0-1439 (default: 420 = 07:00)
   uint8_t sleepBrightness;      // Brightness during sleep 0-100%, 0=off (default: 0)
+  char marqueeText[256];        // Custom marquee running text
 };
 
 // Configuration management functions

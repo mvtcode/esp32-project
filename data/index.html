@@ -333,6 +333,18 @@
         </div>
       </div>
 
+      <!-- Marquee Section -->
+      <div class="item">
+        <label>Chữ chạy (Hàng 4)</label>
+        <input
+          type="text"
+          id="marqueeText"
+          placeholder="Nhập chữ chạy hiển thị ở hàng 4"
+          value="Chào mừng bạn đến với ESP32 LED Matrix Clock!"
+          maxlength="250"
+        />
+      </div>
+
       <!-- Sleep Mode Section -->
       <div class="item">
         <label>
@@ -692,6 +704,9 @@
           return;
         }
 
+        // Get marquee text
+        const marqueeText = document.getElementById('marqueeText').value;
+
         const payload = {
           ssid: selectedWiFi.ssid,
           password: password,
@@ -701,7 +716,8 @@
           sleepEnabled: sleepEnabled,
           sleepStartMinute: sleepStartMinute,
           sleepEndMinute: sleepEndMinute,
-          sleepBrightness: sleepBrightness
+          sleepBrightness: sleepBrightness,
+          marqueeText: marqueeText
         };
 
         btn.disabled = true;
