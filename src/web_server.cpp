@@ -16,43 +16,53 @@ SemaphoreHandle_t scanMutex = NULL;
 void setupAPMode() {
   Serial.println("=== Setting up Access Point ===");
 
-  // Disconnect from any existing WiFi connection
-  WiFi.disconnect();
-  delay(100);
+  // Full WiFi reset để tránh state cũ còn lại
+  WiFi.disconnect(true);  // disconnect + clear saved config
+  WiFi.mode(WIFI_OFF);
+  delay(500);  // Đợi WiFi driver tắt hoàn toàn
 
-  // Configure AP mode
+  // Chuyển sang AP mode
   WiFi.mode(WIFI_AP);
+  delay(200);  // Đợi mode thay đổi ổn định
 
-  // Configure static IP for AP
+  // Configure static IP for AP (phải gọi TRƯỚC softAP)
   IPAddress local_IP(192, 168, 4, 1);
   IPAddress gateway(192, 168, 4, 1);
   IPAddress subnet(255, 255, 255, 0);
-
-  // Set AP configuration
   WiFi.softAPConfig(local_IP, gateway, subnet);
+  delay(100);
 
-  // Start AP with better compatibility settings
-  // Parameters: SSID, password, channel, hidden, max_connection
-  bool result = WiFi.softAP("Clock-2026", // SSID
-                            "",           // No password (empty string)
-                            1,            // Channel 1 (most compatible)
-                            false,        // Not hidden
-                            4             // Max 4 connections
+  // Start AP - không có password để dễ kết nối
+  // channel 6 ít bị nhiễu hơn channel 1 trên nhiều môi trường
+  bool result = WiFi.softAP("Clock-2026",  // SSID
+                            "",            // No password
+                            6,             // Channel 6
+                            false,         // Not hidden
+                            4              // Max 4 connections
   );
 
   if (result) {
+    delay(500);  // Đợi AP khởi động hoàn toàn trước khi in IP
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
     Serial.println(IP);
     Serial.println("SSID: Clock-2026");
-    Serial.println("Password: (none)");
-    Serial.println("Channel: 1");
+    Serial.println("Password: (none - open network)");
+    Serial.println("Channel: 6");
     Serial.println("Gateway: " + gateway.toString());
     Serial.println("Subnet: " + subnet.toString());
-    Serial.printf("Connected clients: %d\n", WiFi.softAPgetStationNum());
+    Serial.printf("Max clients: 4\n");
     Serial.println("==============================");
   } else {
-    Serial.println("ERROR: Failed to start AP!");
+    Serial.println("ERROR: Failed to start AP! Retrying...");
+    delay(1000);
+    // Retry một lần nữa
+    result = WiFi.softAP("Clock-2026", "", 6, false, 4);
+    if (result) {
+      Serial.println("AP started on retry.");
+    } else {
+      Serial.println("ERROR: AP start failed on retry too!");
+    }
   }
 }
 
@@ -272,7 +282,13 @@ void setupWebServer() {
       [](void *param) {
         Serial.println("\n[Scan Task] Started on core " + String(xPortGetCoreID()));
         Serial.printf("[Scan Task] Free Heap: %d bytes\n", ESP.getFreeHeap());
-        
+
+        // CRITICAL FIX: Chuyển sang WIFI_AP_STA trước khi scan
+        // Nếu giữ WIFI_AP mode, scanNetworks() sẽ reset AP driver và ngắt kết nối client
+        Serial.println("[Scan Task] Switching to WIFI_AP_STA for scan...");
+        WiFi.mode(WIFI_AP_STA);
+        delay(100); // Đợi mode chuyển ổn định
+
         WiFi.scanDelete();
         
         Serial.println("[Scan Task] Starting WiFi.scanNetworks()...");
@@ -280,6 +296,11 @@ void setupWebServer() {
         
         Serial.printf("[Scan Task] Scan completed! Found %d networks\n", n);
         Serial.printf("[Scan Task] Free Heap after scan: %d bytes\n", ESP.getFreeHeap());
+
+        // Restore về WIFI_AP mode sau khi scan xong
+        Serial.println("[Scan Task] Restoring WIFI_AP mode...");
+        WiFi.mode(WIFI_AP);
+        delay(100);
         
         if (xSemaphoreTake(scanMutex, portMAX_DELAY)) {
           scanResultCount = n;

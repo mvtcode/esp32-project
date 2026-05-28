@@ -229,15 +229,18 @@ void setup() {
     if (WiFi.status() == WL_CONNECTED) {
       initWeather(weatherApiUrl);
       
-      // Sync RTC from NTP
+      // Sync RTC from NTP on first boot (update only if drifted >= 5s)
       Serial.println("Syncing time from NTP...");
       struct tm timeinfo;
       if (getLocalTime(&timeinfo, 5000)) { // 5 second timeout
-        syncRTCFromNTP(timeinfo);
-        Serial.println("RTC synced from NTP successfully");
+        syncRTCFromNTPIfDrifted(timeinfo, 5);
+        Serial.println("Initial NTP sync complete");
       } else {
-        Serial.println("NTP sync timeout, will retry later");
+        Serial.println("NTP sync timeout, RTC will be used as fallback");
       }
+    } else {
+      // No WiFi at startup — RTC will be used, initWeather skipped
+      Serial.println("No WiFi at startup. RTC will be used for timekeeping.");
     }
     
     // Apply initial brightness from configuration
@@ -286,65 +289,43 @@ void loop() {
     return;
   }
 
-  // Normal operation mode - check WiFi connection
+  // Normal operation mode — background WiFi reconnect (non-blocking)
+  // Attempt reconnect every 30 seconds when disconnected, without blocking the display
+  static unsigned long lastReconnectAttempt = 0;
   if (WiFi.status() != WL_CONNECTED) {
-    static unsigned long lastReconnectAttempt = 0;
     unsigned long now = millis();
-    
-    // Try to reconnect every 5 seconds
-    if (now - lastReconnectAttempt > 5000) {
+    if (now - lastReconnectAttempt > 30000) { // 30 second interval
       lastReconnectAttempt = now;
-      Serial.println("WiFi disconnected, attempting to reconnect...");
-      connectWiFi(deviceConfig);
+      Serial.println("WiFi disconnected, attempting background reconnect...");
+      WiFi.disconnect();
+      WiFi.mode(WIFI_STA);
+      WiFi.begin(deviceConfig.ssid, deviceConfig.password);
+      // Non-blocking: result will be checked on next loop iteration
     }
-    
-    // Show premium "No WiFi" reconnection status screen
-    static int dots = 0;
-    static unsigned long lastDot = 0;
-    if (millis() - lastDot > 500) {
-      dots = (dots + 1) % 4;
-      lastDot = millis();
-    }
-
-    virtual_display->fillScreen(virtual_display->color565(0, 0, 0));
-    virtual_display->setFont(&Verdana_Vietnamese10pt);
-    
-    virtual_display->setTextColor(virtual_display->color565(255, 100, 0));
-    virtual_display->setCursor(10, 36);
-    virtual_display->print(utf8ToCustom("Mất kết nối WiFi"));
-    
-    virtual_display->setTextColor(virtual_display->color565(200, 200, 200));
-    virtual_display->setCursor(10, 56);
-    virtual_display->print(utf8ToCustom("Đang kết nối lại"));
-    
-    virtual_display->setCursor(10, 76);
-    String dotStr = "";
-    for (int d = 0; d < dots; d++) dotStr += ".";
-    virtual_display->print(dotStr);
-    
-    dma_display->flipDMABuffer(); // Swap buffer to display the updated frame
-    delay(100);
-    return;
   }
   
-  // Get time from NTP or RTC fallback
+  // Get time: prefer NTP (system clock) when WiFi is up, fall back to RTC
   struct tm timeinfo;
   bool hasTime;
-  static unsigned long lastRTCSync = 0;
+  static unsigned long lastNTPSync = 0;
+  const unsigned long NTP_SYNC_INTERVAL_MS = 60UL * 60UL * 1000UL; // 60 minutes
   
   if (WiFi.status() == WL_CONNECTED) {
     hasTime = getLocalTime(&timeinfo, 100);
     
     if (hasTime) {
-      // Sync RTC from NTP every hour
-      if (millis() - lastRTCSync > 3600000) {
-        syncRTCFromNTP(timeinfo);
-        lastRTCSync = millis();
+      // Every 60 minutes: compare NTP with RTC and update RTC if drifted >= 5 seconds
+      if (millis() - lastNTPSync > NTP_SYNC_INTERVAL_MS) {
+        lastNTPSync = millis();
+        Serial.println("[NTP Sync] 60-minute periodic check...");
+        syncRTCFromNTPIfDrifted(timeinfo, 5);
       }
     } else {
+      // NTP not ready yet — use RTC as fallback
       hasTime = getRTCTime(timeinfo);
     }
   } else {
+    // No WiFi — use RTC
     hasTime = getRTCTime(timeinfo);
   }
 

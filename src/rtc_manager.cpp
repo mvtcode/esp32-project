@@ -60,6 +60,45 @@ void syncRTCFromNTP(const struct tm& timeinfo) {
                 compiled.Hour(), compiled.Minute(), compiled.Second());
 }
 
+// Sync RTC from NTP only if the time differs by more than 'thresholdSeconds'
+// Returns true if RTC was updated
+bool syncRTCFromNTPIfDrifted(const struct tm& ntpTime, int thresholdSeconds) {
+  RtcDateTime rtcNow = Rtc.GetDateTime();
+  if (!rtcNow.IsValid()) {
+    Serial.println("RTC not valid, syncing unconditionally from NTP.");
+    syncRTCFromNTP(ntpTime);
+    return true;
+  }
+
+  // Build a unix-like timestamp for NTP time
+  // Use mktime on the ntpTime struct to get epoch seconds
+  struct tm ntpCopy = ntpTime;
+  time_t ntpEpoch = mktime(&ntpCopy);
+
+  // Build epoch for RTC time
+  struct tm rtcTm;
+  rtcTm.tm_year = rtcNow.Year() - 1900;
+  rtcTm.tm_mon  = rtcNow.Month() - 1;
+  rtcTm.tm_mday = rtcNow.Day();
+  rtcTm.tm_hour = rtcNow.Hour();
+  rtcTm.tm_min  = rtcNow.Minute();
+  rtcTm.tm_sec  = rtcNow.Second();
+  rtcTm.tm_isdst = 0;
+  time_t rtcEpoch = mktime(&rtcTm);
+
+  long drift = (long)(ntpEpoch - rtcEpoch);
+  Serial.printf("NTP vs RTC drift: %ld seconds\n", drift);
+
+  if (abs(drift) >= thresholdSeconds) {
+    Serial.printf("Drift >= %d s, updating RTC from NTP.\n", thresholdSeconds);
+    syncRTCFromNTP(ntpTime);
+    return true;
+  }
+
+  Serial.println("RTC is within tolerance, no update needed.");
+  return false;
+}
+
 // Get time from RTC (fallback when WiFi is down)
 bool getRTCTime(struct tm& timeinfo) {
   RtcDateTime now = Rtc.GetDateTime();

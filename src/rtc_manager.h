@@ -6,8 +6,11 @@
 // Initialize DS1302 RTC module
 void initRTC();
 
-// Sync RTC time from NTP
+// Sync RTC time from NTP (unconditional)
 void syncRTCFromNTP(const struct tm& timeinfo);
+
+// Sync RTC from NTP only if drift >= thresholdSeconds. Returns true if updated.
+bool syncRTCFromNTPIfDrifted(const struct tm& ntpTime, int thresholdSeconds);
 
 // Get time from RTC (fallback when WiFi is down)
 bool getRTCTime(struct tm& timeinfo);
