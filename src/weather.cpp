@@ -32,8 +32,7 @@ static void fetchWeatherData() {
 
   Serial.println("[Weather Task] Fetching weather data...");
   
-  WiFiClientSecure client;
-  client.setInsecure(); // Skip certificate validation
+  WiFiClient client;
   
   HTTPClient http;
   http.begin(client, weatherApiUrl.c_str());

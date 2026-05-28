@@ -187,6 +187,7 @@ void setup() {
     virtual_display->print("AP: Clock-2026");
     virtual_display->setCursor(4, 60);
     virtual_display->print("IP: 192.168.4.1");
+    dma_display->flipDMABuffer(); // Swap buffer to show the screen
     delay(1000);
 
     // Setup AP and web server
@@ -204,8 +205,8 @@ void setup() {
 
     isConfigMode = false;
 
-    // Build weather API URL from stored coordinates
-    String weatherApiUrl = "https://api.open-meteo.com/v1/forecast?latitude=";
+    // Build weather API URL from stored coordinates (using HTTP to save RAM/CPU and prevent SSL out of memory errors)
+    String weatherApiUrl = "http://api.open-meteo.com/v1/forecast?latitude=";
     weatherApiUrl += String(deviceConfig.latitude, 4);
     weatherApiUrl += "&longitude=";
     weatherApiUrl += String(deviceConfig.longitude, 4);
@@ -276,6 +277,8 @@ void loop() {
       virtual_display->setTextColor(virtual_display->color565(0, 255, 255));
       virtual_display->setCursor(4, 70);
       virtual_display->print(utf8ToCustom("Web: 192.168.4.1"));
+      
+      dma_display->flipDMABuffer(); // Swap buffer to display the updated frame
     }
 
     handleDNS(); // Process DNS requests for captive portal
@@ -319,6 +322,7 @@ void loop() {
     for (int d = 0; d < dots; d++) dotStr += ".";
     virtual_display->print(dotStr);
     
+    dma_display->flipDMABuffer(); // Swap buffer to display the updated frame
     delay(100);
     return;
   }
@@ -363,6 +367,7 @@ void loop() {
     if (inSleepPeriod) {
       if (deviceConfig.sleepBrightness == 0) {
         virtual_display->fillScreen(0);
+        dma_display->flipDMABuffer(); // Swap buffer to show blank screen
         delay(100);
         if (shouldPrint) {
           lastDebugPrint = millis();
@@ -597,8 +602,12 @@ void loop() {
       // Offline / waiting for time sync
       virtual_display->setFont(&Verdana_Vietnamese10pt);
       virtual_display->setTextColor(virtual_display->color565(255, 255, 0));
-      virtual_display->setCursor(10, 48);
-      virtual_display->print(utf8ToCustom("Đang đồng bộ thời gian..."));
+      virtual_display->setCursor(10, 20);
+      virtual_display->print(utf8ToCustom("Đang đồng bộ"));
+      virtual_display->setCursor(30, 48);
+      virtual_display->print(utf8ToCustom("thời gian..."));
     }
+    
+    dma_display->flipDMABuffer(); // Swap buffer to display the finished frame
   }
 }

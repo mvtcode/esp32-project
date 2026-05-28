@@ -27,7 +27,8 @@ static const unsigned long READ_INTERVAL = 20000; // Read every 20 seconds
 void initIndoorSensor() {
   Serial.println("Initializing AHT10 indoor sensor...");
   
-  // Explicitly start I2C on the correct pins
+  // Explicitly end I2C and restart on the correct pins to avoid default pin conflicts
+  Wire.end();
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   
   if (aht.begin()) {

@@ -46,10 +46,10 @@ void initDisplay() {
   mxconfig.gpio.oe = 15;
 #endif
 
-  // Fix 1-pixel shift bleeding, timing issues, and PSRAM bandwidth constraints
   mxconfig.clkphase = false;
   mxconfig.latch_blanking = 4;
-  mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;
+  mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M; // Revert to 8MHz (HZ_10M) to prevent signal noise/regional flickering
+  mxconfig.double_buff = true;               // Keep double buffering enabled to prevent drawing flicker
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   if (!dma_display->begin()) {
@@ -68,6 +68,7 @@ void initDisplay() {
   virtual_display->print("BOOTING...");
   virtual_display->setCursor(20, 36);
   virtual_display->print("v 3.0.0 (128x96)");
+  dma_display->flipDMABuffer(); // Swap buffer to display the boot screen
   delay(500);
 }
 

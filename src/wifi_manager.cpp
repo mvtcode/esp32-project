@@ -29,6 +29,7 @@ void connectWiFi(const ConfigData& config) {
   virtual_display->setTextColor(virtual_display->color565(200, 200, 200));
   virtual_display->setCursor(6, 72);
   virtual_display->print(utf8ToCustom("Vui lòng đợi..."));
+  dma_display->flipDMABuffer(); // Swap buffer to display the connection screen
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(config.ssid, config.password);
@@ -53,6 +54,7 @@ void connectWiFi(const ConfigData& config) {
     // Blink display every second to show activity
     if (timeout % 2 == 0) {
       virtual_display->fillScreen(0);
+      dma_display->flipDMABuffer();
     } else {
       virtual_display->fillScreen(0);
       virtual_display->setFont(&Verdana_Vietnamese10pt);
@@ -65,6 +67,7 @@ void connectWiFi(const ConfigData& config) {
       virtual_display->setTextColor(virtual_display->color565(200, 200, 200));
       virtual_display->setCursor(6, 72);
       virtual_display->print(utf8ToCustom("Vui lòng đợi..."));
+      dma_display->flipDMABuffer();
     }
   }
 
@@ -88,6 +91,7 @@ void connectWiFi(const ConfigData& config) {
     virtual_display->setTextColor(virtual_display->color565(0, 255, 0)); // Green
     virtual_display->setCursor(10, 48);
     virtual_display->print(utf8ToCustom("Kết nối WiFi OK!"));
+    dma_display->flipDMABuffer();
     delay(1000);
   } else {
     Serial.println("\nWiFi Failed!");
@@ -117,6 +121,7 @@ void connectWiFi(const ConfigData& config) {
     virtual_display->setTextColor(virtual_display->color565(200, 200, 200));
     virtual_display->setCursor(10, 70);
     virtual_display->print(utf8ToCustom("Ấn BOOT để cấu hình"));
+    dma_display->flipDMABuffer();
     
     // Wait and check button during delay
     for (int i = 0; i < 20; i++) { // 20 * 100ms = 2 seconds

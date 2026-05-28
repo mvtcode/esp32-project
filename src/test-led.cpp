@@ -110,7 +110,8 @@ void setup() {
   // Fix 1-pixel shift bleeding and timing issues
   mxconfig.clkphase = false;
   mxconfig.latch_blanking = 4;
-  mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;
+  mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M; // Revert to 8MHz to prevent signal noise/regional flickering
+  mxconfig.double_buff = true;               // Keep double buffering enabled to prevent drawing flicker
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   if (!dma_display->begin()) {
@@ -121,6 +122,7 @@ void setup() {
 
   dma_display->setBrightness8(64); // ~25% -- safe for initial testing
   dma_display->fillScreen(0);
+  dma_display->flipDMABuffer(); // Swap buffer to show blank screen
 
   virtual_display = new CustomMatrixPanel(dma_display, 128, 96);
 }
@@ -208,5 +210,6 @@ void loop() {
     scrollX2 = 128;
   }
 
+  dma_display->flipDMABuffer(); // Swap buffer to show the finished frame
   delay(25); // ~40 FPS animation speed
 }
