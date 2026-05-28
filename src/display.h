@@ -4,6 +4,15 @@
 #include <Adafruit_GFX.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <stdint.h>
+#include "Verdana_Vietnamese10pt.h"
+#include "Verdana_Vietnamese12pt.h"
+#include "Verdana_Bold14pt.h"
+#include "Verdana_Bold18pt.h"
+#include "ClockFont24px.h"
+
+// Offset to compensate for physical alignment vertical offset of the left panels.
+// Positive values shift the left half down. Adjust this value (e.g., 0, 1, 2) to align.
+const int LEFT_PANEL_Y_OFFSET = 2;
 
 class CustomMatrixPanel : public Adafruit_GFX {
 private:
@@ -14,7 +23,7 @@ public:
     : Adafruit_GFX(w, h), dma(dma_panel) {}
 
   uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
-    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+    return dma->color565(r, g, b);
   }
 
   void drawPixel(int16_t x, int16_t y, uint16_t color) override {
@@ -24,38 +33,28 @@ public:
     int16_t phys_y = 0;
 
     // Serpentine mapping for 6 panels (128x96 logic -> 384x32 physical)
-    // Panel connections:
-    // P1 (top-left) -> P2 (top-right)
-    //                    |
-    // P4 (mid-left) <- P3 (mid-right)
-    //   |
-    // P5 (bot-left) -> P6 (bot-right)
+    // Physical Panel Layout & Signal Flow (front view):
+    // ESP32 ---> [Panel 1 (top-left, normal)]  ---> [Panel 2 (top-right, normal)]
+    //                                                   |
+    //                                                   v
+    //            [Panel 4 (mid-left, rotated)]  <--- [Panel 3 (mid-right, rotated)]
+    //               |
+    //               v
+    //            [Panel 5 (bot-left, normal)]   ---> [Panel 6 (bot-right, normal)]
     if (y < 32) {
-      // Row 1: P1 and P2
-      phys_x = x;
-      phys_y = y;
+      // Row 0: Panel 6 (slot 5, left), Panel 5 (slot 4, right) - both rotated 180
+      phys_x = 383 - x;
+      phys_y = 31 - y;
     } 
     else if (y < 64) {
-      // Row 2: P4 and P3 (reversed direction)
-      if (x >= 64) {
-        // P3 (Mid-Right)
-        phys_x = 128 + (x - 64);
-      } else {
-        // P4 (Mid-Left)
-        phys_x = 192 + x;
-      }
+      // Row 1: Panel 3 (slot 2, left), Panel 4 (slot 3, right) - both normal (0 deg)
+      phys_x = 128 + x;
       phys_y = y - 32;
     } 
     else {
-      // Row 3: P5 and P6
-      if (x < 64) {
-        // P5 (Bot-Left)
-        phys_x = 256 + x;
-      } else {
-        // P6 (Bot-Right)
-        phys_x = 320 + (x - 64);
-      }
-      phys_y = y - 64;
+      // Row 2: Panel 2 (slot 1, left), Panel 1 (slot 0, right) - both rotated 180
+      phys_x = 127 - x;
+      phys_y = 95 - y;
     }
 
     dma->drawPixel(phys_x, phys_y, color);

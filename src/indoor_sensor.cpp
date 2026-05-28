@@ -1,6 +1,11 @@
 #include "indoor_sensor.h"
 #include <Adafruit_AHTX0.h>
 #include <Arduino.h>
+#include <Wire.h>
+
+// I2C pins for AHT10 (explicitly configured to avoid conflicts on ESP32-S3-N16R8)
+#define I2C_SDA_PIN 9
+#define I2C_SCL_PIN 10
 
 // AHT10 sensor instance
 Adafruit_AHTX0 aht;
@@ -21,6 +26,9 @@ static const unsigned long READ_INTERVAL = 20000; // Read every 20 seconds
 // Initialize AHT10 indoor temperature/humidity sensor
 void initIndoorSensor() {
   Serial.println("Initializing AHT10 indoor sensor...");
+  
+  // Explicitly start I2C on the correct pins
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   
   if (aht.begin()) {
     Serial.println("AHT10 sensor found and initialized!");

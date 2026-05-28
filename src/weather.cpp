@@ -5,9 +5,10 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
-// Global variables
 float temperature = 0.0;
 int humidity = 0;
+int weatherCode = 0;
+float uvIndex = 0.0;
 bool hasWeatherData = false;
 SemaphoreHandle_t weatherMutex = NULL;
 TaskHandle_t weatherTaskHandle = NULL;
@@ -53,10 +54,12 @@ static void fetchWeatherData() {
       if (xSemaphoreTake(weatherMutex, portMAX_DELAY) == pdTRUE) {
         temperature = doc["current"]["temperature_2m"];
         humidity = doc["current"]["relative_humidity_2m"];
+        weatherCode = doc["current"]["weather_code"];
+        uvIndex = doc["current"]["uv_index"];
         hasWeatherData = true;
         xSemaphoreGive(weatherMutex);
-        Serial.printf("[Weather Task] Updated: %.1f°C, %d%%\n", temperature,
-                      humidity);
+        Serial.printf("[Weather Task] Updated: %.1f°C, %d%%, code: %d, UV: %.1f\n", temperature,
+                      humidity, weatherCode, uvIndex);
       }
     } else {
       Serial.print("[Weather Task] JSON parse error: ");
@@ -115,11 +118,13 @@ void initWeather(const String& apiUrl) {
 }
 
 // Get current weather data (thread-safe)
-bool getWeatherData(float& temp, int& hum) {
+bool getWeatherData(float& temp, int& hum, int& code, float& uv) {
   if (xSemaphoreTake(weatherMutex, 10 / portTICK_PERIOD_MS) == pdTRUE) {
     bool hasData = hasWeatherData;
     temp = temperature;
     hum = humidity;
+    code = weatherCode;
+    uv = uvIndex;
     xSemaphoreGive(weatherMutex);
     return hasData;
   }

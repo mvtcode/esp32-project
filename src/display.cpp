@@ -22,9 +22,9 @@ void initDisplay() {
   mxconfig.gpio.r2 = 7;
   mxconfig.gpio.g2 = 15;
   mxconfig.gpio.b2 = 16;
-  mxconfig.gpio.a = 18;
-  mxconfig.gpio.b = 8;
-  mxconfig.gpio.c = 3;
+  mxconfig.gpio.a = 17;
+  mxconfig.gpio.b = 18;
+  mxconfig.gpio.c = 8;
   mxconfig.gpio.d = 42;
   mxconfig.gpio.clk = 41;
   mxconfig.gpio.lat = 40;
@@ -45,6 +45,11 @@ void initDisplay() {
   mxconfig.gpio.lat = 4;
   mxconfig.gpio.oe = 15;
 #endif
+
+  // Fix 1-pixel shift bleeding, timing issues, and PSRAM bandwidth constraints
+  mxconfig.clkphase = false;
+  mxconfig.latch_blanking = 4;
+  mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   if (!dma_display->begin()) {

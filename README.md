@@ -186,32 +186,38 @@ Danh sách linh kiện - phần cứng sử dụng: [Google Sheet](https://docs.
 
 | Linh Kiện         | Mô Tả                                                                        |
 | ----------------- | ---------------------------------------------------------------------------- |
-| ESP32-S3 / ESP32  | Khuyên dùng ESP32-S3 (bản 16MB Flash, 8MB PSRAM) để chạy mượt mà nhất        |
+| ESP32-S3-N16R8    | Phiên bản 16MB Flash, 8MB PSRAM (Octal SPI) chạy mượt mà nhất                 |
 | LED Matrix P5     | 6 panel 64x32 pixels ghép thành lưới 128x96 (3 panel ngang, 2 hàng dọc)      |
 | Module RTC DS1302 | Giữ giờ khi mất điện                                                         |
 | Cảm biến AHT10    | Đo nhiệt độ/độ ẩm trong nhà (I2C)                                            |
 | Nguồn 5V/10A+     | Cấp nguồn cho 6 panel LED Matrix và ESP32 (Dòng tải khuyên dùng >= 10A)        |
 
-### Sơ Đồ Kết Nối
+### Sơ Đồ Kết Nối (ESP32-S3-N16R8)
+
+> [!IMPORTANT]
+> **Lưu ý đặc biệt cho ESP32-S3-N16R8:**
+> * Không sử dụng các chân từ **GPIO 26 đến GPIO 32** (kết nối Flash/PSRAM nội bộ) và **GPIO 33 đến GPIO 37** (kết nối Octal PSRAM).
+> * Các chân **GPIO 22, 23, 24, 25 không tồn tại** trên chip ESP32-S3.
+> * Sơ đồ dưới đây đã được thiết kế tối ưu, hoàn toàn tránh xung đột và tập hợp các chân cắm cảm biến/RTC về một cụm bên trái giúp đi dây dễ dàng.
 
 #### 1. LED Matrix (HUB75)
 
-| HUB75 Pin | ESP32-S3 GPIO | ESP32 (Thường) | Chức Năng     |
-| --------- | ------------- | -------------- | ------------- |
-| **R1**    | GPIO4         | GPIO25         | Red Data 1    |
-| **G1**    | GPIO5         | GPIO26         | Green Data 1  |
-| **B1**    | GPIO6         | GPIO27         | Blue Data 1   |
-| **R2**    | GPIO7         | GPIO14         | Red Data 2    |
-| **G2**    | GPIO15        | GPIO12         | Green Data 2  |
-| **B2**    | GPIO16        | GPIO13         | Blue Data 2   |
-| **A**     | GPIO18        | GPIO23         | Address A     |
-| **B**     | GPIO8         | GPIO19         | Address B     |
-| **C**     | GPIO3         | GPIO5          | Address C     |
-| **D**     | GPIO42        | GPIO17         | Address D     |
-| **CLK**   | GPIO41        | GPIO16         | Clock         |
-| **LAT**   | GPIO40        | GPIO4          | Latch         |
-| **OE**    | GPIO2         | GPIO15         | Output Enable |
-| **GND**   | GND           | GND            | Ground        |
+| HUB75 Pin | ESP32-S3 GPIO | Chức Năng     | Mô Tả |
+| --------- | ------------- | ------------- | ----- |
+| **R1**    | GPIO4         | Red Data 1    | Dữ liệu màu đỏ (nửa trên) |
+| **G1**    | GPIO5         | Green Data 1  | Dữ liệu màu xanh lá (nửa trên) |
+| **B1**    | GPIO6         | Blue Data 1   | Dữ liệu màu xanh dương (nửa trên) |
+| **R2**    | GPIO7         | Red Data 2    | Dữ liệu màu đỏ (nửa dưới) |
+| **G2**    | GPIO15        | Green Data 2  | Dữ liệu màu xanh lá (nửa dưới) |
+| **B2**    | GPIO16        | Blue Data 2   | Dữ liệu màu xanh dương (nửa dưới) |
+| **A**     | GPIO17        | Address A     | Quét hàng bit 0 |
+| **B**     | GPIO18        | Address B     | Quét hàng bit 1 |
+| **C**     | GPIO8         | Address C     | Quét hàng bit 2 |
+| **D**     | GPIO42        | Address D     | Quét hàng bit 3 |
+| **CLK**   | GPIO41        | Clock         | Xung nhịp đồng bộ |
+| **LAT**   | GPIO40        | Latch         | Chốt dữ liệu |
+| **OE**    | GPIO2         | Output Enable | Cho phép hiển thị (Active LOW) |
+| **GND**   | GND           | Ground        | Đất |
 
 #### Sơ đồ lắp đặt chuỗi Panel (Serpentine Mapping):
 Các panel được kết nối nối tiếp bằng cáp HUB75 theo thứ tự từ nguồn phát tín hiệu (ESP32):
@@ -231,22 +237,22 @@ Các panel được kết nối nối tiếp bằng cáp HUB75 theo thứ tự t
 
 #### 2. Module RTC DS1302
 
-| DS1302 Pin | ESP32-S3 / ESP32 GPIO |
-| ---------- | --------------------- |
-| VCC        | 3.3V                  |
-| GND        | GND                   |
-| CLK        | GPIO32                |
-| DAT        | GPIO33                |
-| RST        | GPIO2                 |
+| DS1302 Pin | ESP32-S3 GPIO | Chức Năng |
+| ---------- | ------------- | --------- |
+| **VCC**    | 3.3V          | Nguồn cấp |
+| **GND**    | GND           | Đất       |
+| **CLK**    | GPIO11        | Clock     |
+| **DAT**    | GPIO12        | Data I/O  |
+| **RST**    | GPIO13        | Reset     |
 
 #### 3. Cảm biến AHT10 (I2C)
 
-| AHT10 Pin | ESP32-S3 GPIO | ESP32 (Thường) |
-| --------- | ------------- | -------------- |
-| VCC       | 3.3V          | 3.3V           |
-| GND       | GND           | GND            |
-| SDA       | GPIO8 / SDA   | GPIO21         |
-| SCL       | GPIO9 / SCL   | GPIO22         |
+| AHT10 Pin | ESP32-S3 GPIO | Chức Năng |
+| --------- | ------------- | --------- |
+| **VCC**   | 3.3V          | Nguồn cấp |
+| **GND**   | GND           | Đất       |
+| **SDA**   | GPIO9         | I2C Data  |
+| **SCL**   | GPIO10        | I2C Clock |
 
 #### 4. Nút Reset Cấu Hình
 

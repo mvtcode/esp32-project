@@ -3,10 +3,10 @@
 #include <RtcDS1302.h>
 #include <ThreeWire.h>
 
-// DS1302 pins
-#define RTC_CLK_PIN 32
-#define RTC_DAT_PIN 33
-#define RTC_RST_PIN 2   // Changed from 34 (input-only) to 2
+// DS1302 pins (explicitly configured to avoid conflicts on ESP32-S3-N16R8)
+#define RTC_CLK_PIN 11
+#define RTC_DAT_PIN 12
+#define RTC_RST_PIN 13
 
 // DS1302 connection
 ThreeWire myWire(RTC_DAT_PIN, RTC_CLK_PIN, RTC_RST_PIN);

@@ -115,6 +115,19 @@ const UnicodeMapping unicodeMap[] = {
   { 0x1EF2, 230 }, // Ỳ
   { 0x1EF4, 231 }, // Ỵ
   { 0x0110, 232 }, // Đ
+  // Fallback mappings for missing uppercase characters to lowercase equivalents (since uppercase glyphs above 232 are not defined in the font files)
+  { 0x1EA6, 135 }, // Ầ -> ầ
+  { 0x1EA8, 136 }, // Ẩ -> ẩ
+  { 0x1EAA, 137 }, // Ẫ -> ẫ
+  { 0x1EC0, 152 }, // Ề -> ề
+  { 0x1EC2, 153 }, // Ể -> ể
+  { 0x1EC4, 154 }, // Ễ -> ễ
+  { 0x1ED2, 168 }, // Ồ -> ồ
+  { 0x1ED4, 169 }, // Ổ -> ổ
+  { 0x1ED6, 170 }, // Ỗ -> ỗ
+  { 0x1EEC, 185 }, // Ừ -> ừ
+  { 0x1EEE, 186 }, // Ử -> ử
+  { 0x1EF0, 187 }, // Ữ -> ữ
 };
 
 const int unicodeMapSize = sizeof(unicodeMap) / sizeof(UnicodeMapping);

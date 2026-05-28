@@ -12,8 +12,8 @@
 #include <time.h>
 
 // Custom Vietnamese fonts and mapper
-#include "Verdana_Vietnamese8pt.h"
 #include "Verdana_Vietnamese10pt.h"
+#include "Verdana_Vietnamese12pt.h"
 #include "Verdana_Bold14pt.h"
 #include "vietnamese_helper.h"
 
@@ -41,6 +41,120 @@ String getDayOfWeekStr(int wday) {
     default: return "";
   }
 }
+
+// Helper function to calculate exact width of custom-mapped Vietnamese text
+int16_t getCustomTextWidth(const String &str, const GFXfont *font) {
+  if (!font) return str.length() * 6; // Default fallback
+  int16_t totalWidth = 0;
+  GFXglyph *glyphs = (GFXglyph *)pgm_read_ptr(&font->glyph);
+  uint8_t first = pgm_read_byte(&font->first);
+  uint8_t last = pgm_read_byte(&font->last);
+  
+  for (int i = 0; i < str.length(); i++) {
+    uint8_t c = (uint8_t)str[i];
+    if (c >= first && c <= last) {
+      GFXglyph *glyph = &glyphs[c - first];
+      totalWidth += pgm_read_byte(&glyph->xAdvance);
+    }
+  }
+  return totalWidth;
+}
+
+// Helper function to convert WMO weather code to a short friendly Vietnamese text
+String getWeatherDesc(int code) {
+  switch (code) {
+    case 0: return "Trời quang";
+    case 1: return "Ít mây";
+    case 2: return "Có mây";
+    case 3: return "Nhiều mây";
+    case 45:
+    case 48: return "Sương mù";
+    case 51:
+    case 53:
+    case 55: return "Mưa phùn";
+    case 56:
+    case 57: return "Mưa lạnh";
+    case 61:
+    case 63: return "Có mưa";
+    case 65: return "Mưa to";
+    case 66:
+    case 67: return "Mưa băng";
+    case 71:
+    case 73:
+    case 75: return "Tuyết rơi";
+    case 77: return "Hạt tuyết";
+    case 80:
+    case 81:
+    case 82: return "Mưa rào";
+    case 85:
+    case 86: return "Mưa tuyết";
+    case 95: return "Dông bão";
+    case 96:
+    case 99: return "Mưa đá";
+    default: return "Cập nhật";
+  }
+}
+
+
+// Helper function to draw status icons at the top-right of the screen
+void drawStatusIcons() {
+  int baseX = 104;
+  int baseY = 1;
+
+  // 2. WiFi RSSI Signal Icon (X: 103..111, Y: 1..6)
+  uint16_t wifiColor = virtual_display->color565(60, 60, 60); // dark gray default
+  int rssi = 0;
+  int numBars = 0;
+  bool wifiConnected = (WiFi.status() == WL_CONNECTED);
+  if (wifiConnected) {
+    rssi = WiFi.RSSI();
+    if (rssi >= -55) {
+      numBars = 5;
+      wifiColor = virtual_display->color565(0, 255, 0); // Green
+    } else if (rssi >= -65) {
+      numBars = 4;
+      wifiColor = virtual_display->color565(128, 255, 0); // Light green
+    } else if (rssi >= -75) {
+      numBars = 3;
+      wifiColor = virtual_display->color565(255, 255, 0); // Yellow
+    } else if (rssi >= -85) {
+      numBars = 2;
+      wifiColor = virtual_display->color565(255, 128, 0); // Orange
+    } else {
+      numBars = 1;
+      wifiColor = virtual_display->color565(255, 0, 0); // Red
+    }
+  }
+
+  // Draw 5 bars
+  for (int b = 1; b <= 5; b++) {
+    uint16_t color = (b <= numBars) ? wifiColor : virtual_display->color565(40, 40, 40);
+    int barHeight = b;
+    int barX = 103 + (b - 1) * 2;
+    int barY = baseY + 5 - barHeight;
+    virtual_display->drawFastVLine(barX, barY, barHeight, color);
+  }
+
+  // 3. Time Sync Icon (X: 115..119, Y: 1..6)
+  uint16_t timeColor = (WiFi.status() == WL_CONNECTED) ? virtual_display->color565(0, 255, 0) : virtual_display->color565(255, 128, 0);
+  // Outer circle (diameter 5, radius 2 at center X=117, Y=baseY+2)
+  virtual_display->drawCircle(117, baseY + 2, 2, timeColor);
+  // Center pixel and hand
+  virtual_display->drawPixel(117, baseY + 2, timeColor);
+  virtual_display->drawPixel(117, baseY + 1, timeColor);
+
+  // 4. Weather Sync Icon (X: 122..126, Y: 1..6)
+  uint16_t weatherColor = hasWeatherData ? virtual_display->color565(0, 255, 0) : virtual_display->color565(255, 0, 0);
+  // Draw a tiny sun (cross with center) at X=124, Y=baseY+2
+  virtual_display->drawPixel(124, baseY + 2, weatherColor); // center
+  virtual_display->drawPixel(124, baseY + 1, weatherColor); // top
+  virtual_display->drawPixel(124, baseY + 3, weatherColor); // bottom
+  virtual_display->drawPixel(123, baseY + 2, weatherColor); // left
+  virtual_display->drawPixel(125, baseY + 2, weatherColor); // right
+}
+
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -95,7 +209,7 @@ void setup() {
     weatherApiUrl += String(deviceConfig.latitude, 4);
     weatherApiUrl += "&longitude=";
     weatherApiUrl += String(deviceConfig.longitude, 4);
-    weatherApiUrl += "&current=temperature_2m,relative_humidity_2m";
+    weatherApiUrl += "&current=temperature_2m,relative_humidity_2m,weather_code,uv_index";
     Serial.println("Weather API: " + weatherApiUrl);
 
     // Connect to WiFi
@@ -146,7 +260,7 @@ void loop() {
       lastBlink = millis();
 
       virtual_display->fillScreen(virtual_display->color565(0, 0, 0));
-      virtual_display->setFont(&Verdana_Vietnamese8pt);
+      virtual_display->setFont(&Verdana_Vietnamese10pt);
       
       // Line 1: Header (orange)
       virtual_display->setTextColor(virtual_display->color565(255, 128, 0));
@@ -190,7 +304,7 @@ void loop() {
     }
 
     virtual_display->fillScreen(virtual_display->color565(0, 0, 0));
-    virtual_display->setFont(&Verdana_Vietnamese8pt);
+    virtual_display->setFont(&Verdana_Vietnamese10pt);
     
     virtual_display->setTextColor(virtual_display->color565(255, 100, 0));
     virtual_display->setCursor(10, 36);
@@ -280,6 +394,9 @@ void loop() {
     virtual_display->fillScreen(virtual_display->color565(0, 0, 0));
 
     if (hasTime) {
+      // Draw status icons (WiFi, Time Sync, Weather Sync) at the very top
+      drawStatusIcons();
+
       // ==========================================
       // ROW 1: Time (HH:MM:SS) (Y: 0..31)
       // ==========================================
@@ -288,42 +405,65 @@ void loop() {
       sprintf(mStr, "%02d", timeinfo.tm_min);
       sprintf(sStr, "%02d", timeinfo.tm_sec);
 
-      virtual_display->setFont(&Verdana_Bold14pt);
+      virtual_display->setFont(&ClockFont24px);
       
-      // Draw Hour (X: 16)
-      virtual_display->setCursor(16, 22);
+      // Draw Hour Digit 1 (X: 3, Y: 29) - shifted down 4px
+      virtual_display->setCursor(3, 29);
       virtual_display->setTextColor(hsvToRgb565(globalHue, 255, 255));
-      virtual_display->print(hStr);
+      virtual_display->print(hStr[0]);
+      
+      // Draw Hour Digit 2 (X: 20, Y: 29) - shifted down 4px
+      virtual_display->setCursor(20, 29);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 15, 255, 255));
+      virtual_display->print(hStr[1]);
 
-      // Draw Minute (X: 54)
-      virtual_display->setCursor(54, 22);
-      virtual_display->setTextColor(hsvToRgb565(globalHue + 40, 255, 255));
-      virtual_display->print(mStr);
-
-      // Draw Second (X: 92)
-      virtual_display->setCursor(92, 22);
-      virtual_display->setTextColor(hsvToRgb565(globalHue + 80, 255, 255));
-      virtual_display->print(sStr);
-
-      // Draw Blinking/Animating Colons (X: 46 and 84)
+      // Draw Blinking/Animating Colon 1 (X: 41) - shifted down 4px
       unsigned long ms = millis() % 1000;
       float progress = ms / 1000.0;
       float offset = (progress < 0.5) ? (progress * 2.0) : ((1.0 - progress) * 2.0); // 0.0 -> 1.0 -> 0.0
-      int maxMove = 4;
+      int maxMove = 6;
+      int currentTopY = 14 + (int)(offset * maxMove);
+      int currentBottomY = 26 - (int)(offset * maxMove);
+      uint16_t colonColor = hsvToRgb565(globalHue + 30, 255, 255);
+      virtual_display->fillRect(41, currentTopY, 2, 2, colonColor);
+      virtual_display->fillRect(41, currentBottomY, 2, 2, colonColor);
+
+      // Draw Minute Digit 1 (X: 47, Y: 29) - shifted down 4px
+      virtual_display->setCursor(47, 29);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 45, 255, 255));
+      virtual_display->print(mStr[0]);
       
-      int currentTopY = 9 + (int)(offset * maxMove);
-      int currentBottomY = 17 - (int)(offset * maxMove);
+      // Draw Minute Digit 2 (X: 64, Y: 29) - shifted down 4px
+      virtual_display->setCursor(64, 29);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 60, 255, 255));
+      virtual_display->print(mStr[1]);
+
+      // Draw Blinking/Animating Colon 2 (X: 85) - shifted down 4px
+      uint16_t colonColor2 = hsvToRgb565(globalHue + 75, 255, 255);
+      virtual_display->fillRect(85, currentTopY, 2, 2, colonColor2);
+      virtual_display->fillRect(85, currentBottomY, 2, 2, colonColor2);
+
+      // Draw Second Digit 1 (X: 91, Y: 29) - shifted down 4px
+      virtual_display->setCursor(91, 29);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 90, 255, 255));
+      virtual_display->print(sStr[0]);
       
-      uint16_t colonColor = hsvToRgb565(globalHue + 20, 255, 255);
-      virtual_display->fillRect(46, currentTopY, 2, 2, colonColor);
-      virtual_display->fillRect(46, currentBottomY, 2, 2, colonColor);
-      virtual_display->fillRect(84, currentTopY, 2, 2, colonColor);
-      virtual_display->fillRect(84, currentBottomY, 2, 2, colonColor);
+      // Draw Second Digit 2 (X: 108, Y: 29) - shifted down 4px
+      virtual_display->setCursor(108, 29);
+      virtual_display->setTextColor(hsvToRgb565(globalHue + 105, 255, 255));
+      virtual_display->print(sStr[1]);
+
+      // Read weather data early to display weather description in Row 2
+      float tempOutdoor = 0.0;
+      int humOutdoor = 0;
+      int weatherCode = 0;
+      float uvOutdoor = 0.0;
+      bool showWeather = getWeatherData(tempOutdoor, humOutdoor, weatherCode, uvOutdoor);
 
       // ==========================================
       // ROW 2: Calendar (Solar & Lunar) (Y: 32..47)
       // ==========================================
-      virtual_display->setFont(&Verdana_Vietnamese8pt);
+      virtual_display->setFont(&Verdana_Vietnamese10pt);
 
       // 1. Solar Date (Left Side)
       String solarStr = getDayOfWeekStr(timeinfo.tm_wday) + ", " + String(timeinfo.tm_mday) + "/" + String(timeinfo.tm_mon + 1);
@@ -331,7 +471,7 @@ void loop() {
       virtual_display->setCursor(2, 43);
       virtual_display->print(utf8ToCustom(solarStr));
 
-      // 2. Lunar Date (Right Side)
+      // 2. Lunar Date (Right Side) - Static
       if (lastCalculatedDay != timeinfo.tm_mday) {
         solarToLunar(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1,
                      timeinfo.tm_mday, lunarDay, lunarMonth, lunarYear);
@@ -343,20 +483,39 @@ void loop() {
       virtual_display->setCursor(74, 43);
       virtual_display->print(utf8ToCustom(lunarStr));
 
+      // 3. Weather Description (Left Side, Y=56) & UV Index (Right Side, Y=56) - Static
+      uint16_t outdoorColor = hsvToRgb565(globalHue + 100, 255, 255);
+      if (showWeather) {
+        // Weather Description (Left aligned at X=2)
+        String wDesc = getWeatherDesc(weatherCode);
+        virtual_display->setTextColor(outdoorColor);
+        virtual_display->setCursor(2, 56);
+        virtual_display->print(utf8ToCustom(wDesc));
+
+        // UV Index (Right aligned at X=74)
+        char uvStr[16];
+        if (uvOutdoor >= 0.1) {
+          sprintf(uvStr, "UV:%.1f", uvOutdoor);
+        } else {
+          sprintf(uvStr, "UV:0");
+        }
+
+        uint16_t uvColor = hsvToRgb565(globalHue + 80, 255, 255);
+        virtual_display->setTextColor(uvColor);
+        virtual_display->setCursor(89, 56);
+        virtual_display->print(utf8ToCustom(uvStr));
+      }
+
       // ==========================================
-      // ROW 3: Sensors & Weather (Y: 48..63)
+      // ROW 3: Sensors & Weather (Y: 58..73) - Shifted down 10px
       // ==========================================
-      float tempOutdoor = 0.0;
-      int humOutdoor = 0;
-      bool showWeather = getWeatherData(tempOutdoor, humOutdoor);
-      
       float tempIndoor = 0.0;
       int humIndoor = 0;
       bool showIndoor = getIndoorData(tempIndoor, humIndoor);
 
       // 1. Indoor Data (Left Side)
       uint16_t indoorColor = hsvToRgb565(globalHue + 60, 255, 255);
-      drawIndoorIcon(2, 50, indoorColor);
+      drawIndoorIcon(2, 62, indoorColor);
 
       char inTempStr[16];
       if (showIndoor) {
@@ -365,24 +524,23 @@ void loop() {
         sprintf(inTempStr, "--.-");
       }
       virtual_display->setTextColor(indoorColor);
-      virtual_display->setCursor(11, 59);
+      virtual_display->setCursor(11, 69);
       virtual_display->print(utf8ToCustom(inTempStr));
       
       int curX = virtual_display->getCursorX();
-      virtual_display->drawCircle(curX + 1, 51, 1, indoorColor); // Degree circle
+      virtual_display->drawCircle(curX + 1, 61, 1, indoorColor); // Degree circle
       
-      virtual_display->setCursor(curX + 4, 59);
+      virtual_display->setCursor(curX + 1, 69);
       char inHumStr[16];
       if (showIndoor) {
-        sprintf(inHumStr, "C %d%%", humIndoor);
+        sprintf(inHumStr, " %d%%", humIndoor); // Removed 'C' to save space
       } else {
-        sprintf(inHumStr, "C --%%");
+        sprintf(inHumStr, " --%%");
       }
       virtual_display->print(utf8ToCustom(inHumStr));
 
-      // 2. Outdoor Data (Right Side)
-      uint16_t outdoorColor = hsvToRgb565(globalHue + 100, 255, 255);
-      drawOutdoorIcon(72, 50, outdoorColor);
+      // 2. Outdoor Data (Right Side) - Shifted left and down 10px
+      drawOutdoorIcon(66, 62, outdoorColor);
 
       char outTempStr[16];
       if (showWeather) {
@@ -391,23 +549,23 @@ void loop() {
         sprintf(outTempStr, "--.-");
       }
       virtual_display->setTextColor(outdoorColor);
-      virtual_display->setCursor(81, 59);
+      virtual_display->setCursor(75, 69);
       virtual_display->print(utf8ToCustom(outTempStr));
       
       int curX2 = virtual_display->getCursorX();
-      virtual_display->drawCircle(curX2 + 1, 51, 1, outdoorColor); // Degree circle
+      virtual_display->drawCircle(curX2 + 1, 61, 1, outdoorColor); // Degree circle
       
-      virtual_display->setCursor(curX2 + 4, 59);
+      virtual_display->setCursor(curX2 + 1, 69);
       char outHumStr[16];
       if (showWeather) {
-        sprintf(outHumStr, "C %d%%", humOutdoor);
+        sprintf(outHumStr, " %d%%", humOutdoor); // Removed 'C' to save space
       } else {
-        sprintf(outHumStr, "C --%%");
+        sprintf(outHumStr, " --%%");
       }
       virtual_display->print(utf8ToCustom(outHumStr));
 
       // ==========================================
-      // ROW 4: Marquee Scrolling Text (Y: 64..95)
+      // ROW 4: Marquee Scrolling Text (Y: 74..95) - Shifted down to Y=93
       // ==========================================
       static float scrollX = 128.0;
       scrollX -= 0.8; // Adjust speed (pixels per frame)
@@ -421,26 +579,23 @@ void loop() {
         cachedRawMarquee = rawMarquee;
         cachedCustomMsg = utf8ToCustom(rawMarquee);
         
-        // Measure width using the correct font
-        virtual_display->setFont(&Verdana_Vietnamese10pt);
-        int16_t bx, by;
-        uint16_t bw, bh;
-        virtual_display->getTextBounds(cachedCustomMsg, 0, 84, &bx, &by, &bw, &bh);
-        cachedTextWidth = bw;
+        // Measure width using custom function that handles char > 127 correctly
+        cachedTextWidth = getCustomTextWidth(cachedCustomMsg, &Verdana_Bold18pt);
       }
 
       if (scrollX < -cachedTextWidth) {
         scrollX = 128.0; // Reset scroll position to right edge
       }
 
-      virtual_display->setFont(&Verdana_Vietnamese10pt);
+      virtual_display->setTextWrap(false); // CRITICAL: Disable wrapping to prevent multiple lines
+      virtual_display->setFont(&Verdana_Bold18pt);
       virtual_display->setTextColor(hsvToRgb565(globalHue + 120, 255, 255));
-      virtual_display->setCursor((int)scrollX, 84);
+      virtual_display->setCursor((int)scrollX, 88);
       virtual_display->print(cachedCustomMsg);
 
     } else {
       // Offline / waiting for time sync
-      virtual_display->setFont(&Verdana_Vietnamese8pt);
+      virtual_display->setFont(&Verdana_Vietnamese10pt);
       virtual_display->setTextColor(virtual_display->color565(255, 255, 0));
       virtual_display->setCursor(10, 48);
       virtual_display->print(utf8ToCustom("Đang đồng bộ thời gian..."));

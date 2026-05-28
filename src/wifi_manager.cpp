@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 #include "display.h"
 #include "reset_button.h"
+#include "vietnamese_helper.h"
 #include <Arduino.h>
 #include <WiFi.h>
 
@@ -13,14 +14,21 @@ void connectWiFi(const ConfigData& config) {
   Serial.printf("SSID: %s\n", config.ssid);
   Serial.printf("Retry attempt: %d\n", retryCount);
 
+  char ssidLine[64];
+  snprintf(ssidLine, sizeof(ssidLine), "WiFi: %s", config.ssid);
+
   // Show "Waiting WiFi..." on LED display
-  dma_display->clearScreen();
-  dma_display->setTextSize(1);
-  dma_display->setCursor(2, 4);
-  dma_display->setTextColor(dma_display->color565(255, 165, 0)); // Orange color
-  dma_display->print("Waiting");
-  dma_display->setCursor(4, 20);
-  dma_display->print("WiFi...");
+  virtual_display->fillScreen(0);
+  virtual_display->setFont(&Verdana_Vietnamese10pt);
+  virtual_display->setTextColor(virtual_display->color565(255, 165, 0)); // Orange color
+  virtual_display->setCursor(6, 28);
+  virtual_display->print(utf8ToCustom("Đang kết nối..."));
+  virtual_display->setTextColor(virtual_display->color565(0, 255, 255)); // Cyan color for SSID
+  virtual_display->setCursor(6, 50);
+  virtual_display->print(utf8ToCustom(ssidLine));
+  virtual_display->setTextColor(virtual_display->color565(200, 200, 200));
+  virtual_display->setCursor(6, 72);
+  virtual_display->print(utf8ToCustom("Vui lòng đợi..."));
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(config.ssid, config.password);
@@ -44,13 +52,19 @@ void connectWiFi(const ConfigData& config) {
 
     // Blink display every second to show activity
     if (timeout % 2 == 0) {
-      dma_display->clearScreen();
+      virtual_display->fillScreen(0);
     } else {
-      dma_display->setCursor(2, 4);
-      dma_display->setTextColor(dma_display->color565(255, 165, 0));
-      dma_display->print("Waiting");
-      dma_display->setCursor(4, 20);
-      dma_display->print("WiFi...");
+      virtual_display->fillScreen(0);
+      virtual_display->setFont(&Verdana_Vietnamese10pt);
+      virtual_display->setTextColor(virtual_display->color565(255, 165, 0)); // Orange
+      virtual_display->setCursor(6, 28);
+      virtual_display->print(utf8ToCustom("Đang kết nối..."));
+      virtual_display->setTextColor(virtual_display->color565(0, 255, 255)); // Cyan
+      virtual_display->setCursor(6, 50);
+      virtual_display->print(utf8ToCustom(ssidLine));
+      virtual_display->setTextColor(virtual_display->color565(200, 200, 200));
+      virtual_display->setCursor(6, 72);
+      virtual_display->print(utf8ToCustom("Vui lòng đợi..."));
     }
   }
 
@@ -69,10 +83,11 @@ void connectWiFi(const ConfigData& config) {
     retryCount = 0;
 
     // Show success message briefly
-    dma_display->clearScreen();
-    dma_display->setCursor(2, 4);
-    dma_display->setTextColor(dma_display->color565(0, 255, 0)); // Green
-    dma_display->print("WiFi OK!");
+    virtual_display->fillScreen(0);
+    virtual_display->setFont(&Verdana_Vietnamese10pt);
+    virtual_display->setTextColor(virtual_display->color565(0, 255, 0)); // Green
+    virtual_display->setCursor(10, 48);
+    virtual_display->print(utf8ToCustom("Kết nối WiFi OK!"));
     delay(1000);
   } else {
     Serial.println("\nWiFi Failed!");
@@ -87,25 +102,21 @@ void connectWiFi(const ConfigData& config) {
     lastRetryTime = millis();
 
     // Show retry message
-    dma_display->clearScreen();
-    dma_display->setTextSize(1);
-    dma_display->setCursor(2, 4);
-    dma_display->setTextColor(dma_display->color565(255, 0, 0)); // Red
-    dma_display->print("WiFi");
-    dma_display->setCursor(2, 14);
-    dma_display->print("Failed");
-    dma_display->setCursor(2, 24);
-    dma_display->printf("Retry:%d", retryCount);
+    virtual_display->fillScreen(0);
+    virtual_display->setFont(&Verdana_Vietnamese10pt);
+    virtual_display->setTextColor(virtual_display->color565(255, 0, 0)); // Red
+    virtual_display->setCursor(10, 30);
+    virtual_display->print(utf8ToCustom("Kết nối Thất Bại"));
     
-    // Show hint to press BOOT button
-    dma_display->setTextSize(1);
-    dma_display->setCursor(2, 4);
-    dma_display->setTextColor(dma_display->color565(255, 100, 0));
-    dma_display->print("Press");
-    dma_display->setCursor(2, 14);
-    dma_display->print("BOOT");
-    dma_display->setCursor(2, 24);
-    dma_display->print("to cfg");
+    virtual_display->setTextColor(virtual_display->color565(255, 100, 0));
+    virtual_display->setCursor(10, 50);
+    char retryMsg[32];
+    sprintf(retryMsg, "Thử lại lần %d...", retryCount);
+    virtual_display->print(utf8ToCustom(retryMsg));
+
+    virtual_display->setTextColor(virtual_display->color565(200, 200, 200));
+    virtual_display->setCursor(10, 70);
+    virtual_display->print(utf8ToCustom("Ấn BOOT để cấu hình"));
     
     // Wait and check button during delay
     for (int i = 0; i < 20; i++) { // 20 * 100ms = 2 seconds
