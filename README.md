@@ -1,194 +1,83 @@
-# Hướng dẫn sử dụng PlatformIO với ESP32
+# ESP-01S WiFi Clock (MAX7219 LED Matrix)
 
-## Cài đặt PlatformIO
+Dự án firmware chuyên biệt cho board **ESP-01S (ESP8266)** điều khiển đồng hồ LED Matrix 32x8 (MAX7219) tự động đồng bộ thời gian qua Internet (NTP) và cấu hình WiFi qua Captive Portal.
 
-### Cách 1: Cài đặt PlatformIO CLI (Command Line Interface)
+---
 
+## 📌 Sơ đồ kết nối phần cứng (GPIO Mapping)
+
+Do ESP-01S có số lượng chân GPIO giới hạn (chỉ có 4 chân hữu dụng), dự án được chia làm 2 giai đoạn (Phase) với sơ đồ chân khác nhau được cấu hình động qua PlatformIO:
+
+### Phase 1: Thử nghiệm & Debug Serial
+> [!NOTE]
+> Giai đoạn này ưu tiên sử dụng cổng Serial (TX/RX) để debug trạng thái hệ thống.
+
+| Linh kiện | Chân ESP-01S | Chức năng | Trạng thái điện áp |
+| --- | --- | --- | --- |
+| **Config Button** | `GPIO0` | Nhấn giữ > 3s để reset WiFi/Config | Kéo trở Pull-up lên 3.3V |
+| **Status LED** | `GPIO2` | Đèn nháy báo trạng thái hệ thống | Active LOW (Led ON ở mức LOW) |
+| **Serial Debug** | `GPIO1 (TX)` / `GPIO3 (RX)` | Log thông tin ra Serial Monitor | 115200 Baud |
+
+---
+
+### Phase 2: Chạy chính thức với LED Matrix (Mặc định)
+> [!WARNING]
+> Do sử dụng GPIO1 (TX) và GPIO3 (RX) làm chân Data/Clock cho LED Matrix, cổng Serial sẽ bị vô hiệu hóa hoàn toàn trong giai đoạn này để tránh xung đột tín hiệu.
+
+| Linh kiện / LED Matrix | Chân ESP-01S | Chức năng | Ghi chú |
+| --- | --- | --- | --- |
+| **DIN (Data In)** | `GPIO1 (TX)` | Đường truyền dữ liệu LED | Kết nối chân DIN của MAX7219 |
+| **CLK (Clock)** | `GPIO3 (RX)` | Xung nhịp đồng bộ LED | Kết nối chân CLK của MAX7219 |
+| **CS (Chip Select)** | `GPIO0` | Chọn chip điều khiển | Kết nối chân CS của MAX7219 |
+| **Config Button** | `GPIO2` | Nhấn giữ > 3s để reset WiFi/Config | Kéo trở Pull-up lên 3.3V |
+
+---
+
+## 📂 Cấu trúc mã nguồn (Modular Architecture)
+
+Mã nguồn được thiết kế theo dạng module độc lập để dễ dàng mở rộng và bảo trì:
+
+* **[main.cpp](src/main.cpp)**: Entrypoint chính của ứng dụng cho Phase 2 (Đồng hồ LED Matrix).
+* **[main-phase1.cpp](src/main-phase1.cpp)**: Entrypoint chính cho Phase 1 (Debug qua Serial).
+* **[config_manager.h](src/config_manager.h) / [.cpp](src/config_manager.cpp)**: Quản lý mount LittleFS, lưu trữ thông tin cấu hình WiFi và các tham số phụ (`timezone`, `brightness`, `is24h`) dạng JSON.
+* **[wifi_controller.h](src/wifi_controller.h) / [.cpp](src/wifi_controller.cpp)**: Quản lý kết nối WiFi, tích hợp Portal cấu hình của `WiFiManager` và cơ chế tự động kết nối lại ngầm.
+* **[ntp_manager.h](src/ntp_manager.h) / [.cpp](src/ntp_manager.cpp)**: Đồng bộ giờ Internet qua giao thức NTP, quản lý múi giờ và xuất chuỗi thời gian định dạng chuẩn.
+* **[button_handler.h](src/button_handler.h) / [.cpp](src/button_handler.cpp)**: Xử lý nút bấm thông minh (nhấn giữ 3 giây để xóa cấu hình và tự động restart).
+* **[led_indicator.h](src/led_indicator.h) / [.cpp](src/led_indicator.cpp)**: Điều khiển LED trạng thái bằng `Ticker` bất đồng bộ (chỉ hoạt động trong Phase 1).
+* **[debug.h](src/debug.h)**: Cung cấp các macro `DEBUG_PRINT`, `DEBUG_PRINTLN`, `DEBUG_PRINTF` để tắt/bật Serial logs linh hoạt.
+
+---
+
+## 🚀 Hướng dẫn Biên dịch & Nạp Code
+
+Dự án được cấu hình sẵn 2 môi trường (Environment) tương ứng với 2 giai đoạn trong file `platformio.ini`:
+
+### 1. Nạp chương trình Phase 1 (Cơ bản - Debug)
+Biên dịch `main-phase1.cpp`, mở Serial log ở baudrate 115200:
 ```bash
-# Cài đặt PlatformIO Core
-pip install -U platformio
+# Biên dịch và nạp code
+pio run -e esp01s_phase1 --target upload
 
-# Hoặc sử dụng Homebrew trên macOS
-brew install platformio
+# Mở cổng giám sát Serial
+pio device monitor -e esp01s_phase1
 ```
 
-### Cách 2: Sử dụng VS Code Extension
-
-1. Mở VS Code
-2. Vào Extensions (⌘+Shift+X)
-3. Tìm "PlatformIO IDE"
-4. Click Install
-
-## Cấu trúc dự án
-
-```
-P5_Matrix/
-├── platformio.ini      # File cấu hình dự án
-├── src/                # Thư mục chứa source code
-│   └── main.cpp        # File code chính (thay thế .ino)
-├── lib/                # Thư mục chứa thư viện tự tạo
-├── include/            # Thư mục chứa header files
-└── .pio/               # Thư mục build (tự động tạo)
-```
-
-## Các lệnh cơ bản
-
-### Build dự án
-
+### 2. Nạp chương trình Phase 2 (Đồng hồ LED Matrix - Chính thức)
+Biên dịch `main.cpp` kết hợp điều khiển LED Matrix MAX7219 qua thư viện `MD_Parola`:
 ```bash
-pio run
+# Biên dịch và nạp code
+pio run -e esp01s_phase2 --target upload
 ```
 
-### Upload code lên ESP32
+---
 
-```bash
-pio run --target upload
-```
+## ⚙️ Hướng dẫn Cấu hình WiFi & Hệ thống
 
-### Mở Serial Monitor
-
-```bash
-pio device monitor
-```
-
-### Build + Upload + Monitor (một lệnh)
-
-```bash
-pio run --target upload && pio device monitor
-```
-
-### Clean build files
-
-```bash
-pio run --target clean
-```
-
-## Cấu hình trong platformio.ini
-
-File `platformio.ini` đã được cấu hình với:
-
-- **Platform**: espressif32 (ESP32)
-- **Board**: esp32dev (ESP32 DevKit)
-- **Framework**: Arduino
-- **Monitor speed**: 115200 baud
-- **Upload speed**: 921600 baud
-
-### Thêm thư viện
-
-Để thêm thư viện, uncomment và chỉnh sửa phần `lib_deps` trong `platformio.ini`:
-
-```ini
-lib_deps =
-    adafruit/Adafruit NeoPixel@^1.10.0
-    fastled/FastLED@^3.5.0
-```
-
-Hoặc sử dụng lệnh:
-
-```bash
-pio pkg install --library "adafruit/Adafruit NeoPixel@^1.10.0"
-```
-
-## Chọn board ESP32 khác
-
-Nếu bạn sử dụng board ESP32 khác, thay đổi giá trị `board` trong `platformio.ini`:
-
-```ini
-[env:esp32dev]
-board = esp32dev          # ESP32 DevKit V1
-# board = esp32-s3-devkitc-1  # ESP32-S3
-# board = esp32-c3-devkitm-1  # ESP32-C3
-# board = nodemcu-32s     # NodeMCU-32S
-```
-
-Xem danh sách đầy đủ: https://docs.platformio.org/en/latest/boards/index.html#espressif-32
-
-## Chọn cổng Serial
-
-PlatformIO tự động phát hiện cổng, nhưng bạn có thể chỉ định cụ thể:
-
-```ini
-upload_port = /dev/cu.usbserial-0001
-monitor_port = /dev/cu.usbserial-0001
-```
-
-Xem danh sách cổng:
-
-```bash
-pio device list
-```
-
-## So sánh với Arduino IDE
-
-| Arduino IDE                                    | PlatformIO                                                 |
-| ---------------------------------------------- | ---------------------------------------------------------- |
-| `.ino` file                                    | `.cpp` file trong thư mục `src/`                           |
-| Thư viện trong `~/Documents/Arduino/libraries` | Thư viện trong `lib/` hoặc khai báo trong `platformio.ini` |
-| Chọn board qua GUI                             | Cấu hình trong `platformio.ini`                            |
-| Serial Monitor trong IDE                       | `pio device monitor`                                       |
-
-## Chọn cổng Serial
-
-### Tự động phát hiện cổng (khuyến nghị)
-
-PlatformIO tự động phát hiện cổng ESP32 khi upload:
-
-```bash
-pio run --target upload
-```
-
-### Xem danh sách cổng
-
-```bash
-pio device list
-```
-
-### Chỉ định cổng cụ thể
-
-Nếu PlatformIO phát hiện sai cổng, chỉ định cổng thủ công:
-
-```bash
-# Upload với cổng cụ thể
-pio run --target upload --upload-port /dev/cu.usbserial-0001
-
-# Monitor với cổng cụ thể
-pio device monitor --port /dev/cu.usbserial-0001
-```
-
-### Script tiện lợi (khuyến nghị)
-
-Dự án đã có sẵn 2 script tự động tìm cổng ESP32:
-
-**Upload code:**
-
-```bash
-./upload.sh
-```
-
-**Mở Serial Monitor:**
-
-```bash
-./monitor.sh
-```
-
-Các script này sẽ tự động tìm cổng ESP32 (usbserial, SLAB_USBtoUART) và thực hiện upload/monitor.
-
-## Troubleshooting
-
-### Lỗi không tìm thấy cổng
-
-```bash
-# Kiểm tra quyền truy cập (Linux/macOS)
-sudo usermod -a -G dialout $USER
-# hoặc
-sudo chmod 666 /dev/ttyUSB0
-```
-
-### Lỗi upload
-
-- Nhấn giữ nút BOOT trên ESP32 khi upload
-- Thử giảm upload_speed xuống 115200
-
-### Lỗi thiếu driver
-
-- Cài đặt driver CH340/CP2102 cho chip USB-to-Serial của board
+1. Khi thiết bị bật nguồn lần đầu hoặc không kết nối được WiFi cũ, nó sẽ tự động phát ra một Access Point có tên là: **`ESPClock-Setup`**.
+2. Dùng điện thoại kết nối vào WiFi này, Captive Portal sẽ tự động hiện ra (hoặc truy cập IP `192.168.4.1`).
+3. Nhập các thông tin cấu hình:
+   * **WiFi SSID & Password**
+   * **Timezone**: Múi giờ của bạn (ví dụ: `7` đối với Việt Nam).
+   * **Brightness**: Độ sáng màn hình LED từ `0` đến `15`.
+   * **24h Format**: Định dạng giờ (`1` là 24h, `0` là 12h).
+4. Nhấn **Save**. Thiết bị sẽ tự lưu cấu hình vào phân vùng LittleFS, kết nối WiFi, đồng bộ giờ từ NTP và bắt đầu hiển thị.
