@@ -1,49 +1,62 @@
 # ESP32 LED Matrix Clock
 
-Đồng hồ LED Matrix P5 64x32 thông minh với ESP32, hiển thị thời gian, ngày tháng, âm lịch, thông tin thời tiết và môi trường trong nhà với hiệu ứng gradient đầy màu sắc.
+Đồng hồ LED Matrix với 6 tấm module P5 64x32 ghép lại thành 192x128 hiển thị với ESP32-S3-N16R8, hiển thị thời gian, ngày tháng, âm lịch, thông tin thời tiết và môi trường trong nhà với hiệu ứng gradient đầy màu sắc.
 
-![Version](https://img.shields.io/badge/version-2.2.0-blue)
+Đây là bản cải tiến với 5 hàng hiển thị song song không cần luân phiên, sử dụng board ESP32-S3-N16R8.
+Bản 1 led matrix 64x32 ở branch [clock](https://github.com/mvtcode/esp32-project/tree/clock).
+
+![Version](https://img.shields.io/badge/version-3.0.0-blue)
 ![Platform](https://img.shields.io/badge/platform-ESP32-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
 ## 🎬 Demo
 
 Video demo trên tiktok:
-[https://vt.tiktok.com/ZSaMTVyBm/
-![Tiktok](video-thumb.jpg)](https://vt.tiktok.com/ZSaMTVyBm/)
+[https://vt.tiktok.com/ZSQ2DhfpF/
+![Tiktok](video-thumb.jpg)](https://vt.tiktok.com/ZSQ2DhfpF/)
+
+Video demo chế độ config: https://www.facebook.com/reel/2184050055713548
+
+Video demo 1 tấm led matrix 64x32: https://vt.tiktok.com/ZSaMTVyBm/
 
 ## ✨ Tính Năng
 
-### 🕐 Bố cục 4 hàng hiển thị đồng thời (v3.0.0)
+### 🕐 Bố cục 5 hàng hiển thị đồng thời (v3.0.0)
 
-Màn hình được thiết kế chia làm 4 hàng độc lập trên lưới 128x96 hiển thị song song toàn bộ thông tin:
+Màn hình được thiết kế chia làm 5 hàng độc lập trên lưới 128x96 hiển thị song song toàn bộ thông tin:
 
 1. **Hàng 1 (Y: 0..31): Đồng Hồ Thời Gian**
-   - Định dạng `Giờ:Phút:Giây` với font chữ lớn **Verdana Bold 14pt Việt Hóa**.
+   - Định dạng `Giờ:Phút:Giây` với font chữ lớn **ClockFont 24px** (font tùy chỉnh).
    - Dấu hai chấm `:` chuyển động trượt dọc mượt mà (sliding animation).
    - Tự động đồng bộ thời gian qua NTP (Network Time Protocol) và sao lưu vào **RTC DS1302** (Backup thời gian thực khi mất điện).
-   
 2. **Hàng 2 (Y: 32..47): Lịch Dương & Lịch Âm**
    - Phía trái hiển thị Thứ và Ngày/Tháng (`T.Hai, 26/05` hoặc `CN, 26/05`).
    - Phía phải hiển thị ngày âm lịch dạng ngày/tháng (`AL:10/04`).
    - Sử dụng font **Verdana 8pt Việt Hóa** hiển thị tiếng Việt có dấu hoàn hảo.
 
-3. **Hàng 3 (Y: 48..63): Thời Tiết & Cảm Biến**
+3. **Hàng 3 (Y: 48..57): Mô Tả Thời Tiết & Chỉ Số UV**
+   - Phía trái hiển thị mô tả thời tiết ngoài trời lấy từ **Open-Meteo API** (ví dụ: `Trời quang`, `Ít mây`, `Có mưa`).
+   - Phía phải hiển thị chỉ số UV ngoài trời (`UV:3.5` hoặc `UV:0`).
+   - Sử dụng font **Verdana 8pt Việt Hóa** sắc nét.
+
+4. **Hàng 4 (Y: 58..73): Cảm Biến Trong Nhà & Ngoài Trời**
    - Phía trái: Nhiệt độ & Độ ẩm thực tế trong phòng đọc từ cảm biến **AHT10** kèm biểu tượng Ngôi nhà (🏠).
    - Phía phải: Nhiệt độ & Độ ẩm ngoài trời lấy từ **Open-Meteo API** kèm biểu tượng Cây thông (🌲).
    - Sử dụng font **Verdana 8pt Việt Hóa** sắc nét.
 
-4. **Hàng 4 (Y: 64..95): Chữ chạy Marquee tự chọn**
-   - Chữ chạy ngang cuộn từ phải sang trái mượt mà với font **Verdana 10pt Việt Hóa** lớn, dễ đọc.
+5. **Hàng 5 (Y: 74..95): Chữ chạy Marquee tự chọn**
+   - Chữ chạy ngang cuộn từ phải sang trái mượt mà với font **Verdana Bold 18pt Việt Hóa** lớn, dễ đọc.
    - Nội dung chữ chạy được người dùng thay đổi trực tiếp qua giao diện Web UI.
 
 ### 🌈 Hiệu ứng & Hiển thị nâng cao
+
 - **Anti-Jitter:** Các số giờ, phút, giây được vẽ ở vị trí cố định để chống rung/lắc chữ khi số thay đổi.
 - **Gradient Rainbow:** Các vùng chữ tự động đổi sắc màu theo dải màu HSV uyển chuyển.
 - **Double Buffering:** Tránh hiện tượng nháy màn hình nhờ cơ chế quét DMA của ESP32 kết hợp background tasks (FreeRTOS).
 - **Phông chữ Verdana Việt Hóa:** Đã tích hợp bộ font Unicode tiếng Việt đầy đủ dấu (Verdana 8pt, 10pt, 14pt Bold).
 
 ### 🌤️ Thông Tin Thời Tiết & Cảm Biến
+
 - **Ngoài trời**: Tự động lấy dữ liệu từ Open-Meteo API (cập nhật mỗi 10 phút).
 - **Trong nhà**: Đọc trực tiếp từ cảm biến AHT10 (cập nhật mỗi 20 giây ở background).
 - Hiển thị nhiệt độ (°C) và độ ẩm (%).
@@ -71,11 +84,11 @@ Màn hình được thiết kế chia làm 4 hàng độc lập trên lưới 12
 ### Lưới 128x96 & Font Việt Hóa (v3.0.0)
 
 - [x] Ánh xạ tọa độ ảo sang chuỗi panel vật lý ghép nối tiếp (Serpentine 3x2)
-- [x] Hỗ trợ hiển thị đồng thời 4 hàng thông tin độc lập không cần luân phiên
-- [x] Đồng hồ số lớn bằng font Verdana 14pt Bold
+- [x] Hỗ trợ hiển thị đồng thời 5 hàng thông tin độc lập không cần luân phiên
+- [x] Đồng hồ số lớn bằng font tùy chỉnh ClockFont 24px
 - [x] Lịch âm và lịch dương hiển thị song song
 - [x] Nhiệt độ/độ ẩm cảm biến trong nhà và ngoài trời hiển thị song song kèm icon
-- [x] Chữ chạy (marquee) tiếng Việt hàng 4 với font Verdana 10pt
+- [x] Chữ chạy (marquee) tiếng Việt hàng 5 với font Verdana Bold 18pt
 - [x] Tích hợp ô chỉnh chữ chạy tùy chọn trên Web UI và lưu vào NVS
 - [x] Chuyển đổi mã Unicode tiếng Việt sang bảng mã custom 8-bit
 
@@ -184,56 +197,61 @@ Danh sách linh kiện - phần cứng sử dụng: [Google Sheet](https://docs.
 
 ### Linh Kiện Chính
 
-| Linh Kiện         | Mô Tả                                                                        |
-| ----------------- | ---------------------------------------------------------------------------- |
-| ESP32-S3-N16R8    | Phiên bản 16MB Flash, 8MB PSRAM (Octal SPI) chạy mượt mà nhất                 |
-| LED Matrix P5     | 6 panel 64x32 pixels ghép thành lưới 128x96 (3 panel ngang, 2 hàng dọc)      |
-| Module RTC DS1302 | Giữ giờ khi mất điện                                                         |
-| Cảm biến AHT10    | Đo nhiệt độ/độ ẩm trong nhà (I2C)                                            |
-| Nguồn 5V/10A+     | Cấp nguồn cho 6 panel LED Matrix và ESP32 (Dòng tải khuyên dùng >= 10A)        |
+| Linh Kiện         | Mô Tả                                                                   |
+| ----------------- | ----------------------------------------------------------------------- |
+| ESP32-S3-N16R8    | Phiên bản 16MB Flash, 8MB PSRAM (Octal SPI) chạy mượt mà nhất           |
+| LED Matrix P5     | 6 panel 64x32 pixels ghép thành lưới 128x96 (3 panel ngang, 2 hàng dọc) |
+| Module RTC DS1302 | Giữ giờ khi mất điện                                                    |
+| Cảm biến AHT10    | Đo nhiệt độ/độ ẩm trong nhà (I2C)                                       |
+| Nguồn 5V/10A+     | Cấp nguồn cho 6 panel LED Matrix và ESP32 (Dòng tải khuyên dùng >= 10A) |
 
 ### Sơ Đồ Kết Nối (ESP32-S3-N16R8)
 
 > [!IMPORTANT]
 > **Lưu ý đặc biệt cho ESP32-S3-N16R8:**
-> * Không sử dụng các chân từ **GPIO 26 đến GPIO 32** (kết nối Flash/PSRAM nội bộ) và **GPIO 33 đến GPIO 37** (kết nối Octal PSRAM).
-> * Các chân **GPIO 22, 23, 24, 25 không tồn tại** trên chip ESP32-S3.
-> * Sơ đồ dưới đây đã được thiết kế tối ưu, hoàn toàn tránh xung đột và tập hợp các chân cắm cảm biến/RTC về một cụm bên trái giúp đi dây dễ dàng.
+>
+> - Không sử dụng các chân từ **GPIO 26 đến GPIO 32** (kết nối Flash/PSRAM nội bộ) và **GPIO 33 đến GPIO 37** (kết nối Octal PSRAM).
+> - Các chân **GPIO 22, 23, 24, 25 không tồn tại** trên chip ESP32-S3.
+> - Sơ đồ dưới đây đã được thiết kế tối ưu, hoàn toàn tránh xung đột và tập hợp các chân cắm cảm biến/RTC về một cụm bên trái giúp đi dây dễ dàng.
 
 #### 1. LED Matrix (HUB75)
 
-| HUB75 Pin | ESP32-S3 GPIO | Chức Năng     | Mô Tả |
-| --------- | ------------- | ------------- | ----- |
-| **R1**    | GPIO4         | Red Data 1    | Dữ liệu màu đỏ (nửa trên) |
-| **G1**    | GPIO5         | Green Data 1  | Dữ liệu màu xanh lá (nửa trên) |
+| HUB75 Pin | ESP32-S3 GPIO | Chức Năng     | Mô Tả                             |
+| --------- | ------------- | ------------- | --------------------------------- |
+| **R1**    | GPIO4         | Red Data 1    | Dữ liệu màu đỏ (nửa trên)         |
+| **G1**    | GPIO5         | Green Data 1  | Dữ liệu màu xanh lá (nửa trên)    |
 | **B1**    | GPIO6         | Blue Data 1   | Dữ liệu màu xanh dương (nửa trên) |
-| **R2**    | GPIO7         | Red Data 2    | Dữ liệu màu đỏ (nửa dưới) |
-| **G2**    | GPIO15        | Green Data 2  | Dữ liệu màu xanh lá (nửa dưới) |
+| **R2**    | GPIO7         | Red Data 2    | Dữ liệu màu đỏ (nửa dưới)         |
+| **G2**    | GPIO15        | Green Data 2  | Dữ liệu màu xanh lá (nửa dưới)    |
 | **B2**    | GPIO16        | Blue Data 2   | Dữ liệu màu xanh dương (nửa dưới) |
-| **A**     | GPIO17        | Address A     | Quét hàng bit 0 |
-| **B**     | GPIO18        | Address B     | Quét hàng bit 1 |
-| **C**     | GPIO8         | Address C     | Quét hàng bit 2 |
-| **D**     | GPIO42        | Address D     | Quét hàng bit 3 |
-| **CLK**   | GPIO41        | Clock         | Xung nhịp đồng bộ |
-| **LAT**   | GPIO40        | Latch         | Chốt dữ liệu |
-| **OE**    | GPIO2         | Output Enable | Cho phép hiển thị (Active LOW) |
-| **GND**   | GND           | Ground        | Đất |
+| **A**     | GPIO17        | Address A     | Quét hàng bit 0                   |
+| **B**     | GPIO18        | Address B     | Quét hàng bit 1                   |
+| **C**     | GPIO8         | Address C     | Quét hàng bit 2                   |
+| **D**     | GPIO42        | Address D     | Quét hàng bit 3                   |
+| **CLK**   | GPIO41        | Clock         | Xung nhịp đồng bộ                 |
+| **LAT**   | GPIO40        | Latch         | Chốt dữ liệu                      |
+| **OE**    | GPIO2         | Output Enable | Cho phép hiển thị (Active LOW)    |
+| **GND**   | GND           | Ground        | Đất                               |
 
 #### Sơ đồ lắp đặt chuỗi Panel (Serpentine Mapping):
+
 Các panel được kết nối nối tiếp bằng cáp HUB75 theo thứ tự từ nguồn phát tín hiệu (ESP32):
+
 ```text
   [ESP32] ──► Panel 1 (Top-Left) ──► Panel 2 (Top-Right)
-                                          │
-  [Cáp nối hàng] ◄────────────────────────┘
-        │
-        ▼
-  Panel 4 (Mid-Left)  ◄───────────── Panel 3 (Mid-Right)
-        │
-  [Cáp nối hàng] 
-        ▼
-  Panel 5 (Bot-Left)  ─────────────► Panel 6 (Bot-Right)
+                                               │
+                                      [Cáp nối hàng]
+                                               │
+                                               ▼
+               Panel 4 (Mid-Left, 🔄180°) ◄── Panel 3 (Mid-Right, 🔄180°)
+                       │
+               [Cáp nối hàng]
+                       │
+                       ▼
+               Panel 5 (Bot-Left) ──────────► Panel 6 (Bot-Right)
 ```
-*Lớp `CustomMatrixPanel` trong dự án tự động chuyển đổi tọa độ ảo (0-127, 0-95) thành địa chỉ pixel vật lý phù hợp với sơ đồ đi dây này.*
+
+_Lớp `CustomMatrixPanel` trong dự án tự động chuyển đổi tọa độ ảo (0-127, 0-95) thành địa chỉ pixel vật lý phù hợp với sơ đồ đi dây này._
 
 #### 2. Module RTC DS1302
 
@@ -291,7 +309,7 @@ brew install platformio
 ```bash
 git clone https://github.com/mvtcode/esp32-project.git
 cd esp32-project
-git checkout clock
+git checkout clock-esp32s3-6p5
 ```
 
 ### 3. Cài Đặt Dependencies
@@ -346,9 +364,9 @@ pio device monitor
 2. **ESP32 tự động khởi động ở AP Mode**:
    - LED Matrix hiển thị:
      ```
-     Conf wifi:    (màu cam, cố định)
-     Clock-2026    (màu trắng, nhấp nháy)
-     192.168.4.1   (màu cyan)
+     Cấu hình WiFi:    (màu cam, cố định)
+     WiFi: Clock-2026  (màu trắng, nhấp nháy)
+     Web: 192.168.4.1  (màu cyan)
      ```
 
 3. **Kết nối WiFi từ điện thoại/máy tính**:
@@ -388,7 +406,7 @@ Sau khi đã cấu hình, ESP32 sẽ:
 
 - Tự động kết nối WiFi khi khởi động
 - Hiển thị đồng hồ với hiệu ứng gradient
-- Luân phiên hiển thị: Ngày/Tháng → Thời tiết → Âm lịch (mỗi 5 giây)
+- Hiển thị song song đồng thời toàn bộ thông tin (Giờ, Lịch âm/dương, Thời tiết/UV, Cảm biến, Chữ chạy)
 - Tự động cập nhật thời tiết mỗi 10 phút
 - Tự động áp dụng chế độ ngủ theo giờ đã cấu hình
 
@@ -410,18 +428,26 @@ Nếu bạn muốn đổi WiFi hoặc cấu hình lại:
 
 ```
 esp32-project/
-├── platformio.ini           # Cấu hình PlatformIO & Libraries
-├── data/                    # Giao diện Web (SPIFFS)
-└── src/                     # Source code
-    ├── main.cpp             # Logic chính & Hiển thị
-    ├── display.cpp/h        # Khởi tạo LED Matrix & Vẽ Icons/Chữ VN
-    ├── wifi_manager.cpp/h   # Kết nối WiFi & Retry logic
-    ├── rtc_manager.cpp/h    # Quản lý DS1302 & Đồng bộ thời gian
-    ├── indoor_sensor.cpp/h  # Đọc AHT10 qua FreeRTOS Task
-    ├── weather.cpp/h        # Lấy thời tiết API qua FreeRTOS Task
-    ├── config_manager.cpp/h # Quản lý cấu hình NVS
-    ├── web_server.cpp/h     # Web server cấu hình
-    └── lunar_calendar.cpp/h # Tính toán âm lịch
+├── platformio.ini              # Cấu hình PlatformIO & Libraries
+├── data/                       # Giao diện Web (SPIFFS)
+└── src/                        # Source code
+    ├── main.cpp                # Logic chính & Vòng lặp hiển thị
+    ├── display.cpp/h           # Khởi tạo LED Matrix & Icons/Chữ VN
+    ├── wifi_manager.cpp/h      # Kết nối WiFi & Retry logic
+    ├── rtc_manager.cpp/h       # Quản lý DS1302 & Đồng bộ thời gian
+    ├── indoor_sensor.cpp/h     # Đọc AHT10 qua FreeRTOS Task
+    ├── weather.cpp/h           # Lấy thời tiết API qua FreeRTOS Task
+    ├── config_manager.cpp/h    # Quản lý cấu hình NVS
+    ├── web_server.cpp/h        # Web server & Captive Portal
+    ├── reset_button.cpp/h      # Nút BOOT reset cấu hình
+    ├── lunar_calendar.cpp/h    # Tính toán âm lịch
+    ├── ClockFont24px.h         # Font tùy chỉnh cho đồng hồ
+    ├── Verdana_Bold14pt.h      # Font Verdana Bold 14pt Việt Hóa
+    ├── Verdana_Bold18pt.h      # Font Verdana Bold 18pt Việt Hóa (marquee)
+    ├── Verdana_Vietnamese10pt.h # Font Verdana 10pt Việt Hóa
+    ├── Verdana_Vietnamese12pt.h # Font Verdana 12pt Việt Hóa
+    ├── vietnamese_helper.h     # Bộ chuyển đổi Unicode → Custom 8-bit
+    └── test-led.cpp            # Test panel LED riêng biệt (env:test-led)
 ```
 
 ## 🎨 Tùy Chỉnh
@@ -430,10 +456,10 @@ esp32-project/
 
 Sử dụng giao diện web để điều chỉnh độ sáng từ 10-100%.
 
-Hoặc trong `src/display.cpp`, dòng 34:
+Hoặc trong `src/display.cpp`, dòng ~63 (giá trị khởi động tạm thời khi boot):
 
 ```cpp
-dma_display->setBrightness8(50); // 0-255
+dma_display->setBrightness8(50); // 0-255 (chỉ áp dụng khi boot, sẽ bị ghi đè bởi config)
 ```
 
 ### Thay Đổi Tốc Độ Gradient
@@ -517,6 +543,22 @@ const unsigned long weatherUpdateInterval = 600000; // 10 phút (ms)
 - ✅ Verify cấu hình đã được lưu vào NVS (xem log khi boot)
 
 ## 📝 Lịch Sử Phiên Bản
+
+### v3.0.0 (2026-05-28)
+
+- 🚀 **Nâng cấp lên 6 panel LED Matrix** ghép thành lưới **192×96 pixels** (3 cột × 2 hàng)
+- ✨ **5 hàng hiển thị song song** không cần luân phiên (Giờ / Lịch / Thời tiết+UV / Cảm biến / Marquee)
+- ✨ **Font tùy chỉnh ClockFont 24px** cho đồng hồ số lớn
+- ✨ **Verdana Bold 18pt** cho chữ chạy Marquee
+- ✨ **Dấu hai chấm sliding animation** mượt mà giữa HH:MM:SS
+- ✨ **Icon WiFi signal** (5 thanh cường độ), **icon đồng bộ thời gian** và **icon thời tiết** trên thanh trạng thái
+- ✨ **Chỉ số UV ngoài trời** từ Open-Meteo API
+- ✨ **NTP ↔ RTC drift detection**: Tự động cập nhật RTC nếu lệch ≥ 5 giây
+- ✨ **Background WiFi reconnect** không blocking mỗi 30 giây
+- ✨ **Periodic NTP sync** 60 phút/lần để đảm bảo độ chính xác
+- ✨ **Captive Portal** tự động chuyển hướng khi kết nối AP mode
+- 🎨 **VirtualMatrixPanel** (`CustomMatrixPanel`) với serpentine 3×2 mapping
+- 🐛 Chuyển sang ESP32-S3-N16R8 (16MB Flash, 8MB PSRAM Octal)
 
 ### v2.2.0 (2026-02-08)
 
