@@ -184,7 +184,7 @@ void setup() {
     virtual_display->setCursor(4, 20);
     virtual_display->print("CONFIG MODE");
     virtual_display->setCursor(4, 40);
-    virtual_display->print("AP: Clock-2026");
+    virtual_display->print("AP: " DEFAULT_AP_SSID);
     virtual_display->setCursor(4, 60);
     virtual_display->print("IP: 192.168.4.1");
     dma_display->flipDMABuffer(); // Swap buffer to show the screen
@@ -195,7 +195,7 @@ void setup() {
     setupWebServer();
     setupCaptivePortal(); // Enable captive portal DNS redirect
 
-    Serial.println("\nConnect to WiFi: Clock-2026");
+    Serial.println("\nConnect to WiFi: " DEFAULT_AP_SSID);
     Serial.println("Then visit: http://192.168.4.1");
     Serial.println("\nWaiting for configuration...\n");
   } else {
@@ -274,7 +274,7 @@ void loop() {
       // Line 2: AP name (blinking white/gray)
       virtual_display->setTextColor(blinkState ? virtual_display->color565(255, 255, 255) : virtual_display->color565(64, 64, 64));
       virtual_display->setCursor(4, 46);
-      virtual_display->print(utf8ToCustom("WiFi: Clock-2026"));
+      virtual_display->print(utf8ToCustom("WiFi: " DEFAULT_AP_SSID));
 
       // Line 3: IP address (cyan)
       virtual_display->setTextColor(virtual_display->color565(0, 255, 255));

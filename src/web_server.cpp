@@ -34,11 +34,11 @@ void setupAPMode() {
 
   // Start AP - không có password để dễ kết nối
   // channel 6 ít bị nhiễu hơn channel 1 trên nhiều môi trường
-  bool result = WiFi.softAP("Clock-2026",  // SSID
-                            "",            // No password
-                            6,             // Channel 6
-                            false,         // Not hidden
-                            4              // Max 4 connections
+  bool result = WiFi.softAP(DEFAULT_AP_SSID,  // SSID
+                            "",               // No password
+                            6,                // Channel 6
+                            false,            // Not hidden
+                            4                 // Max 4 connections
   );
 
   if (result) {
@@ -46,7 +46,7 @@ void setupAPMode() {
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
     Serial.println(IP);
-    Serial.println("SSID: Clock-2026");
+    Serial.println("SSID: " DEFAULT_AP_SSID);
     Serial.println("Password: (none - open network)");
     Serial.println("Channel: 6");
     Serial.println("Gateway: " + gateway.toString());
@@ -57,7 +57,7 @@ void setupAPMode() {
     Serial.println("ERROR: Failed to start AP! Retrying...");
     delay(1000);
     // Retry một lần nữa
-    result = WiFi.softAP("Clock-2026", "", 6, false, 4);
+    result = WiFi.softAP(DEFAULT_AP_SSID, "", 6, false, 4);
     if (result) {
       Serial.println("AP started on retry.");
     } else {

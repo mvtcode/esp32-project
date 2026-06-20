@@ -484,10 +484,10 @@ const cities = [
 
 ### Thay Đổi Tên WiFi AP Mode
 
-Trong `src/web_server.cpp`, tìm dòng:
+Trong `src/config_manager.h`, thay đổi hằng số `DEFAULT_AP_SSID`:
 
 ```cpp
-WiFi.softAP("Clock-2026");
+#define DEFAULT_AP_SSID "Clock-2026"
 ```
 
 ### Thay Đổi Thời Gian Cập Nhật Thời Tiết

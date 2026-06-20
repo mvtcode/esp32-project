@@ -3,6 +3,9 @@
 
 #include <Arduino.h>
 
+// Default configuration constants
+#define DEFAULT_AP_SSID "Clock-2026"
+
 // Configuration data structure
 struct ConfigData {
   char ssid[64];
