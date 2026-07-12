@@ -1,4 +1,5 @@
 #include "web_server.h"
+#include "rtc_manager.h"
 #include <ArduinoJson.h>
 #include <DNSServer.h>
 #include <SPIFFS.h>
@@ -502,7 +503,7 @@ void setupWebServer() {
           marquee.toCharArray(newConfig.marqueeText, sizeof(newConfig.marqueeText));
           Serial.printf("📝 Marquee: %s\n", newConfig.marqueeText);
         } else {
-          strcpy(newConfig.marqueeText, "Chào mừng bạn đến với ESP32 LED Matrix Clock!");
+          strcpy(newConfig.marqueeText, "Mạc Tân xin chào mừng bạn đến với ESP32 LED Matrix Clock! Phiên bản 6 (2x3) panels độ phân giải 192x96");
         }
         Serial.println("───────────────────────────────────────");
 
@@ -517,6 +518,15 @@ void setupWebServer() {
           response->addHeader("Access-Control-Allow-Origin", "*");
           request->send(response);
           return;
+        }
+
+        // Extract epoch time if present to manually sync RTC
+        if (doc.containsKey("epoch")) {
+          if (doc["epoch"].is<long>()) {
+            time_t epochVal = doc["epoch"].as<long>();
+            Serial.printf("⏰ Syncing RTC with epoch from client: %ld\n", epochVal);
+            setRTCTime(epochVal);
+          }
         }
 
         Serial.println("✅ Configuration validated");
@@ -534,9 +544,11 @@ void setupWebServer() {
           response->addHeader("Connection", "close");
           request->send(response);
 
-          // Restart ESP32 after 2 seconds
-          delay(2000);
-          ESP.restart();
+          // Restart ESP32 after 2 seconds in a non-blocking background task
+          xTaskCreate([](void *param) {
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+            ESP.restart();
+          }, "restart_task", 2048, NULL, 1, NULL);
         } else {
           Serial.println("❌ Failed to save configuration");
           Serial.println("═══════════════════════════════════════\n");

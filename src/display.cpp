@@ -67,7 +67,7 @@ void initDisplay() {
   virtual_display->setTextColor(virtual_display->color565(255, 0, 0));
   virtual_display->print("BOOTING...");
   virtual_display->setCursor(20, 36);
-  virtual_display->print("v 3.0.0 (128x96)");
+  virtual_display->print("v 3.1.0 (128x96)");
   dma_display->flipDMABuffer(); // Swap buffer to display the boot screen
   delay(500);
 }

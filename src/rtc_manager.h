@@ -18,4 +18,10 @@ bool getRTCTime(struct tm& timeinfo);
 // Check if RTC is valid and running
 bool isRTCValid();
 
+// Check if RTC is physically present
+bool isRTCPresent();
+
+// Set RTC time using epoch timestamp (seconds since 1970)
+void setRTCTime(time_t epochSeconds);
+
 #endif

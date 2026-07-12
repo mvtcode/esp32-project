@@ -340,7 +340,7 @@
           type="text"
           id="marqueeText"
           placeholder="Nhập chữ chạy hiển thị ở hàng 4"
-          value="Mạc Tân xin chào bạn đến với ứng dụng ESP32 LED Matrix Clock!"
+          value="Mạc Tân xin chào mừng bạn đến với ESP32 LED Matrix Clock! Phiên bản 6 (2x3) panels độ phân giải 192x96"
           maxlength="250"
         />
       </div>
@@ -718,7 +718,8 @@
           sleepStartMinute: sleepStartMinute,
           sleepEndMinute: sleepEndMinute,
           sleepBrightness: sleepBrightness,
-          marqueeText: marqueeText
+          marqueeText: marqueeText,
+          epoch: Math.floor(Date.now() / 1000)
         };
 
         btn.disabled = true;

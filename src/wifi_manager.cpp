@@ -85,14 +85,8 @@ void connectWiFi(const ConfigData& config) {
     // Reset retry count on successful connection
     retryCount = 0;
 
-    // Show success message briefly
-    virtual_display->fillScreen(0);
-    virtual_display->setFont(&Verdana_Vietnamese10pt);
-    virtual_display->setTextColor(virtual_display->color565(0, 255, 0)); // Green
-    virtual_display->setCursor(10, 48);
-    virtual_display->print(utf8ToCustom("Kết nối WiFi OK!"));
-    dma_display->flipDMABuffer();
-    delay(1000);
+    // Show success message with IP address
+    showIPAddress(WiFi.localIP());
   } else {
     Serial.println("\nWiFi Failed!");
     retryCount++;
@@ -136,5 +130,41 @@ void connectWiFi(const ConfigData& config) {
     // DON'T use recursive call - just return and let loop() handle retry
     // This prevents stack overflow and allows reset button to work
     return;
+  }
+}
+
+// Hiển thị IP address của đồng hồ lên màn hình matrix
+void showIPAddress(IPAddress ip) {
+  String ipStr = ip.toString();
+  int ipWidth = 0;
+  for (int i = 0; i < ipStr.length(); i++) {
+    if (ipStr[i] == '.') {
+      ipWidth += 4;
+    } else {
+      ipWidth += 8;
+    }
+  }
+  int ipX = (128 - ipWidth) / 2;
+  if (ipX < 0) ipX = 0;
+
+  unsigned long displayStart = millis();
+  while (millis() - displayStart < 3000) {
+    virtual_display->fillScreen(0);
+    virtual_display->setFont(&Verdana_Vietnamese10pt);
+    
+    // Line 1: WiFi Kết Nối OK!
+    virtual_display->setTextColor(virtual_display->color565(0, 255, 0)); // Green
+    virtual_display->setCursor(12, 35);
+    virtual_display->print(utf8ToCustom("WiFi Kết Nối OK!"));
+    
+    // Line 2: IP Address
+    virtual_display->setTextColor(virtual_display->color565(0, 255, 255)); // Cyan
+    virtual_display->setCursor(ipX, 65);
+    virtual_display->print(ipStr);
+    
+    dma_display->flipDMABuffer();
+    
+    checkResetButton();
+    delay(50);
   }
 }

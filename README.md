@@ -5,7 +5,7 @@
 Đây là bản cải tiến với 5 hàng hiển thị song song không cần luân phiên, sử dụng board ESP32-S3-N16R8.
 Bản 1 led matrix 64x32 ở branch [clock](https://github.com/mvtcode/esp32-project/tree/clock).
 
-![Version](https://img.shields.io/badge/version-3.0.0-blue)
+![Version](https://img.shields.io/badge/version-3.1.0-blue)
 ![Platform](https://img.shields.io/badge/platform-ESP32-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
@@ -543,6 +543,11 @@ const unsigned long weatherUpdateInterval = 600000; // 10 phút (ms)
 - ✅ Verify cấu hình đã được lưu vào NVS (xem log khi boot)
 
 ## 📝 Lịch Sử Phiên Bản
+
+### v3.1.0 (2026-07-12)
+
+- ✨ **Đồng bộ thời gian thủ công**: Tự động lấy thời gian (epoch timestamp) từ điện thoại/trình duyệt của người dùng khi lưu cấu hình và ghi trực tiếp vào module RTC DS1302 nếu có kết nối (tự động phát hiện tránh crash).
+- ✨ **Hiển thị IP khi kết nối WiFi**: Hiển thị địa chỉ IP của đồng hồ tự căn giữa đẹp mắt trên màn hình LED Matrix 128x96 khi khởi động và kết nối thành công vào WiFi router.
 
 ### v3.0.0 (2026-05-28)
 

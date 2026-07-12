@@ -127,3 +127,49 @@ bool isRTCValid() {
   RtcDateTime now = Rtc.GetDateTime();
   return now.IsValid() && Rtc.GetIsRunning();
 }
+
+// Check if RTC is physically present (by checking if we can write and read back a control register/ram or time)
+bool isRTCPresent() {
+  RtcDateTime now = Rtc.GetDateTime();
+  if (!now.IsValid()) {
+    if (!Rtc.GetIsRunning()) {
+      Rtc.SetIsRunning(true);
+      if (!Rtc.GetIsRunning()) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Set RTC time using epoch timestamp (seconds since 1970)
+void setRTCTime(time_t epochSeconds) {
+  if (!isRTCPresent()) {
+    Serial.println("RTC module not found, skipping setRTCTime.");
+    return;
+  }
+  
+  // Convert UTC epoch to local time (GMT+7 for Vietnam)
+  time_t localEpoch = epochSeconds + (7 * 3600);
+  struct tm *timeinfo = gmtime(&localEpoch);
+  
+  if (timeinfo == nullptr) {
+    Serial.println("Failed to convert epoch to local time structure.");
+    return;
+  }
+
+  RtcDateTime dt = RtcDateTime(
+    timeinfo->tm_year + 1900,
+    timeinfo->tm_mon + 1,
+    timeinfo->tm_mday,
+    timeinfo->tm_hour,
+    timeinfo->tm_min,
+    timeinfo->tm_sec
+  );
+
+  Rtc.SetIsWriteProtected(false);
+  Rtc.SetDateTime(dt);
+  Serial.printf("RTC time manually synchronized to: %04d-%02d-%02d %02d:%02d:%02d\n",
+                dt.Year(), dt.Month(), dt.Day(),
+                dt.Hour(), dt.Minute(), dt.Second());
+}
