@@ -548,6 +548,9 @@ const unsigned long weatherUpdateInterval = 600000; // 10 phút (ms)
 
 - ✨ **Đồng bộ thời gian thủ công**: Tự động lấy thời gian (epoch timestamp) từ điện thoại/trình duyệt của người dùng khi lưu cấu hình và ghi trực tiếp vào module RTC DS1302 nếu có kết nối (tự động phát hiện tránh crash).
 - ✨ **Hiển thị IP khi kết nối WiFi**: Hiển thị địa chỉ IP của đồng hồ tự căn giữa đẹp mắt trên màn hình LED Matrix 128x96 khi khởi động và kết nối thành công vào WiFi router.
+- ✨ **Hỗ trợ thêm các ký tự đặc biệt**: Bổ sung các biểu tượng custom (`©`, `✉`, `π`, `☂`, `▶`) vào font chữ chạy `Verdana_Bold18pt` và cập nhật bảng ánh xạ unicode giúp hiển thị các ký tự đặc biệt mượt mà trên panel LED.
+- ✨ **Trung tâm hóa cấu hình Access Point**: Định nghĩa hằng số `DEFAULT_AP_SSID` trong `config_manager.h` để dễ dàng cấu hình tên trạm phát cấu hình của thiết bị.
+- 🐛 **Sửa lỗi phản hồi lưu cấu hình**: Khởi động lại ESP32 bằng task FreeRTOS chạy ngầm (non-blocking task), giúp client nhận phản hồi HTTP thành công và hiển thị thông báo "Lưu thành công" trước khi thiết bị reboot.
 
 ### v3.0.0 (2026-05-28)
 
