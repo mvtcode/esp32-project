@@ -55,15 +55,12 @@ static void fetchWeatherData() {
         humidity = doc["current"]["relative_humidity_2m"];
         hasWeatherData = true;
         xSemaphoreGive(weatherMutex);
-        Serial.printf("[Weather Task] Updated: %.1f°C, %d%%\n", temperature,
-                      humidity);
       }
     } else {
       Serial.print("[Weather Task] JSON parse error: ");
       Serial.println(error.c_str());
     }
   } else {
-    Serial.printf("[Weather Task] HTTP GET failed, error: %d\n", httpCode);
     if (httpCode > 0) {
       String payload = http.getString();
       Serial.println(payload);
@@ -101,17 +98,15 @@ void initWeather(const String& apiUrl) {
   }
 
   // Create weather update task on Core 0 (main loop runs on Core 1)
-  if (WiFi.status() == WL_CONNECTED) {
-    xTaskCreatePinnedToCore(weatherUpdateTask, // Task function
-                            "WeatherTask",     // Task name
-                            8192,              // Stack size (bytes)
-                            NULL,              // Task parameter
-                            1,                 // Priority (lower than default)
-                            &weatherTaskHandle, // Task handle
-                            0                   // Core 0
-    );
-    Serial.println("Weather task created successfully");
-  }
+  xTaskCreatePinnedToCore(weatherUpdateTask, // Task function
+                          "WeatherTask",     // Task name
+                          8192,              // Stack size (bytes)
+                          NULL,              // Task parameter
+                          1,                 // Priority (lower than default)
+                          &weatherTaskHandle, // Task handle
+                          0                   // Core 0
+  );
+  Serial.println("Weather task created successfully");
 }
 
 // Get current weather data (thread-safe)

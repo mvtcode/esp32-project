@@ -26,6 +26,12 @@ void initDisplay() {
   mxconfig.gpio.lat = 4;
   mxconfig.gpio.oe = 15;
 
+  // Bật double-buffering: vẽ vào buffer ẩn, flip nguyên tử -> không nháy
+  mxconfig.double_buff = true;
+
+  // Tắt clock phase shift để giảm ghost pixel
+  mxconfig.clkphase = false;
+
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   if (!dma_display->begin()) {
     Serial.println("Failed to initialize DMA Display!");
@@ -39,6 +45,7 @@ void initDisplay() {
   dma_display->print("BOOTING...");
   dma_display->setCursor(6, 20);
   dma_display->print("v 2.2.0");
+  dma_display->flipDMABuffer(); // Flip để hiện màn hình boot
   delay(500);
 }
 
@@ -160,13 +167,13 @@ void drawIndoorIcon(int16_t x, int16_t y, uint16_t color) {
   dma_display->drawPixel(x + 3, y + 6, color);
 }
 
-// Set display brightness (10-100%)
+// Set display brightness (0-100%)
 void setDisplayBrightness(uint8_t brightness) {
   // Constrain brightness to valid range
-  if (brightness < 10) brightness = 10;
+  if (brightness < 0) brightness = 0;
   if (brightness > 100) brightness = 100;
   
-  // Convert percentage (10-100) to HUB75 scale (0-255)
+  // Convert percentage (0-100) to HUB75 scale (0-255)
   uint8_t value = (brightness * 255) / 100;
   dma_display->setBrightness8(value);
 }

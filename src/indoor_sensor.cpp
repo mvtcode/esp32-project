@@ -32,7 +32,6 @@ void initIndoorSensor() {
       cachedTemp = temp.temperature;
       cachedHum = (int)humidity.relative_humidity;
       hasValidData = true;
-      Serial.printf("Initial indoor reading: %.1f°C, %d%%\n", cachedTemp, cachedHum);
     }
   } else {
     Serial.println("Could not find AHT10 sensor! Check wiring.");
@@ -59,8 +58,6 @@ void indoorSensorTask(void* parameter) {
           cachedHum = (int)humidity.relative_humidity;
           hasValidData = true;
           xSemaphoreGive(indoorMutex);
-          
-          Serial.printf("[Indoor Task] Updated: %.1f°C, %d%%\n", cachedTemp, cachedHum);
         }
       } else {
         Serial.println("[Indoor Task] Failed to read sensor!");

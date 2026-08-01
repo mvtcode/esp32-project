@@ -33,20 +33,6 @@ void loadConfig(ConfigData &config) {
   config.isValid = isConfigValid(config);
   
   Serial.println("=== Configuration Loaded ===");
-  Serial.printf("SSID: %s\n", config.ssid);
-  Serial.printf("Password: %s\n", config.password[0] ? "***" : "(empty)");
-  Serial.printf("Latitude: %.4f\n", config.latitude);
-  Serial.printf("Longitude: %.4f\n", config.longitude);
-  Serial.printf("Brightness: %d%%\n", config.brightness);
-  Serial.printf("Sleep Enabled: %s\n", config.sleepEnabled ? "YES" : "NO");
-  if (config.sleepEnabled) {
-    Serial.printf("  Sleep Start: %02d:%02d (%d minutes from midnight)\n", 
-      config.sleepStartMinute / 60, config.sleepStartMinute % 60, config.sleepStartMinute);
-    Serial.printf("  Sleep End: %02d:%02d (%d minutes from midnight)\n",
-      config.sleepEndMinute / 60, config.sleepEndMinute % 60, config.sleepEndMinute);
-    Serial.printf("  Sleep Brightness: %d%%\n", config.sleepBrightness);
-  }
-  Serial.printf("Valid: %s\n", config.isValid ? "YES" : "NO");
   Serial.println("===========================");
 }
 
@@ -75,17 +61,6 @@ bool saveConfig(const ConfigData &config) {
   preferences.end();
   
   Serial.println("=== Configuration Saved ===");
-  Serial.printf("SSID: %s\n", config.ssid);
-  Serial.printf("Latitude: %.4f\n", config.latitude);
-  Serial.printf("Longitude: %.4f\n", config.longitude);
-  Serial.printf("Brightness: %d%%\n", config.brightness);
-  Serial.printf("Sleep Enabled: %s\n", config.sleepEnabled ? "YES" : "NO");
-  if (config.sleepEnabled) {
-    Serial.printf("Sleep Time: %02d:%02d - %02d:%02d\n", 
-      config.sleepStartMinute / 60, config.sleepStartMinute % 60,
-      config.sleepEndMinute / 60, config.sleepEndMinute % 60);
-    Serial.printf("Sleep Brightness: %d%%\n", config.sleepBrightness);
-  }
   Serial.println("==========================");
   
   return true;

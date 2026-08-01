@@ -58,6 +58,7 @@ void setup() {
     dma_display->setCursor(2, 14);
     dma_display->print("MODE");
     dma_display->setCursor(2, 24);
+    dma_display->flipDMABuffer();
     delay(1000);
 
     // Setup AP and web server
@@ -83,35 +84,22 @@ void setup() {
     weatherApiUrl += "&current=temperature_2m,relative_humidity_2m";
     Serial.println("Weather API: " + weatherApiUrl);
 
-    // Connect to WiFi
-    connectWiFi(deviceConfig);
-
-    // Initialize RTC
+    // 1. Initialize RTC first so time is immediately available
     initRTC();
     
-    // Initialize indoor sensor
+    // 2. Initialize indoor sensor
     initIndoorSensor();
     
-    // Start indoor sensor background task (always, regardless of WiFi)
+    // 3. Start indoor sensor background task (always, regardless of WiFi)
     startIndoorSensorTask();
     
-    // Initialize weather system
-    if (WiFi.status() == WL_CONNECTED) {
-      initWeather(weatherApiUrl);
-      
-      // Sync RTC from NTP (with timeout to prevent blocking)
-      Serial.println("Syncing time from NTP...");
-      struct tm timeinfo;
-      if (getLocalTime(&timeinfo, 5000)) { // 5 second timeout
-        syncRTCFromNTP(timeinfo);
-        Serial.println("RTC synced from NTP successfully");
-      } else {
-        Serial.println("NTP sync timeout, will retry later");
-      }
-    }
+    // 4. Initialize weather system (task will poll when WiFi connects)
+    initWeather(weatherApiUrl);
+    
+    // 5. Start non-blocking WiFi connection
+    initWiFi(deviceConfig);
     
     // Apply initial brightness from configuration
-    Serial.printf("\n>>> Applying Initial Brightness: %d%% <<<\n", deviceConfig.brightness);
     setDisplayBrightness(deviceConfig.brightness);
     Serial.println(">>> Brightness Applied Successfully <<<\n");
   }
@@ -184,40 +172,17 @@ void loop() {
       dma_display->setCursor(currentX, 24);
       dma_display->setTextColor(ipColor);
       dma_display->print("1");
+
+      dma_display->flipDMABuffer();
     }
 
     handleDNS(); // Process DNS requests for captive portal
-    delay(50);
+    delay(20);
     return;
   }
 
-  // Normal operation mode - but check WiFi first
-  // If WiFi is disconnected, try to reconnect
-  if (WiFi.status() != WL_CONNECTED) {
-    static unsigned long lastReconnectAttempt = 0;
-    unsigned long now = millis();
-    
-    // Try to reconnect every 5 seconds
-    if (now - lastReconnectAttempt > 5000) {
-      lastReconnectAttempt = now;
-      Serial.println("WiFi disconnected, attempting to reconnect...");
-      connectWiFi(deviceConfig);
-    }
-    
-    // Show "No WiFi" message while waiting
-    dma_display->clearScreen();
-    dma_display->setTextSize(1);
-    dma_display->setCursor(2, 4);
-    dma_display->setTextColor(dma_display->color565(255, 100, 0));
-    dma_display->print("No WiFi");
-    dma_display->setCursor(2, 14);
-    dma_display->print("Press");
-    dma_display->setCursor(2, 24);
-    dma_display->print("BOOT");
-    
-    delay(100);
-    return; // Skip rest of loop until WiFi is connected
-  }
+  // Normal operation mode - non-blocking periodic WiFi maintenance
+  maintainWiFiConnection(deviceConfig);
   
   // Get time from NTP or RTC fallback
   struct tm timeinfo;
@@ -260,24 +225,6 @@ void loop() {
     // Calculate current time in minutes from midnight
     uint16_t currentMinute = timeinfo.tm_hour * 60 + timeinfo.tm_min;
     
-    // Debug logging every 10 seconds
-    static unsigned long lastDebugPrint = 0;
-    bool shouldPrint = (millis() - lastDebugPrint > 10000);
-    
-    if (shouldPrint) {
-      Serial.printf("\n╔════════════════════════════════╗\n");
-      Serial.printf("║   SLEEP MODE DEBUG - ACTIVE   ║\n");
-      Serial.printf("╚════════════════════════════════╝\n");
-      Serial.printf("Current Time: %02d:%02d (%d min from midnight)\n", 
-        timeinfo.tm_hour, timeinfo.tm_min, currentMinute);
-      Serial.printf("Sleep Period: %02d:%02d → %02d:%02d (%d → %d min)\n",
-        deviceConfig.sleepStartMinute / 60, deviceConfig.sleepStartMinute % 60,
-        deviceConfig.sleepEndMinute / 60, deviceConfig.sleepEndMinute % 60,
-        deviceConfig.sleepStartMinute, deviceConfig.sleepEndMinute);
-      Serial.printf("Normal Brightness: %d%%\n", deviceConfig.brightness);
-      Serial.printf("Sleep Brightness: %d%%\n", deviceConfig.sleepBrightness);
-    }
-    
     // Check if we're in sleep period (handles overnight sleep)
     bool inSleepPeriod = false;
     if (deviceConfig.sleepStartMinute <= deviceConfig.sleepEndMinute) {
@@ -290,48 +237,26 @@ void loop() {
                        currentMinute < deviceConfig.sleepEndMinute);
     }
     
-    if (shouldPrint) {
-      Serial.printf("─────────────────────────────────\n");
-      Serial.printf("Status: %s\n", inSleepPeriod ? "🌙 IN SLEEP MODE" : "☀️  AWAKE (Normal)");
-      Serial.printf("─────────────────────────────────\n");
-    }
-    
     if (inSleepPeriod) {
       if (deviceConfig.sleepBrightness == 0) {
         // Turn off display completely
-        if (shouldPrint) {
-          Serial.println("Action: Display OFF (sleep brightness = 0)");
-          Serial.println("════════════════════════════════\n");
-        }
         dma_display->clearScreen();
-        delay(100);
-        lastDebugPrint = millis();
+        dma_display->flipDMABuffer(); // Swap buffer nguyên tử
+        delay(20);
         return; // Skip rendering
       } else {
         // Apply sleep brightness
-        if (shouldPrint) {
-          Serial.printf("Action: Apply Sleep Brightness = %d%%\n", deviceConfig.sleepBrightness);
-          Serial.println("════════════════════════════════\n");
-        }
         setDisplayBrightness(deviceConfig.sleepBrightness);
       }
     } else {
       // Not in sleep period - use normal brightness
-      if (shouldPrint) {
-        Serial.printf("Action: Apply Normal Brightness = %d%%\n", deviceConfig.brightness);
-        Serial.println("════════════════════════════════\n");
-      }
       setDisplayBrightness(deviceConfig.brightness);
-    }
-    
-    if (shouldPrint) {
-      lastDebugPrint = millis();
     }
   } else if (hasTime) {
     // Sleep mode not enabled - still need to apply normal brightness
     static bool printedOnce = false;
     if (!printedOnce) {
-      Serial.println("\n⚠️  Sleep Mode: DISABLED in config");
+      Serial.println("\n[!] Sleep Mode: DISABLED in config");
       Serial.println("   Using normal brightness always\n");
       printedOnce = true;
     }
@@ -617,11 +542,20 @@ void loop() {
   } else {
     // No time available yet - WiFi connection is being handled by connectWiFi()
     // Just wait a bit before next iteration
-    delay(100);
+    delay(20);
   }
 
   // Weather updates now handled by background task - no blocking calls here!
 
-  globalHue += 1;
-  delay(100);
+  // Swap buffer nguyên tử sau khi vẽ xong toàn bộ frame -> loại bỏ tearing/nháy
+  dma_display->flipDMABuffer();
+
+  // Tăng hue theo thời gian thực (không phụ thuộc vào tốc độ frame)
+  static unsigned long lastHueUpdate = 0;
+  if (millis() - lastHueUpdate >= 50) { // Tăng hue mỗi 50ms
+    globalHue += 1;
+    lastHueUpdate = millis();
+  }
+
+  delay(20); // ~50 FPS thay vì 10 FPS cũ
 }

@@ -12,11 +12,6 @@ void IRAM_ATTR resetButtonISR() {
 void setupResetButton() {
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(RESET_BUTTON_PIN), resetButtonISR, FALLING);
-  
-  // Test initial state
-  int initialState = digitalRead(RESET_BUTTON_PIN);
-  Serial.printf("Reset button configured on pin %d (hold 3s to reset)\n", RESET_BUTTON_PIN);
-  Serial.printf("Initial button state: %s\n", initialState == HIGH ? "HIGH (not pressed)" : "LOW (pressed)");
 }
 
 void checkResetButton() {

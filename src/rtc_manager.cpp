@@ -35,10 +35,6 @@ void initRTC() {
   
   if (!now.IsValid()) {
     Serial.println("RTC lost confidence in the DateTime!");
-  } else {
-    Serial.printf("RTC initialized. Current time: %04d-%02d-%02d %02d:%02d:%02d\n",
-                  now.Year(), now.Month(), now.Day(),
-                  now.Hour(), now.Minute(), now.Second());
   }
 }
 
@@ -55,9 +51,6 @@ void syncRTCFromNTP(const struct tm& timeinfo) {
   );
   
   Rtc.SetDateTime(compiled);
-  Serial.printf("RTC synced from NTP: %04d-%02d-%02d %02d:%02d:%02d\n",
-                compiled.Year(), compiled.Month(), compiled.Day(),
-                compiled.Hour(), compiled.Minute(), compiled.Second());
 }
 
 // Get time from RTC (fallback when WiFi is down)

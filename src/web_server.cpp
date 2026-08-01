@@ -49,7 +49,6 @@ void setupAPMode() {
     Serial.println("Channel: 1");
     Serial.println("Gateway: " + gateway.toString());
     Serial.println("Subnet: " + subnet.toString());
-    Serial.printf("Connected clients: %d\n", WiFi.softAPgetStationNum());
     Serial.println("==============================");
   } else {
     Serial.println("ERROR: Failed to start AP!");
@@ -158,8 +157,6 @@ void setupWebServer() {
     String html = file.readString();
     file.close();
 
-    Serial.printf("Sending HTML (%d bytes)\n", html.length());
-
     // Send with explicit headers
     AsyncWebServerResponse *response =
         request->beginResponse(200, "text/html; charset=UTF-8", html);
@@ -184,8 +181,6 @@ void setupWebServer() {
 
   //   String html = file.readString();
   //   file.close();
-
-  //   Serial.printf("Sending HTML (%d bytes)\n", html.length());
 
   //   // Send with explicit headers
   //   AsyncWebServerResponse *response =
@@ -218,16 +213,12 @@ void setupWebServer() {
   // FreeRTOS task to perform WiFi scan in background
   auto scanTask = [](void *parameter) {
     Serial.println("\n[Scan Task] Started on core " + String(xPortGetCoreID()));
-    Serial.printf("[Scan Task] Free Heap: %d bytes\n", ESP.getFreeHeap());
     
     // Delete any old scan results
     WiFi.scanDelete();
     
     Serial.println("[Scan Task] Starting WiFi scan...");
     int n = WiFi.scanNetworks(false, true); // Blocking is OK in separate task
-    
-    Serial.printf("[Scan Task] Scan completed! Found %d networks\n", n);
-    Serial.printf("[Scan Task] Free Heap after scan: %d bytes\n", ESP.getFreeHeap());
     
     // Update global state
     if (xSemaphoreTake(scanMutex, portMAX_DELAY)) {
@@ -271,15 +262,11 @@ void setupWebServer() {
     BaseType_t result = xTaskCreatePinnedToCore(
       [](void *param) {
         Serial.println("\n[Scan Task] Started on core " + String(xPortGetCoreID()));
-        Serial.printf("[Scan Task] Free Heap: %d bytes\n", ESP.getFreeHeap());
         
         WiFi.scanDelete();
         
         Serial.println("[Scan Task] Starting WiFi.scanNetworks()...");
         int n = WiFi.scanNetworks(false, true); // Blocking is OK in separate task
-        
-        Serial.printf("[Scan Task] Scan completed! Found %d networks\n", n);
-        Serial.printf("[Scan Task] Free Heap after scan: %d bytes\n", ESP.getFreeHeap());
         
         if (xSemaphoreTake(scanMutex, portMAX_DELAY)) {
           scanResultCount = n;
@@ -348,7 +335,6 @@ void setupWebServer() {
     }
     
     // Scan complete, build response
-    Serial.printf("Status: Scan complete, %d networks found\n", resultCount);
     
     JsonDocument doc;
     doc["status"] = "complete";
@@ -363,14 +349,10 @@ void setupWebServer() {
       network["ssid"] = ssid;
       network["rssi"] = rssi;
       network["encryption"] = encryption;
-      
-      Serial.printf("  [%d] %s (%d dBm) %s\n", i, ssid.c_str(), rssi, encryption.c_str());
     }
     
     String response;
     serializeJson(doc, response);
-    
-    Serial.printf("Sending response (%d bytes)\n", response.length());
     
     AsyncWebServerResponse *resp =
         request->beginResponse(200, "application/json", response);
@@ -400,10 +382,7 @@ void setupWebServer() {
       "/api/save", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        Serial.printf("\n╔═══════════════════════════════════════╗\n");
-        Serial.printf("║  API /api/save - CONFIG RECEIVED     ║\n");
-        Serial.printf("╚═══════════════════════════════════════╝\n");
-        Serial.printf("Payload size: %d bytes\n", len);
+        Serial.println("\nAPI /api/save - CONFIG RECEIVED");
 
         // Parse JSON payload
         JsonDocument doc;
@@ -431,7 +410,6 @@ void setupWebServer() {
         if (doc.containsKey("ssid")) {
           String ssid = doc["ssid"].as<String>();
           ssid.toCharArray(newConfig.ssid, sizeof(newConfig.ssid));
-          Serial.printf("📶 SSID: %s\n", newConfig.ssid);
         } else {
           newConfig.ssid[0] = '\0';
         }
@@ -446,14 +424,11 @@ void setupWebServer() {
 
         newConfig.latitude = doc["latitude"] | 0.0;
         newConfig.longitude = doc["longitude"] | 0.0;
-        Serial.printf("📍 Coordinates: %.4f, %.4f\n", newConfig.latitude,
-                      newConfig.longitude);
 
         Serial.println("───────────────────────────────────────");
 
         // Extract brightness settings
         newConfig.brightness = doc["brightness"] | 100; // Default: 100%
-        Serial.printf("💡 Brightness: %d%%\n", newConfig.brightness);
 
         Serial.println("───────────────────────────────────────");
 
@@ -463,16 +438,6 @@ void setupWebServer() {
         newConfig.sleepEndMinute = doc["sleepEndMinute"] | 420; // Default: 07:00
         newConfig.sleepBrightness = doc["sleepBrightness"] | 0; // Default: 0 (off)
         
-        Serial.printf("🌙 Sleep Mode: %s\n", newConfig.sleepEnabled ? "ENABLED" : "DISABLED");
-        if (newConfig.sleepEnabled) {
-          Serial.printf("   Start: %02d:%02d (%d min)\n",
-                        newConfig.sleepStartMinute / 60, newConfig.sleepStartMinute % 60,
-                        newConfig.sleepStartMinute);
-          Serial.printf("   End: %02d:%02d (%d min)\n",
-                        newConfig.sleepEndMinute / 60, newConfig.sleepEndMinute % 60,
-                        newConfig.sleepEndMinute);
-          Serial.printf("   Sleep Brightness: %d%%\n", newConfig.sleepBrightness);
-        }
         Serial.println("───────────────────────────────────────");
 
         // Validate and save
