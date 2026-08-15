@@ -1,0 +1,20 @@
+#include "effects.h"
+
+// -----------------------------------------------------------------------
+// MODE 1 — MIRROR  (symmetric vertical bars from center — mono mix)
+// -----------------------------------------------------------------------
+void effect_mirror_render(const int32_t *left, const int32_t *right, size_t n) {
+    const int cy     = 31;
+    const int half   = 29;
+    const int32_t pk = s_peak_l > s_peak_r ? s_peak_l : s_peak_r;
+
+    for (int x = 0; x < SCREEN_W && x < (int)n; x++) {
+        // Mono mix, avoid overflow
+        int32_t sample = left[x] / 2 + right[x] / 2;
+        int h = (int)(fabsf((float)sample / pk) * half);
+        if (h < 1) h = 1;
+        if (h > half) h = half;
+        // Draw vertical bar symmetrically from center
+        SafeDraw::drawVLine(x, cy - h, h * 2 + 1);
+    }
+}

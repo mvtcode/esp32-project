@@ -1,92 +1,110 @@
 #include <Arduino.h>
-#include <U8g2lib.h>
-#include <Wire.h>
+#include "i2s_mic.h"
+#include "display.h"
+#include "button.h"
 
 /**
- * ESP32-S3 Super Mini - OLED 1.3" SH1106 Test (FIXED VERSION)
- * 
- * Hướng dẫn fix lỗi nhiễu/garbled screen:
- * 1. Sử dụng Software I2C để ổn định tín hiệu trên breadboard.
- * 2. Thêm delay khởi động.
- * 3. Thử các constructor khác nếu cấu hình mặc định không khớp.
+ * ESP32-S3 Super Mini — Dual-channel Sound Visualizer
+ *
+ * Hardware:
+ *   OLED SH1106 1.3"  : SDA=GPIO8, SCL=GPIO9  (Hardware I2C, 800 kHz)
+ *   INMP441 Left  mic : SCK=GPIO4, WS=GPIO5, SD=GPIO6, L/R=GND
+ *   INMP441 Right mic : SCK=GPIO4, WS=GPIO5, SD=GPIO6, L/R=3V3
+ *   Mode button       : GPIO0 (BOOT button, active LOW, no extra wiring)
+ *
+ * Architecture (FreeRTOS dual-core):
+ *   Core 0 — mic_task : I2S read → AudioFrame → queue
+ *   Core 1 — loop()   : button check → queue → display_draw_waveform()
  */
 
-// Định nghĩa chân I2C cho ESP32-S3 Super Mini
-#define I2C_SDA 8
-#define I2C_SCL 9
+// -----------------------------------------------------------------------
+// AudioFrame: one stereo frame passed between cores via queue
+// -----------------------------------------------------------------------
+struct AudioFrame {
+    int32_t left[FRAME_SIZE];
+    int32_t right[FRAME_SIZE];
+};
 
-/**
- * CONSTRUCTION CHOIСE:
- * Nếu cách 1 (mặc định) vẫn lỗi, hãy comment nó lại và thử cách 2 hoặc 3.
- */
+static QueueHandle_t s_audio_queue;
 
-// CÁCH 1: SH1106 Software I2C (Phổ biến cho màn 1.3") - Đã chọn tối ưu cho S3
-U8G2_SH1106_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ I2C_SCL, /* data=*/ I2C_SDA, /* reset=*/ U8X8_PIN_NONE);
-
-// CÁCH 2: SH1106 VHR (Thử nếu cách 1 hiện thị sai vị trí)
-// U8G2_SH1106_128X64_VHR_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ I2C_SCL, /* data=*/ I2C_SDA, /* reset=*/ U8X8_PIN_NONE);
-
-// CÁCH 3: SSD1306 (Thử nếu màn hình thực tế dùng chip SSD1306 dù là 1.3")
-// U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ I2C_SCL, /* data=*/ I2C_SDA, /* reset=*/ U8X8_PIN_NONE);
-
-
-void setup() {
-  Serial.begin(115200);
-  
-  // QUAN TRỌNG: Độ trễ để màn hình ổn định sau khi cấp nguồn
-  delay(1000); 
-  Serial.println("ESP32-S3 Super Mini - OLED Fix Starting...");
-
-  // Khởi tạo màn hình
-  if (u8g2.begin()) {
-    Serial.println("OLED Initialized Successfully!");
-  } else {
-    Serial.println("OLED Initialization Failed!");
-  }
-
-  // Hiển thị thông báo trạng thái
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_ncenB08_tr); 
-  u8g2.drawStr(5, 20, "OLED FIXED!");
-  u8g2.drawStr(5, 40, "ESP32-S3 Mini");
-  u8g2.drawFrame(0, 0, 128, 64);
-  u8g2.sendBuffer();
-  
-  delay(2000);
+// -----------------------------------------------------------------------
+// FreeRTOS task — Core 0
+// -----------------------------------------------------------------------
+static void mic_task(void * /*arg*/) {
+    static AudioFrame frame;
+    for (;;) {
+        if (i2s_mic_read(frame.left, frame.right, FRAME_SIZE)) {
+            xQueueSend(s_audio_queue, &frame, /*timeout=*/0);
+        }
+    }
 }
 
-void loop() {
-  static int offset = 0;
-  
-  u8g2.clearBuffer();
-  
-  // Vẽ khung viền
-  u8g2.drawFrame(0, 0, 128, 64);
-  
-  // Hiển thị Text
-  u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.setCursor(10, 20);
-  u8g2.print("Status: Working");
-  
-  u8g2.setCursor(10, 35);
-  u8g2.print("Uptime: ");
-  u8g2.print(millis() / 1000);
-  u8g2.print("s");
-  
-  // Vẽ animation hình vuông chạy quanh khung
-  if (offset < 118) {
-    u8g2.drawBox(5 + offset, 50, 10, 8);
-  } else {
-    offset = 0;
-  }
-  
-  // Vẽ tia chớp nhỏ để test độ sắc nét
-  u8g2.drawLine(100, 10, 110, 25);
-  u8g2.drawLine(110, 25, 100, 25);
-  u8g2.drawLine(100, 25, 110, 40);
+// -----------------------------------------------------------------------
+// setup() — Core 1
+// -----------------------------------------------------------------------
+void setup() {
+    Serial.begin(115200);
+    delay(500);
+    Serial.println("=== ESP32-S3 Sound Visualizer ===");
+    Serial.printf("  Frame: %d samples @ %d Hz = %.1f ms\n",
+                  FRAME_SIZE, SAMPLE_RATE, 1000.0f * FRAME_SIZE / SAMPLE_RATE);
+    Serial.println("  BOOT button (GPIO0) = next mode");
 
-  u8g2.sendBuffer();
-  
-  offset += 2;
-  delay(30);
+    // 1. Display (shows splash while I2S initialises)
+    display_init();
+
+    // 2. Mode button — GPIO 0 (BOOT, built-in, no extra wiring)
+    button_init(BTN_GPIO);
+
+    // 3. I2S microphones
+    if (!i2s_mic_init()) {
+        Serial.println("[FATAL] I2S mic init failed. Halting.");
+        display_error("I2S INIT FAIL");
+        while (true) { delay(1000); }
+    }
+
+    // 4. Audio queue
+    s_audio_queue = xQueueCreate(2, sizeof(AudioFrame));
+    if (!s_audio_queue) {
+        Serial.println("[FATAL] Queue create failed (OOM).");
+        display_error("QUEUE FAIL");
+        while (true) { delay(1000); }
+    }
+
+    // 5. Mic task on Core 0
+    xTaskCreatePinnedToCore(
+        mic_task, "mic_task", 4096, nullptr, 2, nullptr, 0
+    );
+
+    Serial.println("[boot] Ready — press BOOT to cycle modes");
+}
+
+// -----------------------------------------------------------------------
+// loop() — Core 1
+// -----------------------------------------------------------------------
+void loop() {
+    static AudioFrame frame;
+    static uint32_t   fps_ts  = 0;
+    static uint32_t   fps_cnt = 0;
+
+    // --- Button: cycle display mode on each press ---
+    if (button_pressed()) {
+        display_next_mode();
+    }
+
+    // --- Render: dequeue and draw ---
+    if (xQueueReceive(s_audio_queue, &frame, pdMS_TO_TICKS(50)) == pdTRUE) {
+        display_draw_waveform(frame.left, frame.right, FRAME_SIZE);
+        fps_cnt++;
+    }
+
+    // --- FPS report every 5 seconds ---
+    uint32_t now = millis();
+    if (now - fps_ts >= 5000) {
+        Serial.printf("[FPS] %.1f  [Mode] %d\n",
+                      (float)fps_cnt * 1000.0f / (float)(now - fps_ts),
+                      (int)display_get_mode());
+        fps_cnt = 0;
+        fps_ts  = now;
+    }
 }
