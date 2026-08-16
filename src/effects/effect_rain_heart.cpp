@@ -86,8 +86,8 @@ void effect_rain_heart_render(const int32_t *left, const int32_t *right, size_t 
     // Scales dynamically from 0.70 (compact) up to 1.45 (huge pulse)
     float h_scale = 0.70f + powf(intensity, 0.40f) * 0.75f;
     const int NUM_PTS = 36;
-    int pts_x[NUM_PTS];
-    int pts_y[NUM_PTS];
+    static int pts_x[36]; // static: NUM_PTS=36, avoid stack allocation
+    static int pts_y[36]; // static: NUM_PTS=36, avoid stack allocation
 
     // A. Fill Heart Interior with Black (Shield) to block matrix rain
     SafeDraw::setDrawColor(0);

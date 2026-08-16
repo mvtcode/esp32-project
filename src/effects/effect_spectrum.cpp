@@ -39,7 +39,7 @@ void effect_spectrum_render(const int32_t *left, const int32_t *right, size_t n)
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float mag_l[NUM_SPEC_BARS];
+    static float mag_l[NUM_SPEC_BARS]; // static: avoid per-frame stack allocation
     float max_l = 0.0f;
     for (int b = 0; b < NUM_SPEC_BARS; b++) {
         int bin_idx = b + 1;
@@ -58,7 +58,7 @@ void effect_spectrum_render(const int32_t *left, const int32_t *right, size_t n)
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float mag_r[NUM_SPEC_BARS];
+    static float mag_r[NUM_SPEC_BARS]; // static: avoid per-frame stack allocation
     float max_r = 0.0f;
     for (int b = 0; b < NUM_SPEC_BARS; b++) {
         int bin_idx = b + 1;

@@ -24,6 +24,7 @@ ArduinoFFT<float> s_fft(s_fft_real, s_fft_imag, FRAME_SIZE, (float)SAMPLE_RATE);
 static DisplayMode s_mode          = MODE_WAVEFORM;
 static uint32_t   s_label_ts       = 0;
 static const uint32_t LABEL_DUR_MS = 1500;
+static volatile bool  s_switching  = false; // Guard: prevent render during mode switch
 
 // -----------------------------------------------------------------------
 // Audio Level Reference Updates (Fixed Reference with Soft Headroom Limiter)
@@ -96,10 +97,19 @@ void display_error(const char *msg) {
     u8g2.sendBuffer();
 }
 
-void display_set_mode(DisplayMode m) {
-    if (m == s_mode) return;        // no-op if already in this mode
+static bool s_auto_cycle = false;
+static uint32_t s_auto_cycle_interval = 20000;
+static uint32_t s_last_cycle_ts = 0;
+static uint32_t s_toast_ts = 0;
+static const char* s_toast_msg = "";
 
-    // 1. Cleanup old mode
+void display_set_mode(DisplayMode m, bool show_label) {
+    if (m >= MODE_COUNT) m = (DisplayMode)0;
+    if (m == s_mode) return;
+
+    s_switching = true;
+
+    // 1. Teardown old mode
     if (s_mode < MODE_COUNT && EFFECTS[s_mode].on_exit) {
         EFFECTS[s_mode].on_exit();
     }
@@ -111,18 +121,41 @@ void display_set_mode(DisplayMode m) {
         EFFECTS[s_mode].on_enter();
     }
 
-    s_label_ts = millis();          // 3. show mode label
-    Serial.printf("[Mode] » exit | enter » %s\n", EFFECTS[m].name);
+    s_label_ts  = show_label ? millis() : 0;         // 3. show mode label conditionally
+    s_last_cycle_ts = millis();                      // 4. reset auto-cycle timer on ANY mode switch
+    s_switching = false;
+    Serial.printf("[Mode] » %s\n", EFFECTS[m].name);
 }
 
-void display_next_mode() {
-    display_set_mode((DisplayMode)((s_mode + 1) % MODE_COUNT));
+void display_next_mode(bool show_label) {
+    display_set_mode((DisplayMode)((s_mode + 1) % MODE_COUNT), show_label);
 }
 
 DisplayMode display_get_mode() { return s_mode; }
 
+void display_set_auto_cycle(bool enable, uint32_t interval_ms) {
+    s_auto_cycle = enable;
+    if (interval_ms > 0) s_auto_cycle_interval = interval_ms;
+    s_last_cycle_ts = millis();
+    
+    // Set toast notification
+    s_toast_ts = millis();
+    s_toast_msg = enable ? "AUTO CYCLE: ON" : "AUTO CYCLE: OFF";
+}
+
+bool display_get_auto_cycle() { return s_auto_cycle; }
+
 void display_draw_waveform(const int32_t *left, const int32_t *right, size_t n) {
+    if (s_auto_cycle && (millis() - s_last_cycle_ts > s_auto_cycle_interval)) {
+        display_next_mode(false); // Don't show mode label when auto-cycling
+        s_last_cycle_ts = millis();
+    }
+
+    if (s_switching) return;        // skip render entirely while switching modes
+
     update_agc(left, right, n);
+    audio_compute_bands(left, right, n, g_frame_bands); // pre-compute once per frame
+
     u8g2.clearBuffer();
 
     if (s_mode < MODE_COUNT && EFFECTS[s_mode].render) {
@@ -130,5 +163,19 @@ void display_draw_waveform(const int32_t *left, const int32_t *right, size_t n) 
     }
 
     draw_mode_label();
+
+    // Draw toast notification if active (e.g. for AUTO CYCLE ON/OFF)
+    if (s_toast_ts > 0 && millis() - s_toast_ts < 2000) {
+        u8g2.setFont(u8g2_font_6x10_tf);
+        int tw = u8g2.getStrWidth(s_toast_msg);
+        int tx = (SCREEN_W - tw) / 2;
+        int ty = 20;
+        u8g2.setDrawColor(0);
+        u8g2.drawBox(tx - 4, ty - 10, tw + 8, 12);
+        u8g2.setDrawColor(1);
+        u8g2.drawFrame(tx - 4, ty - 10, tw + 8, 12);
+        u8g2.drawStr(tx, ty, s_toast_msg);
+    }
+
     u8g2.sendBuffer();
 }

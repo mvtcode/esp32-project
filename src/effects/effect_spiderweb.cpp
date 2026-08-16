@@ -19,13 +19,7 @@ void effect_spiderweb_render(const int32_t *left, const int32_t *right, size_t n
     const int cy = 31;
 
     // 1. FFT Frequency Analysis
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
+    // Note: s_fft_real already contains mono-mix magnitudes computed by audio_compute_bands in display.cpp
 
     float peak_ref = (float)(s_peak_l > 100 ? s_peak_l : 100);
 
@@ -52,8 +46,8 @@ void effect_spiderweb_render(const int32_t *left, const int32_t *right, size_t n
     const int SPOKES = 12;
     const int RINGS  = 6;
 
-    int node_x[SPOKES][RINGS + 1];
-    int node_y[SPOKES][RINGS + 1];
+    static int node_x[12][7]; // static: SPOKES=12, RINGS+1=7, avoid stack allocation
+    static int node_y[12][7]; // static: SPOKES=12, RINGS+1=7, avoid stack allocation
 
     // Center Hub (r = 0)
     for (int k = 0; k < SPOKES; k++) {

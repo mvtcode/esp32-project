@@ -12,23 +12,9 @@ void effect_speaker_on_enter() {
 void effect_speaker_on_exit() {}
 
 void effect_speaker_render(const int32_t *left, const int32_t *right, size_t n) {
-    // 1. FFT for Bass and Treble analysis
-    float bass_l = 0.0f, bass_r = 0.0f, treble = 0.0f;
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-
-    for (int b = 1; b <= 4; b++) bass_l += s_fft_real[b];
-    for (int b = 16; b <= 30; b++) treble += s_fft_real[b];
-
-    float bass_norm = bass_l / (4.0f * (float)s_peak_l);
-    if (bass_norm > 1.0f) bass_norm = 1.0f;
-    float treble_norm = treble / (15.0f * (float)s_peak_l);
-    if (treble_norm > 1.0f) treble_norm = 1.0f;
+    // 1. Audio analysis — use pre-computed frame bands
+    float bass_norm = g_frame_bands.bass;
+    float treble_norm = g_frame_bands.treble;
 
     // 2. Animate expanding shockwave sound ripples on bass
     for (int i = 0; i < 4; i++) {

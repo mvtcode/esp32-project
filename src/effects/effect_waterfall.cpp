@@ -38,7 +38,7 @@ void effect_waterfall_render(const int32_t *left, const int32_t *right, size_t n
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float mags_l[WF_BINS_PER_CH];
+    static float mags_l[WF_BINS_PER_CH]; // static: avoid per-frame stack allocation
     float max_l = 0.0f;
     for (int b = 0; b < WF_BINS_PER_CH; b++) {
         int bin_idx = b + 1;
@@ -58,7 +58,7 @@ void effect_waterfall_render(const int32_t *left, const int32_t *right, size_t n
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float mags_r[WF_BINS_PER_CH];
+    static float mags_r[WF_BINS_PER_CH]; // static: avoid per-frame stack allocation
     float max_r = 0.0f;
     for (int b = 0; b < WF_BINS_PER_CH; b++) {
         int bin_idx = b + 1;
@@ -70,7 +70,7 @@ void effect_waterfall_render(const int32_t *left, const int32_t *right, size_t n
     if (s_wf_peak_r < FFT_MAG_FLOOR) s_wf_peak_r = FFT_MAG_FLOOR;
 
     // 3. Map into 32 columns (Left: col 0..15 Treble->Bass, Right: col 16..31 Bass->Treble)
-    float col_mags[WF_COLS];
+    static float col_mags[WF_COLS]; // static: avoid per-frame stack allocation
     for (int c = 0; c < 16; c++) {
         int bin = 15 - c; // c=0 is Treble (bin 15), c=15 is Bass (bin 0)
         col_mags[c] = mags_l[bin] / s_wf_peak_l;

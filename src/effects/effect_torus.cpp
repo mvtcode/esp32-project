@@ -50,8 +50,8 @@ void effect_torus_render(const int32_t *left, const int32_t *right, size_t n) {
     const int NUM_U = 12; // Slices around major ring
     const int NUM_V = 8;  // Points around tube section
 
-    int proj_x[NUM_U][NUM_V];
-    int proj_y[NUM_U][NUM_V];
+    static int proj_x[12][8]; // static: NUM_U=12, NUM_V=8, avoid stack allocation
+    static int proj_y[12][8]; // static: NUM_U=12, NUM_V=8, avoid stack allocation
 
     for (int i = 0; i < NUM_U; i++) {
         float u = (float)i * (2.0f * (float)M_PI / (float)NUM_U);

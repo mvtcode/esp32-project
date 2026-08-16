@@ -25,13 +25,7 @@ void effect_synthwave_render(const int32_t *left, const int32_t *right, size_t n
     const int horizon_y = 30;
 
     // 1. FFT Processing & Adaptive Peak Tracking
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
+    // Note: s_fft_real already contains mono-mix magnitudes computed by audio_compute_bands in display.cpp
 
     // Adaptive peak for dynamic bouncing
     float max_mag = 0.0f;

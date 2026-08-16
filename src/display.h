@@ -14,7 +14,7 @@
 //   400000 = 400 kHz  (safe, SH1106 datasheet max)
 //   800000 = 800 kHz  (overclocked — faster, test stability first)
 //   1000000 = 1 MHz   (aggressive, may cause display glitches)
-#define I2C_CLOCK   800000
+#define I2C_CLOCK   400000
 
 // -----------------------------------------------------------------------
 // Screen geometry
@@ -120,11 +120,17 @@ void display_error(const char *msg);
  */
 void display_draw_waveform(const int32_t *left, const int32_t *right, size_t n);
 
-/** Switch to a specific display mode. Triggers mode label for 1.5 s. */
-void display_set_mode(DisplayMode m);
+/** Switch to a specific display mode. Triggers mode label for 1.5 s if show_label is true. */
+void display_set_mode(DisplayMode m, bool show_label = true);
 
 /** Advance to the next mode (wraps around). */
-void display_next_mode();
+void display_next_mode(bool show_label = true);
 
 /** Return the currently active display mode. */
 DisplayMode display_get_mode();
+
+/** Enable or disable auto-cycling of display modes. */
+void display_set_auto_cycle(bool enable, uint32_t interval_ms = 20000);
+
+/** Check if auto-cycling is enabled. */
+bool display_get_auto_cycle();

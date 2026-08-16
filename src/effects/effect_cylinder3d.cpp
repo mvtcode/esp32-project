@@ -53,8 +53,8 @@ void effect_cylinder3d_render(const int32_t *left, const int32_t *right, size_t 
     float fov = 48.0f;
     float base_radius = 18.0f + s_cyl_vol * 6.0f;
 
-    int proj_x[CYL_RINGS][CYL_SEGS];
-    int proj_y[CYL_RINGS][CYL_SEGS];
+    static int proj_x[CYL_RINGS][CYL_SEGS]; // static: 6x16, avoid stack allocation
+    static int proj_y[CYL_RINGS][CYL_SEGS]; // static: 6x16, avoid stack allocation
 
     // Compute 3D points
     for (int r = 0; r < CYL_RINGS; r++) {

@@ -36,10 +36,14 @@ void effect_fusion_render(const int32_t *left, const int32_t *right, size_t n) {
     const int MAX_FLANK_H = 18;
     const int MAX_RAD_LEN = 13;
 
-    float flank_l[FUSION_FLANK_BARS] = {0};
-    float flank_r[FUSION_FLANK_BARS] = {0};
-    float rad_top[FUSION_RAD_BARS]   = {0};
-    float rad_bot[FUSION_RAD_BARS]   = {0};
+    static float flank_l[FUSION_FLANK_BARS]; // static: avoid per-frame stack allocation
+    static float flank_r[FUSION_FLANK_BARS]; // static: avoid per-frame stack allocation
+    static float rad_top[FUSION_RAD_BARS];   // static: avoid per-frame stack allocation
+    static float rad_bot[FUSION_RAD_BARS];   // static: avoid per-frame stack allocation
+    memset(flank_l, 0, sizeof(flank_l));
+    memset(flank_r, 0, sizeof(flank_r));
+    memset(rad_top, 0, sizeof(rad_top));
+    memset(rad_bot, 0, sizeof(rad_bot));
 
     // 1. FFT on Left Channel
     for (size_t i = 0; i < n; i++) {

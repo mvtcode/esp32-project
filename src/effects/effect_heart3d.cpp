@@ -48,8 +48,8 @@ void effect_heart3d_render(const int32_t *left, const int32_t *right, size_t n) 
     const int NUM_U = 18; // Points around heart perimeter
     const int NUM_V = 7;  // Depth layers from front to back
 
-    int proj_x[NUM_U][NUM_V];
-    int proj_y[NUM_U][NUM_V];
+    static int proj_x[18][7]; // static: NUM_U=18, NUM_V=7, avoid stack allocation
+    static int proj_y[18][7]; // static: NUM_U=18, NUM_V=7, avoid stack allocation
 
     for (int i = 0; i < NUM_U; i++) {
         float u = (float)i * (2.0f * (float)M_PI / (float)NUM_U);

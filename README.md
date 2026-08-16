@@ -12,8 +12,10 @@ Dự án thiết bị **hiển thị sóng âm thanh (Sound Visualizer)** thời
   - **Core 1 (`loop`):** Xử lý tín hiệu, Auto Gain Control (AGC), FFT và xuất dữ liệu ra màn hình OLED.
 - **Tự động điều chỉnh độ lợi (Auto Gain Control - AGC):** Tự động khuếch đại âm thanh nhỏ và nén nhanh âm thanh lớn (attack/release) riêng biệt cho từng kênh L/R để luôn hiển thị rõ nét mà không bị tràn khung hình.
 - **65 chế độ hiển thị đa dạng:** Chuyển đổi linh hoạt giữa 65 chế độ trực quan hóa âm thanh đỉnh cao: sóng âm, phổ tần số, đồng hồ kim vẫy cơ học (Analog VU), visualizer vòng tròn Stereo (Circle MVT), visualizer trái tim (MVT Heart), visualizer không gian mạng kết hợp chữ "MVT" xoay động (MVT Fusion & MVT Cyber), băng Cassette cổ điển (MVT Cassette), đường hầm 3D (MVT Tunnel), quỹ đạo nguyên tử (MVT Orbit), mưa ma trận (MVT Matrix), thác nước địa hình 3D (MVT Terrain), trái tim ma trận (Heart Matrix), đôi trái tim kết nối sóng âm (Twin Hearts), bàn DJ ảo (MVT DJ Deck), loa thùng bass đập (MVT Speaker), tai nghe chụp đầu studio (MVT Headphone), mạng nhện 3D (MVT Spiderweb), thành phố Synthwave 80s (MVT Synthwave), radar/sonar quét 360° (MVT Radar), lõi Arc Reactor phóng sét (MVT Reactor), hố đen vũ trụ hút bụi sao (MVT Blackhole), đua xe đêm Cyber Highway (MVT Highway), loa biểu tượng phát sóng MVT Sound, sóng âm xoay 360 độ 20s/vòng (MVT Rotate), 3 tia laser bay va đập cạnh (MVT Bounce), dàn laser sân khấu quét 2 vị trí 1/3 & 2/3 (MVT Laser), vũ công chibi nhảy theo nhịp nhạc (MVT Dancer), tâng bóng vật lý trên dải sóng âm (MVT Juggle), máy đo góc pha Audio Vectorscope (MVT Vectorscope), hoa văn bánh răng Spirograph (MVT Spirograph), đa giác biến hình Superformula (MVT Superform), hệ động lực hỗn loạn cánh bướm Lorenz 3D (MVT Lorenz 3D), vòng tròn sóng năng lượng Polar Wave (MVT Polar Wave), đĩa rung cộng hưởng sóng Chladni Cymatics (MVT Chladni), siêu lập phương không gian 4D Tesseract (MVT Tesseract), thác phổ SDR Waterfall đối xứng (MVT Waterfall), chữ 3D bay xuyên không gian Warp Tunnel (MVT Warp Text), hạt ma thuật ghép chữ động Kinetic Particle (MVT Particle), bước nhảy không gian 3D Warp Starfield (MVT Starfield), quả cầu 3D xung động (MVT Sphere 3D), vòng xuyến bánh donut 3D (MVT Torus 3D), chuỗi xoắn kép sinh học (MVT DNA Helix), khối lập phương lồng nhau phát nổ 3D (MVT Cubes 3D), dải ngân hà xoắn ốc 3D (MVT Galaxy 3D), kim cương tinh thể đa diện phóng tia năng lượng (MVT Crystal 3D), đường hầm ống sóng âm 3D (MVT Cylinder), trái tim tham số 3D gợn sóng âm (MVT Heart 3D), chữ MVT 3D khối đặc xoay đa trục (MVT Text 3D), hệ Mặt Trời 3D (Solar System), vụ nổ siêu tân tinh (MVT Supernova), bão sấm sét Cyber (Thunderstorm), buồng lái phi thuyền Sci-Fi (Cyber Cockpit), game arcade bắn quái không gian (Space Invaders), chim bay Flappy Beat, Pac-Man ngoạm sóng âm (Pac-Beat), khủng long vượt xương rồng T-Rex (Dino Runner), robot Xiaozhi AI biểu cảm, trợ lý robot AI Robot, quả cầu Plasma ma thuật, sân khấu đèn LED Zigzag EDM, và mèo máy Cyber Neko.
-- **Chuyển chế độ tức thì:** Sử dụng trực tiếp nút **BOOT (GPIO 0)** có sẵn trên board, hiển thị overlay nhãn chế độ trong 1.5s.
-- **Hiệu năng cao, độ trễ thấp:** Tốc độ làm mới mượt mà (≥ 25–30 FPS), độ trễ âm thanh < 100ms.
+- **Chuyển chế độ linh hoạt & Auto-Cycle:** 
+  - **Nhấn nhả (Short-press)** nút **BOOT (GPIO 0)** để chuyển chế độ thủ công.
+  - **Nhấn giữ (Long-press)** nút BOOT (> 1 giây) để bật/tắt chế độ **Auto-Cycle** (tự động chuyển hiệu ứng mỗi 20 giây, kèm thông báo ON/OFF).
+- **Hiệu năng cao, độ trễ thấp:** Tốc độ làm mới mượt mà (≥ 25–30 FPS), độ trễ âm thanh < 10ms (nhờ queue RTOS non-blocking). Tối ưu hóa thuật toán tính toán FFT dùng chung (Centralized Audio Analysis) giúp tiết kiệm tài nguyên CPU.
 
 ---
 
@@ -87,8 +89,8 @@ Dự án thiết bị **hiển thị sóng âm thanh (Sound Visualizer)** thời
 | **63** | **LED ZIGZAG**    | Sân khấu LED Zigzag EDM: Dàn đèn chữ V đa tầng nhấp nháy đuổi theo nhịp điệu sân khấu sôi động.           |
 | **64** | **CYBER NEKO**    | Mèo máy tương lai Cyber Neko: Đôi tai cử động theo Stereo, miệng phát sóng âm nói chuyện và đuôi ngoe nguẩy. |
 
-> 💡 **Cách chuyển chế độ:** Nhấn nút **BOOT** trên board ESP32-S3 Super Mini để chuyển tuần hoàn giữa 65 chế độ. Tên chế độ mới sẽ tự động hiển thị overlay góc trái màn hình trong 1.5 giây.
-
+> 💡 **Cách chuyển chế độ:** Nhấn (click) nút **BOOT** trên board ESP32-S3 Super Mini để chuyển tuần hoàn giữa 65 chế độ. Tên chế độ mới sẽ tự động hiển thị overlay.
+> 💡 **Auto-Cycle Mode:** **Nhấn giữ nút BOOT** > 1 giây để bật/tắt chế độ tự động chuyển. Mạch sẽ tự động đổi hiệu ứng mỗi 20 giây. Khi đang bật Auto-Cycle, nếu bạn bấm nút thủ công, mạch sẽ chuyển ngay sang hiệu ứng mới và đếm lại 20 giây từ đầu.
 ---
 
 ## 🛠 Phần cứng (Hardware Components)
@@ -233,6 +235,7 @@ _Baud rate mặc định: `115200`._
 | **Phase 4** | Thêm 4 chế độ nâng cao (Mirror, Spectrum FFT, Lissajous, VU Meter)  | ✅ Hoàn thành |
 | **Phase 5** | Nút bấm chuyển chế độ (GPIO 0), Overlay UI tên chế độ & Tối ưu FPS  | ✅ Hoàn thành |
 | **Phase 6** | Trọn bộ 65 chế độ visualizer sáng tạo & kiến trúc mô-đun hóa        | ✅ Hoàn thành |
+| **Phase 7** | Tối ưu hóa hiệu năng (Gộp chung FFT), Non-blocking Queue & Auto-Cycle Mode (Giữ nút BOOT) | ✅ Hoàn thành |
 
 ---
 

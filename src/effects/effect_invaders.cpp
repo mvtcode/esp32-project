@@ -95,19 +95,8 @@ void effect_invaders_render(const int32_t *left, const int32_t *right, size_t n)
     float target_x = 64.0f + (norm_r - norm_l) * 48.0f;
     s_cannon_x += (target_x - s_cannon_x) * 0.25f;
 
-    // 2. Bass Beat detection for Laser Fire
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-
-    float bass = 0.0f;
-    for (int b = 1; b <= 4; b++) bass += s_fft_real[b];
-    bass /= (4.0f * (float)s_peak_l);
-    if (bass > 1.0f) bass = 1.0f;
+    // 2. Bass Beat detection — use pre-computed frame bands
+    const float bass = g_frame_bands.bass;
 
     // Fire laser on bass hit
     if (bass > 0.45f) {

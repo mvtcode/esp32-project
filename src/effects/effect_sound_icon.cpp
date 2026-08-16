@@ -67,17 +67,8 @@ void effect_sound_icon_render(const int32_t *left, const int32_t *right, size_t 
         s_vol_smooth = s_vol_smooth * 0.82f + cur_rms * 0.18f;
     }
 
-    // FFT analysis for Bass and Treble
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-
-    float bass_mag = 0.0f;
-    for (int b = 1; b <= 4; b++) {
-        bass_mag += s_fft_real[b];
-    }
-    float cur_bass = bass_mag / (4.0f * FFT_MAG_FLOOR);
-    if (cur_bass > 1.0f) cur_bass = 1.0f;
+    // FFT analysis for Bass and Treble — use pre-computed frame bands
+    float cur_bass = g_frame_bands.bass;
 
     if (cur_bass > s_bass_smooth) {
         s_bass_smooth = s_bass_smooth * 0.35f + cur_bass * 0.65f;

@@ -38,8 +38,8 @@ static void render_wireframe_cube(int cx, int cy, float size, float rx, float ry
     float cy_rot = cosf(ry), sy_rot = sinf(ry);
     float cz_rot = cosf(rz), sz_rot = sinf(rz);
 
-    int proj_x[8];
-    int proj_y[8];
+    static int proj_x[8]; // static: avoid per-frame stack allocation
+    static int proj_y[8]; // static: avoid per-frame stack allocation
 
     for (int i = 0; i < 8; i++) {
         // Vertex position + outward explosion offset

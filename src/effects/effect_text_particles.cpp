@@ -55,10 +55,10 @@ static void build_target_love() {
         if (idx < NUM_TEXT_PARTS) { s_tparts[idx].tx = x; s_tparts[idx].ty = 46; idx++; }
     }
 
-    // Fill remaining
+    // Fill remaining (hide off-screen)
     while (idx < NUM_TEXT_PARTS) {
-        s_tparts[idx].tx = 63 + random(-10, 10);
-        s_tparts[idx].ty = 31 + random(-10, 10);
+        s_tparts[idx].tx = -20;
+        s_tparts[idx].ty = -20;
         idx++;
     }
 }
@@ -92,9 +92,10 @@ static void build_target_mac() {
         if (idx < NUM_TEXT_PARTS) { s_tparts[idx].tx = x; s_tparts[idx].ty = 46; idx++; }
     }
 
+    // Fill remaining (hide off-screen)
     while (idx < NUM_TEXT_PARTS) {
-        s_tparts[idx].tx = 63 + random(-10, 10);
-        s_tparts[idx].ty = 31 + random(-10, 10);
+        s_tparts[idx].tx = -20;
+        s_tparts[idx].ty = -20;
         idx++;
     }
 }
@@ -124,9 +125,10 @@ static void build_target_tan() {
         if (idx < NUM_TEXT_PARTS) { s_tparts[idx].tx = 86 + i * 3; s_tparts[idx].ty = 18 + i * 4; idx++; }
     }
 
+    // Fill remaining (hide off-screen)
     while (idx < NUM_TEXT_PARTS) {
-        s_tparts[idx].tx = 63 + random(-10, 10);
-        s_tparts[idx].ty = 31 + random(-10, 10);
+        s_tparts[idx].tx = -20;
+        s_tparts[idx].ty = -20;
         idx++;
     }
 }

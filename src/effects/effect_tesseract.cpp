@@ -47,8 +47,8 @@ void effect_tesseract_render(const int32_t *left, const int32_t *right, size_t n
     float cos_xw = cosf(s_tess_ang_xw), sin_xw = sinf(s_tess_ang_xw);
 
     // 2. Transform 16 vertices from 4D -> 3D -> 2D
-    int proj_x[16];
-    int proj_y[16];
+    static int proj_x[16]; // static: avoid per-frame stack allocation
+    static int proj_y[16]; // static: avoid per-frame stack allocation
 
     float dist_4d = 2.4f - s_tess_vol * 0.5f; // Audio pulse pulls 4D depth
     float scale = 65.0f + s_tess_vol * 20.0f;

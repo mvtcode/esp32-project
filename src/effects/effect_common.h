@@ -7,6 +7,13 @@
 #include "safe_draw.h"
 
 // -----------------------------------------------------------------------
+// Math constants (avoid hard-coded 3.14159f everywhere)
+// -----------------------------------------------------------------------
+static constexpr float kPi    = 3.14159265f;
+static constexpr float kTwoPi = 6.28318530f;
+static constexpr float kHalfPi = 1.57079632f;
+
+// -----------------------------------------------------------------------
 // Shared resources for all visual effects
 // -----------------------------------------------------------------------
 
@@ -28,6 +35,26 @@ extern ArduinoFFT<float> s_fft;
 
 // Shared vector graphics helper: spinning MVT text (used in Fusion and Cyber modes)
 void draw_spinning_mvt(int cx, int cy, float angle);
+
+// -----------------------------------------------------------------------
+// AudioBands: pre-computed per-frame audio analysis
+// Updated once per frame by display.cpp before render() is called.
+// Effects that only need scalar energy levels should read these instead
+// of running their own FFT.
+// -----------------------------------------------------------------------
+struct AudioBands {
+    float bass;    // [0..1] normalized bass energy   (FFT mono bins 1-4)
+    float mid;     // [0..1] normalized mid energy    (FFT mono bins 5-16)
+    float treble;  // [0..1] normalized treble energy (FFT mono bins 17-40)
+    float rms;     // [0..1] overall RMS amplitude level
+};
+
+// Pre-computed audio analysis for the current frame.
+// Updated by display.cpp each frame BEFORE render() is called.
+extern AudioBands g_frame_bands;
+
+// Run FFT on stereo mono-mix and populate an AudioBands struct.
+void audio_compute_bands(const int32_t *left, const int32_t *right, size_t n, AudioBands &out);
 
 // -----------------------------------------------------------------------
 // Visual effect descriptor

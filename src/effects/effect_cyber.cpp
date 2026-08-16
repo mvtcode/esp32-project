@@ -35,8 +35,10 @@ void effect_cyber_render(const int32_t *left, const int32_t *right, size_t n) {
     const int R_IN = 13;
     const int MAX_BAR_W = 26;
 
-    float bands_l[CYBER_BARS] = {0};
-    float bands_r[CYBER_BARS] = {0};
+    static float bands_l[CYBER_BARS]; // static: avoid per-frame stack allocation
+    static float bands_r[CYBER_BARS]; // static: avoid per-frame stack allocation
+    memset(bands_l, 0, sizeof(bands_l));
+    memset(bands_r, 0, sizeof(bands_r));
 
     // 1. FFT on Left Channel
     for (size_t i = 0; i < n; i++) {

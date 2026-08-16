@@ -40,19 +40,8 @@ void effect_thunder_render(const int32_t *left, const int32_t *right, size_t n) 
     float avg = (norm_l + norm_r) * 0.5f;
     float wind = (norm_r - norm_l) * 2.5f; // Stereo wind shear
 
-    // FFT for Bass Kick Detection (Triggers Lightning)
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-
-    float bass = 0.0f;
-    for (int b = 1; b <= 4; b++) bass += s_fft_real[b];
-    bass /= (4.0f * (float)s_peak_l);
-    if (bass > 1.0f) bass = 1.0f;
+    // Audio analysis — use pre-computed frame bands
+    const float bass = g_frame_bands.bass;
 
     if (bass > 0.45f && s_lightning_trigger == 0) {
         s_lightning_trigger = 3; // Active for 3 frames

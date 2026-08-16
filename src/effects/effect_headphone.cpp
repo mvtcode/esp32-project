@@ -25,7 +25,7 @@ void effect_headphone_render(const int32_t *left, const int32_t *right, size_t n
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float fft_l[8];
+    static float fft_l[8]; // static: avoid per-frame stack allocation
     for (int b = 0; b < 8; b++) {
         fft_l[b] = s_fft_real[b + 1] / (float)s_peak_l;
         if (fft_l[b] > 1.0f) fft_l[b] = 1.0f;
@@ -39,7 +39,7 @@ void effect_headphone_render(const int32_t *left, const int32_t *right, size_t n
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float fft_r[8];
+    static float fft_r[8]; // static: avoid per-frame stack allocation
     for (int b = 0; b < 8; b++) {
         fft_r[b] = s_fft_real[b + 1] / (float)s_peak_r;
         if (fft_r[b] > 1.0f) fft_r[b] = 1.0f;

@@ -31,8 +31,10 @@ void effect_heart_render(const int32_t *left, const int32_t *right, size_t n) {
     const int hy = 26;
     const int MAX_H = 22;        // Increased max wave height for larger effect
 
-    float bands_l[HEART_BARS] = {0};
-    float bands_r[HEART_BARS] = {0};
+    static float bands_l[HEART_BARS]; // static: avoid per-frame stack allocation
+    static float bands_r[HEART_BARS]; // static: avoid per-frame stack allocation
+    memset(bands_l, 0, sizeof(bands_l));
+    memset(bands_r, 0, sizeof(bands_r));
 
     // 1. FFT on Left Channel
     for (size_t i = 0; i < n; i++) {

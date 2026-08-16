@@ -74,10 +74,10 @@ void effect_crystal3d_render(const int32_t *left, const int32_t *right, size_t n
     float cam_dist = 60.0f;
     float fov = 65.0f;
 
-    int proj_x[12];
-    int proj_y[12];
-    int ray_x[12];
-    int ray_y[12];
+    static int proj_x[12]; // static: avoid per-frame stack allocation
+    static int proj_y[12]; // static: avoid per-frame stack allocation
+    static int ray_x[12];  // static: avoid per-frame stack allocation
+    static int ray_y[12];  // static: avoid per-frame stack allocation
 
     for (int i = 0; i < 12; i++) {
         float vx = ICO_VERTS[i][0] * scale;

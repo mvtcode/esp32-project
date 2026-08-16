@@ -29,8 +29,10 @@ void effect_circle_render(const int32_t *left, const int32_t *right, size_t n) {
     const int R_IN = 16;         // 1.5x bigger core radius (diameter 32px)
     const int R_MAX_LEN = 16;    // Dynamic ray span extending outward up to radius 32px
 
-    float bands_l[CIRCLE_BANDS] = {0};
-    float bands_r[CIRCLE_BANDS] = {0};
+    static float bands_l[CIRCLE_BANDS]; // static: avoid per-frame stack allocation
+    static float bands_r[CIRCLE_BANDS]; // static: avoid per-frame stack allocation
+    memset(bands_l, 0, sizeof(bands_l));
+    memset(bands_r, 0, sizeof(bands_r));
 
     // 1. FFT on Left Channel
     for (size_t i = 0; i < n; i++) {

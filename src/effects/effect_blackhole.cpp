@@ -26,24 +26,9 @@ void effect_blackhole_on_exit() {}
 void effect_blackhole_render(const int32_t *left, const int32_t *right, size_t n) {
     const int cx = 64, cy = 31;
 
-    // 1. FFT for Bass and Treble detection
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-
-    float bass = 0.0f;
-    for (int b = 1; b <= 4; b++) bass += s_fft_real[b];
-    bass /= (4.0f * (float)s_peak_l);
-    if (bass > 1.0f) bass = 1.0f;
-
-    float treble = 0.0f;
-    for (int b = 20; b <= 40; b++) treble += s_fft_real[b];
-    treble /= (20.0f * (float)s_peak_l);
-    if (treble > 1.0f) treble = 1.0f;
+    // 1. Audio analysis — use pre-computed frame bands (no per-effect FFT needed)
+    const float bass   = g_frame_bands.bass;
+    const float treble = g_frame_bands.treble;
 
     // 2. Gravitational shockwave expansion
     s_grav_wave += 0.8f + bass * 2.2f;

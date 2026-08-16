@@ -15,21 +15,8 @@ void effect_orbit_render(const int32_t *left, const int32_t *right, size_t n) {
     const int cx = 64;
     const int cy = 31;
 
-    // 1. Audio and Bass Energy Analysis
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-
-    float bass_mag = 0.0f;
-    for (int b = 1; b <= 4; b++) {
-        bass_mag += s_fft_real[b];
-    }
-    float bass = bass_mag / (4.0f * (float)s_peak_l);
-    if (bass > 1.0f) bass = 1.0f;
+    // 1. Audio analysis — use pre-computed frame bands
+    const float bass = g_frame_bands.bass;
 
     int32_t pk = s_peak_l > s_peak_r ? s_peak_l : s_peak_r;
     if (pk < 1) pk = 1;

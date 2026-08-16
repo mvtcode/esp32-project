@@ -9,18 +9,8 @@ void effect_tunnel_render(const int32_t *left, const int32_t *right, size_t n) {
     const int cx = 64;
     const int cy = 31;
 
-    // Calculate Bass Energy from first few FFT bins
-    float bass_sum = 0.0f;
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-    for (int b = 1; b <= 4; b++) bass_sum += s_fft_real[b];
-    float bass_norm = bass_sum / (4.0f * (float)s_peak_l);
-    if (bass_norm > 1.0f) bass_norm = 1.0f;
+    // Audio analysis — use pre-computed frame bands
+    const float bass_norm = g_frame_bands.bass;
 
     // Speed up tunnel on bass hits
     float speed = 0.00625f + bass_norm * 0.015f;

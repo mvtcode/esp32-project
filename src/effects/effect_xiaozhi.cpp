@@ -167,23 +167,9 @@ void effect_xiaozhi_render(const int32_t *left, const int32_t *right, size_t n) 
     // -------------------------------------------------------------------
     // 2. Frequency Bands (Bass groove & Vocal/Treble energy)
     // -------------------------------------------------------------------
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-
-    float bass = 0.0f;
-    for (int b = 1; b <= 4; b++) bass += s_fft_real[b];
-    bass /= (4.0f * (float)s_peak_l);
-    if (bass > 1.0f) bass = 1.0f;
-
-    float treble = 0.0f;
-    for (int b = 5; b <= 16; b++) treble += s_fft_real[b];
-    treble /= (12.0f * (float)s_peak_l);
-    if (treble > 1.0f) treble = 1.0f;
+    // Audio analysis — use pre-computed frame bands
+    const float bass = g_frame_bands.bass;
+    const float treble = g_frame_bands.mid; // Bins 5-16 correspond to mid band in new struct
 
     // Beat pulse for bouncy rhythm groove
     if (bass > 0.40f && bass > s_beat_pulse) {

@@ -33,19 +33,8 @@ void effect_supernova_on_exit() {}
 void effect_supernova_render(const int32_t *left, const int32_t *right, size_t n) {
     const int cx = 64, cy = 31;
 
-    // 1. Audio Bass & Energy Detection
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-
-    float bass = 0.0f;
-    for (int b = 1; b <= 4; b++) bass += s_fft_real[b];
-    bass /= (4.0f * (float)s_peak_l);
-    if (bass > 1.0f) bass = 1.0f;
+    // 1. Audio analysis — use pre-computed frame bands
+    const float bass = g_frame_bands.bass;
 
     // 2. Shockwave Expansion (Slowed down to 1/4 speed)
     s_shockwave_r += 0.30f + bass * 0.88f;

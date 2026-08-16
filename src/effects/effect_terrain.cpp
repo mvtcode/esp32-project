@@ -17,13 +17,7 @@ void effect_terrain_on_exit() {
 
 void effect_terrain_render(const int32_t *left, const int32_t *right, size_t n) {
     // 1. FFT for new front row
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
+    // Note: s_fft_real already contains mono-mix magnitudes computed by audio_compute_bands in display.cpp
 
     // Shift history backward
     for (int z = TERRAIN_DEPTH - 1; z > 0; z--) {

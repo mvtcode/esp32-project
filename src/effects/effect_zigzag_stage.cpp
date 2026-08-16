@@ -49,19 +49,8 @@ void effect_zigzag_stage_render(const int32_t *left, const int32_t *right, size_
     if (norm_r > 1.0f) norm_r = 1.0f;
     float avg = (norm_l + norm_r) * 0.5f;
 
-    // FFT for Bass Beat & Central Towers
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
-
-    float bass = 0.0f;
-    for (int b = 1; b <= 4; b++) bass += s_fft_real[b];
-    bass /= (4.0f * (float)s_peak_l);
-    if (bass > 1.0f) bass = 1.0f;
+    // Audio analysis — use pre-computed frame bands
+    const float bass = g_frame_bands.bass;
 
     if (bass > 0.55f) {
         s_strobe_timer = 2; // Strobe flash

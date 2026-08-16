@@ -52,7 +52,7 @@ void effect_ball_juggle_render(const int32_t *left, const int32_t *right, size_t
     if (pk < 1) pk = 1;
 
     // 1. Build and Draw Live Audio Waveform Floor across X = 0..127
-    int wave_y[SCREEN_W];
+    static int wave_y[SCREEN_W]; // static: avoid 512B stack allocation per frame
     int prev_wx = 0, prev_wy = WAVE_Y;
 
     for (int x = 0; x < SCREEN_W; x++) {

@@ -87,13 +87,19 @@ void loop() {
     static uint32_t   fps_ts  = 0;
     static uint32_t   fps_cnt = 0;
 
-    // --- Button: cycle display mode on each press ---
+    // --- Button handling ---
+    button_update();
     if (button_pressed()) {
         display_next_mode();
     }
+    if (button_long_pressed()) {
+        bool auto_cycle = !display_get_auto_cycle();
+        display_set_auto_cycle(auto_cycle);
+        Serial.printf("[Mode] Auto-cycle %s\n", auto_cycle ? "ON" : "OFF");
+    }
 
     // --- Render: dequeue and draw ---
-    if (xQueueReceive(s_audio_queue, &frame, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (xQueueReceive(s_audio_queue, &frame, pdMS_TO_TICKS(5)) == pdTRUE) {
         display_draw_waveform(frame.left, frame.right, FRAME_SIZE);
         fps_cnt++;
     }

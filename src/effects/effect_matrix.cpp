@@ -9,7 +9,8 @@ static float s_matrix_spd[MATRIX_COLS] = {0};
 
 void effect_matrix_on_enter() {
     for (int col = 0; col < MATRIX_COLS; col++) {
-        s_matrix_y[col] = (float)(-(rand() % 32));
+        s_matrix_y[col]   = (float)(-(rand() % 32));
+        s_matrix_spd[col] = 0.0f; // reset speed to avoid dirty state on re-enter
     }
 }
 
@@ -19,13 +20,7 @@ void effect_matrix_on_exit() {
 
 void effect_matrix_render(const int32_t *left, const int32_t *right, size_t n) {
     // 1. FFT to drive 16 columns
-    for (size_t i = 0; i < n; i++) {
-        s_fft_real[i] = (float)((left[i] + right[i]) / 2);
-        s_fft_imag[i] = 0.0f;
-    }
-    s_fft.windowing(FFTWindow::Hamming, FFTDirection::Forward);
-    s_fft.compute(FFTDirection::Forward);
-    s_fft.complexToMagnitude();
+    // Note: s_fft_real already contains mono-mix magnitudes computed by audio_compute_bands in display.cpp
 
     // 2. Update and draw each column
     for (int col = 0; col < MATRIX_COLS; col++) {
