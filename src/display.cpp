@@ -8,12 +8,10 @@
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
 
 // -----------------------------------------------------------------------
-// Shared AGC state & buffers
+// Shared Audio reference state & buffers (Fixed scale, no auto-magnification)
 // -----------------------------------------------------------------------
-int32_t s_peak_l = 1024;
-int32_t s_peak_r = 1024;
-static const float RELEASE = 0.98f;
-static const int32_t FLOOR = 80000;   // ~40 dB below 24-bit FS
+int32_t s_peak_l = (int32_t)AUDIO_NOMINAL_PEAK;
+int32_t s_peak_r = (int32_t)AUDIO_NOMINAL_PEAK;
 
 // Shared FFT instance across spectrum-based effects
 float s_fft_real[FRAME_SIZE];
@@ -28,7 +26,7 @@ static uint32_t   s_label_ts       = 0;
 static const uint32_t LABEL_DUR_MS = 1500;
 
 // -----------------------------------------------------------------------
-// AGC Functions
+// Audio Level Reference Updates (Fixed Reference with Soft Headroom Limiter)
 // -----------------------------------------------------------------------
 static int32_t compute_peak(const int32_t *buf, size_t n) {
     int32_t pk = 0;
@@ -42,10 +40,9 @@ static int32_t compute_peak(const int32_t *buf, size_t n) {
 static void update_agc(const int32_t *left, const int32_t *right, size_t n) {
     int32_t cl = compute_peak(left,  n);
     int32_t cr = compute_peak(right, n);
-    s_peak_l = cl > s_peak_l ? cl : (int32_t)(s_peak_l * RELEASE);
-    s_peak_r = cr > s_peak_r ? cr : (int32_t)(s_peak_r * RELEASE);
-    if (s_peak_l < FLOOR) s_peak_l = FLOOR;
-    if (s_peak_r < FLOOR) s_peak_r = FLOOR;
+    // Fixed scale mode: maintains linear 1:1 true volume scaling; expands headroom only if signal exceeds nominal
+    s_peak_l = cl > (int32_t)AUDIO_NOMINAL_PEAK ? cl : (int32_t)AUDIO_NOMINAL_PEAK;
+    s_peak_r = cr > (int32_t)AUDIO_NOMINAL_PEAK ? cr : (int32_t)AUDIO_NOMINAL_PEAK;
 }
 
 // -----------------------------------------------------------------------

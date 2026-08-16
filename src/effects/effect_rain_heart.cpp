@@ -6,18 +6,18 @@
 #define MATRIX_COLS 16
 static float s_rheart_y[MATRIX_COLS]   = {0};
 static float s_rheart_spd[MATRIX_COLS] = {0};
-static float s_rheart_peak             = 1.0f;
+static float s_rheart_peak             = FFT_MAG_FLOOR;
 
 void effect_rain_heart_on_enter() {
     for (int col = 0; col < MATRIX_COLS; col++) {
         s_rheart_y[col] = (float)(-(rand() % 32));
     }
-    s_rheart_peak = 1.0f;
+    s_rheart_peak = FFT_MAG_FLOOR;
 }
 
 void effect_rain_heart_on_exit() {
     memset(s_rheart_y, 0, sizeof(s_rheart_y));
-    s_rheart_peak = 1.0f;
+    s_rheart_peak = FFT_MAG_FLOOR;
 }
 
 void effect_rain_heart_render(const int32_t *left, const int32_t *right, size_t n) {
@@ -45,7 +45,8 @@ void effect_rain_heart_render(const int32_t *left, const int32_t *right, size_t 
     // Bass energy tracking with fast dynamic follower
     float bass_sum = 0.0f;
     for (int b = 1; b <= 5; b++) bass_sum += s_fft_real[b];
-    s_rheart_peak = bass_sum > s_rheart_peak ? bass_sum : (s_rheart_peak * 0.94f + 1.0f);
+    s_rheart_peak = bass_sum > s_rheart_peak ? bass_sum : (s_rheart_peak * 0.94f);
+    if (s_rheart_peak < FFT_MAG_FLOOR) s_rheart_peak = FFT_MAG_FLOOR;
     float bass_norm = bass_sum / s_rheart_peak;
     if (bass_norm > 1.0f) bass_norm = 1.0f;
 

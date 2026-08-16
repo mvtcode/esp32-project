@@ -19,15 +19,15 @@ void effect_analog_vu_on_exit() {
 static float rms_analog(const int32_t *buf, size_t n) {
     double sum = 0;
     for (size_t i = 0; i < n; i++) {
-        double v = (double)buf[i] / 8388608.0; // 2^23 normalise to [-1,1]
+        double v = (double)buf[i] / (double)AUDIO_NOMINAL_PEAK;
         sum += v * v;
     }
     return (float)sqrt(sum / n);
 }
 
-static const float VU_DB_MIN = -60.0f;
+static const float VU_DB_MIN = -36.0f;
 static float linear_to_vu_analog(float rms_lin) {
-    if (rms_lin < 1e-7f) return 0.0f;
+    if (rms_lin < 0.001f) return 0.0f;
     float db = 20.0f * log10f(rms_lin);
     float norm = (db - VU_DB_MIN) / (-VU_DB_MIN);
     if (norm < 0.0f) norm = 0.0f;

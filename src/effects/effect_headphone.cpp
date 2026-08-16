@@ -84,7 +84,7 @@ void effect_headphone_render(const int32_t *left, const int32_t *right, size_t n
     // Left Ear-Cup Frame (x=18..28, y=28..53)
     SafeDraw::drawRFrame(18 - bounce, 28, 11, 26, 3);
     int bar_h_l = (int)(vol_l * (float)BAR_MAX_H);
-    if (bar_h_l < 1) bar_h_l = 1;
+    if (bar_h_l < 0) bar_h_l = 0;
 
     // Peak hold decay for Left Channel
     if ((float)bar_h_l >= s_hp_peak_l) {
@@ -95,16 +95,18 @@ void effect_headphone_render(const int32_t *left, const int32_t *right, size_t n
     }
 
     // Draw Left VU Bar & Peak Dot
-    SafeDraw::drawBox(21 - bounce, BAR_BASE_Y - bar_h_l, 5, bar_h_l);
+    if (bar_h_l > 0) {
+        SafeDraw::drawBox(21 - bounce, BAR_BASE_Y - bar_h_l, 5, bar_h_l);
+    }
     int ph_y_l = BAR_BASE_Y - (int)s_hp_peak_l - 1;
-    if (ph_y_l >= 29 && ph_y_l < BAR_BASE_Y - bar_h_l) {
+    if (s_hp_peak_l > 0.5f && ph_y_l >= 29 && ph_y_l < BAR_BASE_Y - bar_h_l) {
         SafeDraw::drawHLine(21 - bounce, ph_y_l, 5);
     }
 
     // Right Ear-Cup Frame (x=100..110, y=28..53)
     SafeDraw::drawRFrame(100 + bounce, 28, 11, 26, 3);
     int bar_h_r = (int)(vol_r * (float)BAR_MAX_H);
-    if (bar_h_r < 1) bar_h_r = 1;
+    if (bar_h_r < 0) bar_h_r = 0;
 
     // Peak hold decay for Right Channel
     if ((float)bar_h_r >= s_hp_peak_r) {
@@ -115,9 +117,11 @@ void effect_headphone_render(const int32_t *left, const int32_t *right, size_t n
     }
 
     // Draw Right VU Bar & Peak Dot
-    SafeDraw::drawBox(103 + bounce, BAR_BASE_Y - bar_h_r, 5, bar_h_r);
+    if (bar_h_r > 0) {
+        SafeDraw::drawBox(103 + bounce, BAR_BASE_Y - bar_h_r, 5, bar_h_r);
+    }
     int ph_y_r = BAR_BASE_Y - (int)s_hp_peak_r - 1;
-    if (ph_y_r >= 29 && ph_y_r < BAR_BASE_Y - bar_h_r) {
+    if (s_hp_peak_r > 0.5f && ph_y_r >= 29 && ph_y_r < BAR_BASE_Y - bar_h_r) {
         SafeDraw::drawHLine(103 + bounce, ph_y_r, 5);
     }
 

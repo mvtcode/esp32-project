@@ -4,14 +4,14 @@
 // MODE 7 — MVT HEART  (Heart stereo visualizer with "MVT" text)
 // -----------------------------------------------------------------------
 #define HEART_BARS 15
-static float s_heart_scale = 1.0f;
+static float s_heart_scale = FFT_MAG_FLOOR;
 
 void effect_heart_on_enter() {
-    s_heart_scale = 1.0f;
+    s_heart_scale = FFT_MAG_FLOOR;
 }
 
 void effect_heart_on_exit() {
-    s_heart_scale = 1.0f;
+    s_heart_scale = FFT_MAG_FLOOR;
 }
 
 static void draw_heart(int hx, int hy, int pulse) {
@@ -43,7 +43,7 @@ void effect_heart_render(const int32_t *left, const int32_t *right, size_t n) {
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float max_mag = 1.0f;
+    float max_mag = 0.0f;
     for (int k = 0; k < HEART_BARS; k++) {
         float sum = 0.0f;
         int start_bin = 1 + k * 3;
@@ -74,8 +74,8 @@ void effect_heart_render(const int32_t *left, const int32_t *right, size_t n) {
     }
 
     // Dynamic AGC
-    s_heart_scale = max_mag > s_heart_scale ? max_mag : s_heart_scale * 0.95f;
-    if (s_heart_scale < 1.0f) s_heart_scale = 1.0f;
+    s_heart_scale = max_mag > s_heart_scale ? max_mag : (s_heart_scale * 0.95f);
+    if (s_heart_scale < FFT_MAG_FLOOR) s_heart_scale = FFT_MAG_FLOOR;
 
     // Center baseline lines leading to heart
     SafeDraw::drawHLine(0, cy, 53);
@@ -87,12 +87,14 @@ void effect_heart_render(const int32_t *left, const int32_t *right, size_t n) {
         float norm_l = bands_l[band_idx] / s_heart_scale;
         if (norm_l > 1.0f) norm_l = 1.0f;
         int h = (int)(powf(norm_l, 0.60f) * MAX_H);
-        if (h < 1) h = 1;
+        if (h < 0) h = 0;
         if (h > MAX_H) h = MAX_H;
 
-        int x = 6 + k * 3;
-        SafeDraw::drawVLine(x, cy - h, 2 * h + 1);
-        SafeDraw::drawVLine(x + 1, cy - h, 2 * h + 1);
+        if (h > 0) {
+            int x = 6 + k * 3;
+            SafeDraw::drawVLine(x, cy - h, 2 * h + 1);
+            SafeDraw::drawVLine(x + 1, cy - h, 2 * h + 1);
+        }
     }
 
     // 4. Draw Right symmetrical bars (Bass near heart, Treble far from heart)
@@ -100,12 +102,14 @@ void effect_heart_render(const int32_t *left, const int32_t *right, size_t n) {
         float norm_r = bands_r[k] / s_heart_scale;
         if (norm_r > 1.0f) norm_r = 1.0f;
         int h = (int)(powf(norm_r, 0.60f) * MAX_H);
-        if (h < 1) h = 1;
+        if (h < 0) h = 0;
         if (h > MAX_H) h = MAX_H;
 
-        int x = 78 + k * 3;
-        SafeDraw::drawVLine(x, cy - h, 2 * h + 1);
-        SafeDraw::drawVLine(x + 1, cy - h, 2 * h + 1);
+        if (h > 0) {
+            int x = 78 + k * 3;
+            SafeDraw::drawVLine(x, cy - h, 2 * h + 1);
+            SafeDraw::drawVLine(x + 1, cy - h, 2 * h + 1);
+        }
     }
 
     // 5. Dynamic beating Heart in center (pulses with bass)

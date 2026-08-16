@@ -10,14 +10,14 @@
 
 static uint8_t s_wf_history[WF_ROWS][WF_COLS]; // 2-bit intensity: 0..3
 static int s_wf_head = 0;
-static float s_wf_peak_l = 1.0f;
-static float s_wf_peak_r = 1.0f;
+static float s_wf_peak_l = FFT_MAG_FLOOR;
+static float s_wf_peak_r = FFT_MAG_FLOOR;
 static uint32_t s_last_row_time = 0;
 
 void effect_waterfall_on_enter() {
     s_wf_head = 0;
-    s_wf_peak_l = 1.0f;
-    s_wf_peak_r = 1.0f;
+    s_wf_peak_l = FFT_MAG_FLOOR;
+    s_wf_peak_r = FFT_MAG_FLOOR;
     s_last_row_time = 0;
     for (int r = 0; r < WF_ROWS; r++) {
         for (int c = 0; c < WF_COLS; c++) {
@@ -39,16 +39,15 @@ void effect_waterfall_render(const int32_t *left, const int32_t *right, size_t n
     s_fft.complexToMagnitude();
 
     float mags_l[WF_BINS_PER_CH];
-    float max_l = 1.0f;
+    float max_l = 0.0f;
     for (int b = 0; b < WF_BINS_PER_CH; b++) {
-        // Group FFT bins: low bins single, higher bins grouped slightly
         int bin_idx = b + 1;
         float mag = s_fft_real[bin_idx];
         mags_l[b] = mag;
         if (mag > max_l) max_l = mag;
     }
-    s_wf_peak_l = max_l > s_wf_peak_l ? max_l : s_wf_peak_l * 0.94f;
-    if (s_wf_peak_l < 1.0f) s_wf_peak_l = 1.0f;
+    s_wf_peak_l = max_l > s_wf_peak_l ? max_l : (s_wf_peak_l * 0.94f);
+    if (s_wf_peak_l < FFT_MAG_FLOOR) s_wf_peak_l = FFT_MAG_FLOOR;
 
     // 2. FFT for Right Channel
     for (size_t i = 0; i < n; i++) {
@@ -60,15 +59,15 @@ void effect_waterfall_render(const int32_t *left, const int32_t *right, size_t n
     s_fft.complexToMagnitude();
 
     float mags_r[WF_BINS_PER_CH];
-    float max_r = 1.0f;
+    float max_r = 0.0f;
     for (int b = 0; b < WF_BINS_PER_CH; b++) {
         int bin_idx = b + 1;
         float mag = s_fft_real[bin_idx];
         mags_r[b] = mag;
         if (mag > max_r) max_r = mag;
     }
-    s_wf_peak_r = max_r > s_wf_peak_r ? max_r : s_wf_peak_r * 0.94f;
-    if (s_wf_peak_r < 1.0f) s_wf_peak_r = 1.0f;
+    s_wf_peak_r = max_r > s_wf_peak_r ? max_r : (s_wf_peak_r * 0.94f);
+    if (s_wf_peak_r < FFT_MAG_FLOOR) s_wf_peak_r = FFT_MAG_FLOOR;
 
     // 3. Map into 32 columns (Left: col 0..15 Treble->Bass, Right: col 16..31 Bass->Treble)
     float col_mags[WF_COLS];

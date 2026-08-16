@@ -17,6 +17,10 @@ extern U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2;
 extern int32_t s_peak_l;
 extern int32_t s_peak_r;
 
+// Standard audio scaling constants across effects (Fixed scale for 1:1 INMP441 raw 16-bit audio)
+#define FFT_MAG_FLOOR       25000.0f  // Standard FFT magnitude reference floor (scaled for N=128 FFT)
+#define AUDIO_NOMINAL_PEAK  2500.0f   // Nominal full scale reference for VU meters and waveforms
+
 // Shared FFT instance and buffers (reused across spectrum-based effects)
 extern float s_fft_real[FRAME_SIZE];
 extern float s_fft_imag[FRAME_SIZE];

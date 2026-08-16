@@ -4,20 +4,20 @@
 // MODE 6 — CIRCLE MVT  (radial stereo visualizer with "MVT" center)
 // -----------------------------------------------------------------------
 #define CIRCLE_BANDS 16
-static float s_circle_peak               = 1.0f;
+static float s_circle_peak               = FFT_MAG_FLOOR;
 static float s_circle_pk_l[CIRCLE_BANDS] = {0};
 static float s_circle_pk_r[CIRCLE_BANDS] = {0};
 
 void effect_circle_on_enter() {
     memset(s_circle_pk_l, 0, sizeof(s_circle_pk_l));
     memset(s_circle_pk_r, 0, sizeof(s_circle_pk_r));
-    s_circle_peak = 1.0f;
+    s_circle_peak = FFT_MAG_FLOOR;
 }
 
 void effect_circle_on_exit() {
     memset(s_circle_pk_l, 0, sizeof(s_circle_pk_l));
     memset(s_circle_pk_r, 0, sizeof(s_circle_pk_r));
-    s_circle_peak = 1.0f;
+    s_circle_peak = FFT_MAG_FLOOR;
 }
 
 void effect_circle_render(const int32_t *left, const int32_t *right, size_t n) {
@@ -38,7 +38,7 @@ void effect_circle_render(const int32_t *left, const int32_t *right, size_t n) {
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float max_mag = 1.0f;
+    float max_mag = 0.0f;
     for (int k = 0; k < CIRCLE_BANDS; k++) {
         float sum = 0.0f;
         int start_bin = 1 + k * 3;
@@ -69,15 +69,15 @@ void effect_circle_render(const int32_t *left, const int32_t *right, size_t n) {
     }
 
     // Fast-adapting AGC for lively responsiveness
-    s_circle_peak = max_mag > s_circle_peak ? max_mag : s_circle_peak * 0.95f;
-    if (s_circle_peak < 1.0f) s_circle_peak = 1.0f;
+    s_circle_peak = max_mag > s_circle_peak ? max_mag : (s_circle_peak * 0.95f);
+    if (s_circle_peak < FFT_MAG_FLOOR) s_circle_peak = FFT_MAG_FLOOR;
 
     // 3. Draw Left Radial Rays (Left semicircle: Bass at Top k=0 → Treble at Bottom k=15)
     for (int k = 0; k < CIRCLE_BANDS; k++) {
         float norm_l = bands_l[k] / s_circle_peak;
         if (norm_l > 1.0f) norm_l = 1.0f;
         float len = powf(norm_l, 0.60f) * (float)R_MAX_LEN;
-        if (len < 1.0f) len = 1.0f;
+        if (len < 0.0f) len = 0.0f;
         if (len > R_MAX_LEN) len = R_MAX_LEN;
 
         // Peak follower
@@ -89,16 +89,20 @@ void effect_circle_render(const int32_t *left, const int32_t *right, size_t n) {
         float ca = cosf(angle);
         float sa = sinf(angle);
 
-        int x1 = cx + (int)(ca * (R_IN + 1) + 0.5f);
-        int y1 = cy + (int)(sa * (R_IN + 1) + 0.5f);
-        int x2 = cx + (int)(ca * (R_IN + 1 + len) + 0.5f);
-        int y2 = cy + (int)(sa * (R_IN + 1 + len) + 0.5f);
-        SafeDraw::drawLine(x1, y1, x2, y2);
+        if (len >= 1.0f) {
+            int x1 = cx + (int)(ca * (R_IN + 1) + 0.5f);
+            int y1 = cy + (int)(sa * (R_IN + 1) + 0.5f);
+            int x2 = cx + (int)(ca * (R_IN + 1 + len) + 0.5f);
+            int y2 = cy + (int)(sa * (R_IN + 1 + len) + 0.5f);
+            SafeDraw::drawLine(x1, y1, x2, y2);
+        }
 
         // Peak dot
-        int pk_r = R_IN + 2 + (int)(s_circle_pk_l[k] + 0.5f);
-        if (pk_r <= 31) {
-            SafeDraw::drawPixel(cx + (int)(ca * pk_r + 0.5f), cy + (int)(sa * pk_r + 0.5f));
+        if (s_circle_pk_l[k] >= 1.0f) {
+            int pk_r = R_IN + 2 + (int)(s_circle_pk_l[k] + 0.5f);
+            if (pk_r <= 31) {
+                SafeDraw::drawPixel(cx + (int)(ca * pk_r + 0.5f), cy + (int)(sa * pk_r + 0.5f));
+            }
         }
     }
 
@@ -107,7 +111,7 @@ void effect_circle_render(const int32_t *left, const int32_t *right, size_t n) {
         float norm_r = bands_r[k] / s_circle_peak;
         if (norm_r > 1.0f) norm_r = 1.0f;
         float len = powf(norm_r, 0.60f) * (float)R_MAX_LEN;
-        if (len < 1.0f) len = 1.0f;
+        if (len < 0.0f) len = 0.0f;
         if (len > R_MAX_LEN) len = R_MAX_LEN;
 
         // Peak follower
@@ -119,16 +123,20 @@ void effect_circle_render(const int32_t *left, const int32_t *right, size_t n) {
         float ca = cosf(angle);
         float sa = sinf(angle);
 
-        int x1 = cx + (int)(ca * (R_IN + 1) + 0.5f);
-        int y1 = cy + (int)(sa * (R_IN + 1) + 0.5f);
-        int x2 = cx + (int)(ca * (R_IN + 1 + len) + 0.5f);
-        int y2 = cy + (int)(sa * (R_IN + 1 + len) + 0.5f);
-        SafeDraw::drawLine(x1, y1, x2, y2);
+        if (len >= 1.0f) {
+            int x1 = cx + (int)(ca * (R_IN + 1) + 0.5f);
+            int y1 = cy + (int)(sa * (R_IN + 1) + 0.5f);
+            int x2 = cx + (int)(ca * (R_IN + 1 + len) + 0.5f);
+            int y2 = cy + (int)(sa * (R_IN + 1 + len) + 0.5f);
+            SafeDraw::drawLine(x1, y1, x2, y2);
+        }
 
         // Peak dot
-        int pk_r = R_IN + 2 + (int)(s_circle_pk_r[k] + 0.5f);
-        if (pk_r <= 31) {
-            SafeDraw::drawPixel(cx + (int)(ca * pk_r + 0.5f), cy + (int)(sa * pk_r + 0.5f));
+        if (s_circle_pk_r[k] >= 1.0f) {
+            int pk_r = R_IN + 2 + (int)(s_circle_pk_r[k] + 0.5f);
+            if (pk_r <= 31) {
+                SafeDraw::drawPixel(cx + (int)(ca * pk_r + 0.5f), cy + (int)(sa * pk_r + 0.5f));
+            }
         }
     }
 

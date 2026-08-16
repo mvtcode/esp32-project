@@ -6,14 +6,14 @@
 #define FUSION_FLANK_BARS 13
 #define FUSION_RAD_BARS   8
 static float s_fusion_angle = 0.0f;
-static float s_fusion_scale = 1.0f;
+static float s_fusion_scale = FFT_MAG_FLOOR;
 static float s_fusion_pk_t[FUSION_RAD_BARS] = {0};
 static float s_fusion_pk_b[FUSION_RAD_BARS] = {0};
 static float s_fusion_flank_pk_l[FUSION_FLANK_BARS] = {0};
 static float s_fusion_flank_pk_r[FUSION_FLANK_BARS] = {0};
 
 void effect_fusion_on_enter() {
-    s_fusion_scale = 1.0f;
+    s_fusion_scale = FFT_MAG_FLOOR;
     memset(s_fusion_pk_t, 0, sizeof(s_fusion_pk_t));
     memset(s_fusion_pk_b, 0, sizeof(s_fusion_pk_b));
     memset(s_fusion_flank_pk_l, 0, sizeof(s_fusion_flank_pk_l));
@@ -21,7 +21,7 @@ void effect_fusion_on_enter() {
 }
 
 void effect_fusion_on_exit() {
-    s_fusion_scale = 1.0f;
+    s_fusion_scale = FFT_MAG_FLOOR;
     memset(s_fusion_pk_t, 0, sizeof(s_fusion_pk_t));
     memset(s_fusion_pk_b, 0, sizeof(s_fusion_pk_b));
     memset(s_fusion_flank_pk_l, 0, sizeof(s_fusion_flank_pk_l));
@@ -50,7 +50,7 @@ void effect_fusion_render(const int32_t *left, const int32_t *right, size_t n) {
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float max_mag = 1.0f;
+    float max_mag = 0.0f;
     for (int k = 0; k < FUSION_FLANK_BARS; k++) {
         float sum = 0.0f;
         int start_bin = 1 + k * 3;
@@ -89,8 +89,8 @@ void effect_fusion_render(const int32_t *left, const int32_t *right, size_t n) {
     }
 
     // Dynamic AGC
-    s_fusion_scale = max_mag > s_fusion_scale ? max_mag : s_fusion_scale * 0.95f;
-    if (s_fusion_scale < 1.0f) s_fusion_scale = 1.0f;
+    s_fusion_scale = max_mag > s_fusion_scale ? max_mag : (s_fusion_scale * 0.95f);
+    if (s_fusion_scale < FFT_MAG_FLOOR) s_fusion_scale = FFT_MAG_FLOOR;
 
     // Clockwise rotation: ~10s per revolution (2*PI / 10s = 0.6283 rad/s)
     static uint32_t s_last_rot_ts = 0;
@@ -115,18 +115,21 @@ void effect_fusion_render(const int32_t *left, const int32_t *right, size_t n) {
         float norm_l = flank_l[band_idx] / s_fusion_scale;
         if (norm_l > 1.0f) norm_l = 1.0f;
         int h = (int)(powf(norm_l, 0.60f) * MAX_FLANK_H);
-        if (h < 1) h = 1;
+        if (h < 0) h = 0;
         if (h > MAX_FLANK_H) h = MAX_FLANK_H;
 
         if ((float)h >= s_fusion_flank_pk_l[k]) s_fusion_flank_pk_l[k] = (float)h;
         else s_fusion_flank_pk_l[k] *= 0.92f;
 
-        int x = 6 + k * 3;
-        SafeDraw::drawVLine(x, cy - h, 2 * h + 1);
-        SafeDraw::drawVLine(x + 1, cy - h, 2 * h + 1);
+        if (h > 0) {
+            int x = 6 + k * 3;
+            SafeDraw::drawVLine(x, cy - h, 2 * h + 1);
+            SafeDraw::drawVLine(x + 1, cy - h, 2 * h + 1);
+        }
 
         int pkh = (int)(s_fusion_flank_pk_l[k] + 0.5f);
         if (pkh > h + 1 && pkh <= MAX_FLANK_H) {
+            int x = 6 + k * 3;
             SafeDraw::drawPixel(x, cy - pkh);
             SafeDraw::drawPixel(x + 1, cy - pkh);
             SafeDraw::drawPixel(x, cy + pkh);
@@ -139,18 +142,21 @@ void effect_fusion_render(const int32_t *left, const int32_t *right, size_t n) {
         float norm_r = flank_r[k] / s_fusion_scale;
         if (norm_r > 1.0f) norm_r = 1.0f;
         int h = (int)(powf(norm_r, 0.60f) * MAX_FLANK_H);
-        if (h < 1) h = 1;
+        if (h < 0) h = 0;
         if (h > MAX_FLANK_H) h = MAX_FLANK_H;
 
         if ((float)h >= s_fusion_flank_pk_r[k]) s_fusion_flank_pk_r[k] = (float)h;
         else s_fusion_flank_pk_r[k] *= 0.92f;
 
-        int x = 83 + k * 3;
-        SafeDraw::drawVLine(x, cy - h, 2 * h + 1);
-        SafeDraw::drawVLine(x + 1, cy - h, 2 * h + 1);
+        if (h > 0) {
+            int x = 83 + k * 3;
+            SafeDraw::drawVLine(x, cy - h, 2 * h + 1);
+            SafeDraw::drawVLine(x + 1, cy - h, 2 * h + 1);
+        }
 
         int pkh = (int)(s_fusion_flank_pk_r[k] + 0.5f);
         if (pkh > h + 1 && pkh <= MAX_FLANK_H) {
+            int x = 83 + k * 3;
             SafeDraw::drawPixel(x, cy - pkh);
             SafeDraw::drawPixel(x + 1, cy - pkh);
             SafeDraw::drawPixel(x, cy + pkh);
@@ -173,22 +179,27 @@ void effect_fusion_render(const int32_t *left, const int32_t *right, size_t n) {
         float norm = rad_top[k] / s_fusion_scale;
         if (norm > 1.0f) norm = 1.0f;
         float len = powf(norm, 0.60f) * (float)MAX_RAD_LEN;
-        if (len < 1.0f) len = 1.0f;
+        if (len < 0.0f) len = 0.0f;
 
         if (len >= s_fusion_pk_t[k]) s_fusion_pk_t[k] = len;
         else s_fusion_pk_t[k] *= 0.92f;
 
         float a = -2.61799f + (2.09439f / (FUSION_RAD_BARS + 1)) * (k + 1);
         float ca = cosf(a), sa = sinf(a);
-        int x1 = cx + (int)(ca * (R_MID + 1) + 0.5f);
-        int y1 = cy + (int)(sa * (R_MID + 1) + 0.5f);
-        int x2 = cx + (int)(ca * (R_MID + 1 + len) + 0.5f);
-        int y2 = cy + (int)(sa * (R_MID + 1 + len) + 0.5f);
-        SafeDraw::drawLine(x1, y1, x2, y2);
 
-        int pk_r = R_MID + 2 + (int)(s_fusion_pk_t[k] + 0.5f);
-        if (pk_r <= 31) {
-            SafeDraw::drawPixel(cx + (int)(ca * pk_r + 0.5f), cy + (int)(sa * pk_r + 0.5f));
+        if (len >= 1.0f) {
+            int x1 = cx + (int)(ca * (R_MID + 1) + 0.5f);
+            int y1 = cy + (int)(sa * (R_MID + 1) + 0.5f);
+            int x2 = cx + (int)(ca * (R_MID + 1 + len) + 0.5f);
+            int y2 = cy + (int)(sa * (R_MID + 1 + len) + 0.5f);
+            SafeDraw::drawLine(x1, y1, x2, y2);
+        }
+
+        if (s_fusion_pk_t[k] >= 1.0f) {
+            int pk_r = R_MID + 2 + (int)(s_fusion_pk_t[k] + 0.5f);
+            if (pk_r <= 31) {
+                SafeDraw::drawPixel(cx + (int)(ca * pk_r + 0.5f), cy + (int)(sa * pk_r + 0.5f));
+            }
         }
     }
 
@@ -197,22 +208,27 @@ void effect_fusion_render(const int32_t *left, const int32_t *right, size_t n) {
         float norm = rad_bot[k] / s_fusion_scale;
         if (norm > 1.0f) norm = 1.0f;
         float len = powf(norm, 0.60f) * (float)MAX_RAD_LEN;
-        if (len < 1.0f) len = 1.0f;
+        if (len < 0.0f) len = 0.0f;
 
         if (len >= s_fusion_pk_b[k]) s_fusion_pk_b[k] = len;
         else s_fusion_pk_b[k] *= 0.92f;
 
         float a = 0.52359f + (2.09439f / (FUSION_RAD_BARS + 1)) * (k + 1);
         float ca = cosf(a), sa = sinf(a);
-        int x1 = cx + (int)(ca * (R_MID + 1) + 0.5f);
-        int y1 = cy + (int)(sa * (R_MID + 1) + 0.5f);
-        int x2 = cx + (int)(ca * (R_MID + 1 + len) + 0.5f);
-        int y2 = cy + (int)(sa * (R_MID + 1 + len) + 0.5f);
-        SafeDraw::drawLine(x1, y1, x2, y2);
 
-        int pk_r = R_MID + 2 + (int)(s_fusion_pk_b[k] + 0.5f);
-        if (pk_r <= 31) {
-            SafeDraw::drawPixel(cx + (int)(ca * pk_r + 0.5f), cy + (int)(sa * pk_r + 0.5f));
+        if (len >= 1.0f) {
+            int x1 = cx + (int)(ca * (R_MID + 1) + 0.5f);
+            int y1 = cy + (int)(sa * (R_MID + 1) + 0.5f);
+            int x2 = cx + (int)(ca * (R_MID + 1 + len) + 0.5f);
+            int y2 = cy + (int)(sa * (R_MID + 1 + len) + 0.5f);
+            SafeDraw::drawLine(x1, y1, x2, y2);
+        }
+
+        if (s_fusion_pk_b[k] >= 1.0f) {
+            int pk_r = R_MID + 2 + (int)(s_fusion_pk_b[k] + 0.5f);
+            if (pk_r <= 31) {
+                SafeDraw::drawPixel(cx + (int)(ca * pk_r + 0.5f), cy + (int)(sa * pk_r + 0.5f));
+            }
         }
     }
 

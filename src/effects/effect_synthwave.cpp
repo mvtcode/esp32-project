@@ -4,12 +4,12 @@
 // MODE 21 — MVT SYNTHWAVE (80s Neon Sun + 3D Grid + City FFT Skyline)
 // -----------------------------------------------------------------------
 static float s_grid_offset = 0.0f;
-static float s_synth_peak = 1000.0f;
+static float s_synth_peak = FFT_MAG_FLOOR;
 static float s_building_heights[16] = {0};
 
 void effect_synthwave_on_enter() {
     s_grid_offset = 0.0f;
-    s_synth_peak = 1000.0f;
+    s_synth_peak = FFT_MAG_FLOOR;
     for (int i = 0; i < 16; i++) {
         s_building_heights[i] = 0.0f;
     }
@@ -34,12 +34,12 @@ void effect_synthwave_render(const int32_t *left, const int32_t *right, size_t n
     s_fft.complexToMagnitude();
 
     // Adaptive peak for dynamic bouncing
-    float max_mag = 100.0f;
+    float max_mag = 0.0f;
     for (int b = 1; b <= 24; b++) {
         if (s_fft_real[b] > max_mag) max_mag = s_fft_real[b];
     }
     s_synth_peak = max_mag > s_synth_peak ? max_mag : (s_synth_peak * 0.96f);
-    if (s_synth_peak < 100.0f) s_synth_peak = 100.0f;
+    if (s_synth_peak < FFT_MAG_FLOOR) s_synth_peak = FFT_MAG_FLOOR;
 
     // Bass detection (bins 1..3)
     float bass = (s_fft_real[1] + s_fft_real[2] + s_fft_real[3]) / (3.0f * s_synth_peak);

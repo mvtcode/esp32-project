@@ -21,20 +21,18 @@ void effect_vu_meter_on_exit() {
 static float rms(const int32_t *buf, size_t n) {
     double sum = 0;
     for (size_t i = 0; i < n; i++) {
-        double v = (double)buf[i] / 8388608.0; // 2^23 normalise to [-1,1]
+        double v = (double)buf[i] / (double)AUDIO_NOMINAL_PEAK;
         sum += v * v;
     }
     return (float)sqrt(sum / n);
 }
 
 // Convert linear RMS [0,1] → display position [0,1] using dB scale.
-// Maps DB_MIN..0 dBFS onto the full bar height.
-// Result is clamped to [0, 1].
-static const float VU_DB_MIN = -60.0f;  // floor: signals below this = 0%
+static const float VU_DB_MIN = -36.0f;  // floor: -36 dB
 static float linear_to_vu(float rms_lin) {
-    if (rms_lin < 1e-7f) return 0.0f;
-    float db = 20.0f * log10f(rms_lin);           // e.g. 0.01 → -40 dB
-    float norm = (db - VU_DB_MIN) / (-VU_DB_MIN); // [-60,0] → [0,1]
+    if (rms_lin < 0.001f) return 0.0f;
+    float db = 20.0f * log10f(rms_lin);
+    float norm = (db - VU_DB_MIN) / (-VU_DB_MIN);
     if (norm < 0.0f) norm = 0.0f;
     if (norm > 1.0f) norm = 1.0f;
     return norm;

@@ -7,12 +7,12 @@
 static float s_cyber_angle = 0.0f;
 static float s_cyber_angle_mid = 0.0f;
 static float s_cyber_angle_out = 0.0f;
-static float s_cyber_scale = 1.0f;
+static float s_cyber_scale = FFT_MAG_FLOOR;
 static float s_cyber_pk_l[CYBER_BARS] = {0};
 static float s_cyber_pk_r[CYBER_BARS] = {0};
 
 void effect_cyber_on_enter() {
-    s_cyber_scale = 1.0f;
+    s_cyber_scale = FFT_MAG_FLOOR;
     s_cyber_angle = 0.0f;
     s_cyber_angle_mid = 0.0f;
     s_cyber_angle_out = 0.0f;
@@ -21,7 +21,7 @@ void effect_cyber_on_enter() {
 }
 
 void effect_cyber_on_exit() {
-    s_cyber_scale = 1.0f;
+    s_cyber_scale = FFT_MAG_FLOOR;
     s_cyber_angle = 0.0f;
     s_cyber_angle_mid = 0.0f;
     s_cyber_angle_out = 0.0f;
@@ -47,7 +47,7 @@ void effect_cyber_render(const int32_t *left, const int32_t *right, size_t n) {
     s_fft.compute(FFTDirection::Forward);
     s_fft.complexToMagnitude();
 
-    float max_mag = 1.0f;
+    float max_mag = 0.0f;
     for (int k = 0; k < CYBER_BARS; k++) {
         float sum = 0.0f;
         int start_bin = 1 + k * 4;
@@ -78,8 +78,8 @@ void effect_cyber_render(const int32_t *left, const int32_t *right, size_t n) {
     }
 
     // Dynamic AGC
-    s_cyber_scale = max_mag > s_cyber_scale ? max_mag : s_cyber_scale * 0.95f;
-    if (s_cyber_scale < 1.0f) s_cyber_scale = 1.0f;
+    s_cyber_scale = max_mag > s_cyber_scale ? max_mag : (s_cyber_scale * 0.95f);
+    if (s_cyber_scale < FFT_MAG_FLOOR) s_cyber_scale = FFT_MAG_FLOOR;
 
     // Clockwise rotation: 10s per revolution (2*PI / 10s = 0.6283 rad/s)
     static uint32_t s_last_cyber_ts = 0;
@@ -91,7 +91,7 @@ void effect_cyber_render(const int32_t *left, const int32_t *right, size_t n) {
     float bass_energy = (bands_l[0] + bands_r[0]) / (2.0f * s_cyber_scale);
     float rot_rate = (6.2831853f / 10.0f) + bass_energy * 0.35f;
 
-    // Independent smooth continuous angle accumulators (wrapping by 2*PI individually avoids discontinuities)
+    // Independent smooth continuous angle accumulators
     s_cyber_angle += rot_rate * dt;
     if (s_cyber_angle >= 6.2831853f) s_cyber_angle -= 6.2831853f;
 
@@ -111,16 +111,18 @@ void effect_cyber_render(const int32_t *left, const int32_t *right, size_t n) {
         float norm = bands_l[band] / s_cyber_scale;
         if (norm > 1.0f) norm = 1.0f;
         int len = (int)(powf(norm, 0.60f) * MAX_BAR_W);
-        if (len < 2) len = 2;
+        if (len < 0) len = 0;
         if (len > MAX_BAR_W) len = MAX_BAR_W;
 
         if ((float)len >= s_cyber_pk_l[i]) s_cyber_pk_l[i] = (float)len;
         else s_cyber_pk_l[i] *= 0.93f;
 
-        SafeDraw::drawFrame(2, yi, len, 3);
+        if (len > 0) {
+            SafeDraw::drawFrame(2, yi, len, 3);
+        }
 
         int pkw = (int)(s_cyber_pk_l[i] + 0.5f);
-        if (pkw > len + 1 && pkw <= MAX_BAR_W + 4) {
+        if (s_cyber_pk_l[i] >= 2.0f && pkw > len + 1 && pkw <= MAX_BAR_W + 4) {
             SafeDraw::drawVLine(2 + pkw, yi, 3);
         }
     }
@@ -132,16 +134,18 @@ void effect_cyber_render(const int32_t *left, const int32_t *right, size_t n) {
         float norm = bands_r[band] / s_cyber_scale;
         if (norm > 1.0f) norm = 1.0f;
         int len = (int)(powf(norm, 0.60f) * MAX_BAR_W);
-        if (len < 2) len = 2;
+        if (len < 0) len = 0;
         if (len > MAX_BAR_W) len = MAX_BAR_W;
 
         if ((float)len >= s_cyber_pk_r[i]) s_cyber_pk_r[i] = (float)len;
         else s_cyber_pk_r[i] *= 0.93f;
 
-        SafeDraw::drawFrame(126 - len, yi, len, 3);
+        if (len > 0) {
+            SafeDraw::drawFrame(126 - len, yi, len, 3);
+        }
 
         int pkw = (int)(s_cyber_pk_r[i] + 0.5f);
-        if (pkw > len + 1 && pkw <= MAX_BAR_W + 4) {
+        if (s_cyber_pk_r[i] >= 2.0f && pkw > len + 1 && pkw <= MAX_BAR_W + 4) {
             SafeDraw::drawVLine(125 - pkw, yi, 3);
         }
     }
