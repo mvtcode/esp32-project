@@ -4,7 +4,7 @@
 // MODE 35 — LORENZ 3D (Chaos Theory Strange Attractor with 3D Projection)
 // -----------------------------------------------------------------------
 
-#define LORENZ_TRAIL_LEN 80
+#define LORENZ_TRAIL_LEN 96
 
 struct LorenzPoint {
     float x, y, z;
@@ -14,7 +14,7 @@ static LorenzPoint s_trail[LORENZ_TRAIL_LEN];
 static int s_head_idx = 0;
 static float s_lx = 0.1f, s_ly = 0.0f, s_lz = 0.0f;
 static float s_rot_yaw = 0.0f;
-static float s_rot_pitch = 0.3f;
+static float s_rot_pitch = 0.35f;
 static float s_lorenz_vol = 0.0f;
 
 void effect_lorenz_on_enter() {
@@ -33,14 +33,17 @@ void effect_lorenz_on_enter() {
 void effect_lorenz_on_exit() {}
 
 void effect_lorenz_render(const int32_t *left, const int32_t *right, size_t n) {
-    const int cx = 63, cy = 31;
+    const int cx = SCREEN_W / 2; // 64
+    const int cy = SCREEN_H / 2; // 32
 
     // 1. Audio volume measurement
     int64_t sum = 0;
     for (size_t i = 0; i < n; i++) {
         sum += abs(left[i]) + abs(right[i]);
     }
-    float vol = (float)sum / (float)(n * (s_peak_l + s_peak_r + 1));
+    float raw_vol = (float)sum / (float)(n * (s_peak_l + s_peak_r + 1));
+    float vol = raw_vol * 1.8f;
+    if (vol > 1.0f) vol = 1.0f;
     s_lorenz_vol = s_lorenz_vol * 0.7f + vol * 0.3f;
 
     // 2. Lorenz differential integration
@@ -82,7 +85,7 @@ void effect_lorenz_render(const int32_t *left, const int32_t *right, size_t n) {
     float cos_p = cosf(s_rot_pitch);
     float sin_p = sinf(s_rot_pitch);
 
-    // 3. Render 3D Lorenz Trail
+    // 3. Render 3D Lorenz Trail (Scaled 1.5x larger: fov = 69.0f)
     int prev_sx = -1, prev_sy = -1;
 
     for (int i = 0; i < LORENZ_TRAIL_LEN; i++) {
@@ -100,16 +103,16 @@ void effect_lorenz_render(const int32_t *left, const int32_t *right, size_t n) {
         float y2 = py * cos_p - z1 * sin_p;
         float z2 = py * sin_p + z1 * cos_p;
 
-        // Perspective projection
+        // Perspective projection (scaled 1.5x)
         float dist = 65.0f;
-        float fov = 46.0f;
+        float fov = 69.0f; // Scaled up 1.5x (originally 46.0f)
         float z_proj = dist + z2;
         if (z_proj < 15.0f) z_proj = 15.0f;
 
         int sx = cx + (int)((x1 * fov) / z_proj);
         int sy = cy - (int)((y2 * fov) / z_proj);
 
-        if (prev_sx >= 0 && (abs(sx - prev_sx) + abs(sy - prev_sy) < 30)) {
+        if (prev_sx >= 0 && (abs(sx - prev_sx) + abs(sy - prev_sy) < 45)) {
             SafeDraw::drawLine(prev_sx, prev_sy, sx, sy);
         } else {
             SafeDraw::drawPixel(sx, sy);
@@ -119,7 +122,7 @@ void effect_lorenz_render(const int32_t *left, const int32_t *right, size_t n) {
 
         // Current attractor head dot
         if (i == LORENZ_TRAIL_LEN - 1) {
-            SafeDraw::drawDisc(sx, sy, 1);
+            SafeDraw::drawDisc(sx, sy, 2);
         }
     }
 

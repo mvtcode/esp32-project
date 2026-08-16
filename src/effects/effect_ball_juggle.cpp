@@ -182,5 +182,5 @@ void effect_ball_juggle_render(const int32_t *left, const int32_t *right, size_t
     snprintf(h_str, sizeof(h_str), "ALT:%02d", height_val);
     SafeDraw::drawStr(94, 7, h_str);
 
-    SafeDraw::drawStr(2, 22, "MVT-WAVE");
+    // SafeDraw::drawStr(2, 22, "MVT-WAVE");
 }

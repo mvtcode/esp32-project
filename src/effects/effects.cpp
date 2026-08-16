@@ -103,6 +103,36 @@ const VisualEffect EFFECTS[MODE_COUNT] = {
     // Mode 48: CRYSTAL3D
     { "MVT CRYSTAL 3D",  effect_crystal3d_render,    effect_crystal3d_on_enter,    effect_crystal3d_on_exit },
     // Mode 49: CYLINDER3D
-    { "MVT CYLINDER",    effect_cylinder3d_render,   effect_cylinder3d_on_enter,   effect_cylinder3d_on_exit }
+    { "MVT CYLINDER",    effect_cylinder3d_render,   effect_cylinder3d_on_enter,   effect_cylinder3d_on_exit },
+    // Mode 50: HEART3D
+    { "MVT HEART 3D",    effect_heart3d_render,      effect_heart3d_on_enter,      effect_heart3d_on_exit },
+    // Mode 51: TEXT3D
+    { "MVT TEXT 3D",     effect_text3d_render,       effect_text3d_on_enter,       effect_text3d_on_exit },
+    // Mode 52: SOLAR
+    { "SOLAR SYSTEM",    effect_solar_render,        effect_solar_on_enter,        effect_solar_on_exit },
+    // Mode 53: SUPERNOVA
+    { "MVT SUPERNOVA",   effect_supernova_render,    effect_supernova_on_enter,    effect_supernova_on_exit },
+    // Mode 54: THUNDER
+    { "THUNDERSTORM",    effect_thunder_render,      effect_thunder_on_enter,      effect_thunder_on_exit },
+    // Mode 55: COCKPIT
+    { "CYBER COCKPIT",   effect_cockpit_render,      effect_cockpit_on_enter,      effect_cockpit_on_exit },
+    // Mode 56: INVADERS
+    { "SPACE INVADERS",  effect_invaders_render,     effect_invaders_on_enter,     effect_invaders_on_exit },
+    // Mode 57: FLAPPY
+    { "FLAPPY BEAT",     effect_flappy_render,       effect_flappy_on_enter,       effect_flappy_on_exit },
+    // Mode 58: PACMAN
+    { "PAC-BEAT",        effect_pacman_render,       effect_pacman_on_enter,       effect_pacman_on_exit },
+    // Mode 59: DINO
+    { "DINO RUNNER",     effect_dino_render,         effect_dino_on_enter,         effect_dino_on_exit },
+    // Mode 60: XIAOZHI
+    { "XIAOZHI AI",      effect_xiaozhi_render,      effect_xiaozhi_on_enter,      effect_xiaozhi_on_exit },
+    // Mode 61: AI_BOT
+    { "AI ROBOT",        effect_ai_bot_render,       effect_ai_bot_on_enter,       effect_ai_bot_on_exit },
+    // Mode 62: PLASMA_BALL
+    { "PLASMA BALL",     effect_plasma_ball_render,  effect_plasma_ball_on_enter,  effect_plasma_ball_on_exit },
+    // Mode 63: ZIGZAG_STAGE
+    { "LED ZIGZAG",      effect_zigzag_stage_render, effect_zigzag_stage_on_enter, effect_zigzag_stage_on_exit },
+    // Mode 64: CAT
+    { "CYBER NEKO",      effect_cat_render,          effect_cat_on_enter,          effect_cat_on_exit }
 };
 

@@ -11,13 +11,13 @@ Dự án thiết bị **hiển thị sóng âm thanh (Sound Visualizer)** thời
   - **Core 0 (`mic_task`):** Đọc buffer I²S liên tục, không gây nghẽn luồng xử lý.
   - **Core 1 (`loop`):** Xử lý tín hiệu, Auto Gain Control (AGC), FFT và xuất dữ liệu ra màn hình OLED.
 - **Tự động điều chỉnh độ lợi (Auto Gain Control - AGC):** Tự động khuếch đại âm thanh nhỏ và nén nhanh âm thanh lớn (attack/release) riêng biệt cho từng kênh L/R để luôn hiển thị rõ nét mà không bị tràn khung hình.
-- **50 chế độ hiển thị đa dạng:** Chuyển đổi linh hoạt giữa các chế độ hiển thị sóng âm, phổ tần số, đồng hồ kim vẫy cơ học (Analog VU), visualizer vòng tròn Stereo (Circle MVT), visualizer trái tim (MVT Heart), visualizer không gian mạng kết hợp chữ "MVT" xoay động (MVT Fusion & MVT Cyber), băng Cassette cổ điển (MVT Cassette), đường hầm 3D (MVT Tunnel), quỹ đạo nguyên tử (MVT Orbit), mưa ma trận (MVT Matrix), thác nước địa hình 3D (MVT Terrain), trái tim ma trận (Heart Matrix), đôi trái tim kết nối sóng âm (Twin Hearts), bàn DJ ảo (MVT DJ Deck), loa thùng bass đập (MVT Speaker), tai nghe chụp đầu studio (MVT Headphone), mạng nhện 3D (MVT Spiderweb), thành phố Synthwave 80s (MVT Synthwave), radar/sonar quét 360° (MVT Radar), lõi Arc Reactor phóng sét (MVT Reactor), hố đen vũ trụ hút bụi sao (MVT Blackhole), đua xe đêm Cyber Highway (MVT Highway), loa biểu tượng phát sóng MVT Sound, sóng âm xoay 360 độ 20s/vòng (MVT Rotate), 3 tia laser bay va đập cạnh (MVT Bounce), dàn laser sân khấu quét 2 vị trí 1/3 & 2/3 (MVT Laser), vũ công chibi nhảy theo nhịp nhạc (MVT Dancer), tâng bóng vật lý trên dải sóng âm (MVT Juggle), máy đo góc pha Audio Vectorscope (MVT Vectorscope), hoa văn bánh răng Spirograph (MVT Spirograph), đa giác biến hình Superformula (MVT Superform), hệ động lực hỗn loạn cánh bướm Lorenz 3D (MVT Lorenz 3D), vòng tròn sóng năng lượng Polar Wave (MVT Polar Wave), đĩa rung cộng hưởng sóng Chladni Cymatics (MVT Chladni), siêu lập phương không gian 4D Tesseract (MVT Tesseract), thác phổ SDR Waterfall đối xứng (MVT Waterfall), chữ 3D bay xuyên không gian Warp Tunnel (MVT Warp Text), hạt ma thuật ghép chữ động Kinetic Particle (MVT Particle), bước nhảy không gian 3D Warp Starfield (MVT Starfield), quả cầu 3D xung động (MVT Sphere 3D), vòng xuyến bánh donut 3D (MVT Torus 3D), chuỗi xoắn kép sinh học (MVT DNA Helix), khối lập phương lồng nhau phát nổ 3D (MVT Cubes 3D), dải ngân hà xoắn ốc 3D (MVT Galaxy 3D), kim cương tinh thể đa diện phóng tia năng lượng (MVT Crystal 3D), và đường hầm ống sóng âm 3D (MVT Cylinder).
+- **65 chế độ hiển thị đa dạng:** Chuyển đổi linh hoạt giữa 65 chế độ trực quan hóa âm thanh đỉnh cao: sóng âm, phổ tần số, đồng hồ kim vẫy cơ học (Analog VU), visualizer vòng tròn Stereo (Circle MVT), visualizer trái tim (MVT Heart), visualizer không gian mạng kết hợp chữ "MVT" xoay động (MVT Fusion & MVT Cyber), băng Cassette cổ điển (MVT Cassette), đường hầm 3D (MVT Tunnel), quỹ đạo nguyên tử (MVT Orbit), mưa ma trận (MVT Matrix), thác nước địa hình 3D (MVT Terrain), trái tim ma trận (Heart Matrix), đôi trái tim kết nối sóng âm (Twin Hearts), bàn DJ ảo (MVT DJ Deck), loa thùng bass đập (MVT Speaker), tai nghe chụp đầu studio (MVT Headphone), mạng nhện 3D (MVT Spiderweb), thành phố Synthwave 80s (MVT Synthwave), radar/sonar quét 360° (MVT Radar), lõi Arc Reactor phóng sét (MVT Reactor), hố đen vũ trụ hút bụi sao (MVT Blackhole), đua xe đêm Cyber Highway (MVT Highway), loa biểu tượng phát sóng MVT Sound, sóng âm xoay 360 độ 20s/vòng (MVT Rotate), 3 tia laser bay va đập cạnh (MVT Bounce), dàn laser sân khấu quét 2 vị trí 1/3 & 2/3 (MVT Laser), vũ công chibi nhảy theo nhịp nhạc (MVT Dancer), tâng bóng vật lý trên dải sóng âm (MVT Juggle), máy đo góc pha Audio Vectorscope (MVT Vectorscope), hoa văn bánh răng Spirograph (MVT Spirograph), đa giác biến hình Superformula (MVT Superform), hệ động lực hỗn loạn cánh bướm Lorenz 3D (MVT Lorenz 3D), vòng tròn sóng năng lượng Polar Wave (MVT Polar Wave), đĩa rung cộng hưởng sóng Chladni Cymatics (MVT Chladni), siêu lập phương không gian 4D Tesseract (MVT Tesseract), thác phổ SDR Waterfall đối xứng (MVT Waterfall), chữ 3D bay xuyên không gian Warp Tunnel (MVT Warp Text), hạt ma thuật ghép chữ động Kinetic Particle (MVT Particle), bước nhảy không gian 3D Warp Starfield (MVT Starfield), quả cầu 3D xung động (MVT Sphere 3D), vòng xuyến bánh donut 3D (MVT Torus 3D), chuỗi xoắn kép sinh học (MVT DNA Helix), khối lập phương lồng nhau phát nổ 3D (MVT Cubes 3D), dải ngân hà xoắn ốc 3D (MVT Galaxy 3D), kim cương tinh thể đa diện phóng tia năng lượng (MVT Crystal 3D), đường hầm ống sóng âm 3D (MVT Cylinder), trái tim tham số 3D gợn sóng âm (MVT Heart 3D), chữ MVT 3D khối đặc xoay đa trục (MVT Text 3D), hệ Mặt Trời 3D (Solar System), vụ nổ siêu tân tinh (MVT Supernova), bão sấm sét Cyber (Thunderstorm), buồng lái phi thuyền Sci-Fi (Cyber Cockpit), game arcade bắn quái không gian (Space Invaders), chim bay Flappy Beat, Pac-Man ngoạm sóng âm (Pac-Beat), khủng long vượt xương rồng T-Rex (Dino Runner), robot Xiaozhi AI biểu cảm, trợ lý robot AI Robot, quả cầu Plasma ma thuật, sân khấu đèn LED Zigzag EDM, và mèo máy Cyber Neko.
 - **Chuyển chế độ tức thì:** Sử dụng trực tiếp nút **BOOT (GPIO 0)** có sẵn trên board, hiển thị overlay nhãn chế độ trong 1.5s.
 - **Hiệu năng cao, độ trễ thấp:** Tốc độ làm mới mượt mà (≥ 25–30 FPS), độ trễ âm thanh < 100ms.
 
 ---
 
-## 🖥️ 50 Chế độ hiển thị (Display Modes)
+## 🖥️ 65 Chế độ hiển thị (Display Modes)
 
 |  Mode  | Tên chế độ        | Mô tả                                                                                                      |
 | :----: | :---------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -26,8 +26,8 @@ Dự án thiết bị **hiển thị sóng âm thanh (Sound Visualizer)** thời
 | **2**  | **SPECTRUM**      | Phổ tần số âm thanh (FFT 128 điểm → 64 cột tần số thời gian thực).                                         |
 | **3**  | **LISSAJOUS**     | Đồ thị pha X=Left, Y=Right trực quan hóa độ lệch pha và trường stereo (stereo image).                      |
 | **4**  | **VU METER**      | Đồng hồ đo cường độ âm lượng (2 cột dọc L/R) kèm tính năng giữ đỉnh (**Peak Hold**) và decay mượt mà.      |
-| **5**  | **ANALOG VU**     | Mô phỏng đồng hồ VU kim vẫy cơ học (2 mặt đồng hồ L/R), thang đo dB (-20 đến +3dB) và quán tính kim.       |
-| **6**  | **CIRCLE MVT**    | Visualizer hình tròn tỏa tia Stereo (L nửa trái, R nửa phải), chữ **"MVT"** ở tâm (Bass đỉnh, Treble đáy). |
+| **5**  | **ANALOG VU**     | Đồng hồ VU kim vẫy cơ học (2 mặt L/R, thang đo chuẩn) + 2 cuộn băng cối quay tối giản nối dây đỉnh.        |
+| **6**  | **CIRCLE MVT**    | Visualizer hình tròn tỏa 40 dải phổ Stereo x1.5, chữ **"MVT"** lớn ở tâm + vòng năng lượng đập theo bass.  |
 | **7**  | **MVT HEART**     | Trái tim ❤️ ở trung tâm đập theo nhịp bass, chữ **"MVT"** ở dưới, 2 dải sóng âm đối xứng L & R 2 bên.      |
 | **8**  | **MVT FUSION**    | Vòng tròn tâm có chữ **"MVT" xoay 10s/vòng** (tăng tốc theo bass), tia phổ tỏa đỉnh/đáy, 2 cánh sóng L/R.  |
 | **9**  | **MVT CYBER**     | Cột bar ngang 2 bên nháy bắn vào tâm, vòng tròn tâm chữ **"MVT" xoay 10s/vòng** + 3 vòng radar công nghệ.  |
@@ -55,8 +55,8 @@ Dự án thiết bị **hiển thị sóng âm thanh (Sound Visualizer)** thời
 | **31** | **MVT JUGGLE**    | Tâng bóng vật lý trên dải sóng âm thời gian thực: bóng nảy cao theo độ mạnh của sóng và đổi hướng dốc.     |
 | **32** | **MVT VECTORSCOPE** | Máy đo góc pha âm thanh Goniometer xoay 45° chuẩn phòng thu, lưới trục M/S (+M, ±S) & trace vector Stereo.  |
 | **33** | **MVT SPIROGRAPH** | Hoa văn bánh răng toán học Hypotrochoid nở rộ theo Bass/Treble, biến đổi số cánh và xoay mượt mà.         |
-| **34** | **MVT SUPERFORM** | Đa giác biến hình sinh học Superformula (Johan Gielis) uốn lượn liên tục từ sao, hoa sang đa giác đều.     |
-| **35** | **MVT LORENZ 3D** | Hệ động lực hỗn loạn cánh bướm Lorenz trong không gian 3D, vệt đuôi quỹ đạo và xoay 3D theo nhịp nhạc.    |
+| **34** | **MVT SUPERFORM** | Đa giác biến hình sinh học Superformula uốn lượn liên tục + sóng âm Stereo rung động chạy dọc viền.        |
+| **35** | **MVT LORENZ 3D** | Hệ động lực hỗn loạn cánh bướm Lorenz 3D phóng to x1.5, vệt quỹ đạo 96 điểm xoay 3D theo nhịp nhạc.       |
 | **36** | **MVT POLAR WAVE** | Vòng tròn sóng năng lượng Arc Reactor, vòng sóng âm tròn bao quanh lõi năng lượng phát xung nhịp.           |
 | **37** | **MVT CHLADNI**   | Hiện tượng Cymatics đĩa rung Chladni, các hạt vật chất tự động dồn về đường nút sóng theo tần số âm thanh. |
 | **38** | **MVT TESSERACT** | Khung dây siêu lập phương 4 chiều (4D Hypercube) nhào lộn xoay trong không gian 4D và chiếu phối cảnh 2D.  |
@@ -68,11 +68,26 @@ Dự án thiết bị **hiển thị sóng âm thanh (Sound Visualizer)** thời
 | **44** | **MVT TORUS 3D**  | Vòng xuyến bánh Donut 3D xoay lộn vòng trong không gian 3D; thân ống donut gợn sóng nhấp nhô theo waveform live. |
 | **45** | **MVT DNA HELIX** | Chuỗi xoắn kép 3D DNA xoay quanh trục; các thanh liên kết base-pairs nảy nhịp theo dải phổ âm thanh (Bass $\to$ Treble). |
 | **46** | **MVT CUBES 3D**  | 2 khối lập phương wireframe 3D lồng nhau xoay ngược chiều; bung nổ mở rộng (Explode) khi đánh bass cực đại. |
-| **47** | **MVT GALAXY 3D** | Dải ngân hà xoắn ốc 3D 90 hạt sao nghiêng phối cảnh; lõi thiên hà phát sáng và lan truyền sóng xung kích theo beat. |
+| **47** | **MVT GALAXY 3D** | Dải ngân hà xoắn ốc 3D hạ thấp tâm, tia năng lượng cực 3D (Relativistic Jets) phóng cao theo bass.        |
 | **48** | **MVT CRYSTAL 3D**| Khối 20 mặt Icosahedron 3D xoay tự do; phóng ra các tia sáng năng lượng từ 12 đỉnh khi có âm thanh lớn. |
 | **49** | **MVT CYLINDER**  | Đường hầm ống trụ tròn 3D nhìn chiều sâu; bề mặt lưới biến dạng uốn lượn theo dữ liệu waveform trực tiếp. |
+| **50** | **MVT HEART 3D**  | Trái tim tham số không gian 3D (Parametric Heart 3D Mesh) xoay 3 trục; thân trái tim gợn sóng nhấp nhô theo waveform live và đập theo nhịp bass. |
+| **51** | **MVT TEXT 3D**   | Khối chữ "MVT" 3D extruded wireframe xoay lộn vòng không gian 3D; độ dày và đỉnh biến dạng theo âm nhạc.  |
+| **52** | **SOLAR SYSTEM**  | Hệ Mặt Trời 3D: Mặt trời trung tâm phát tia nhật hoa theo bass + 4 hành tinh quay quỹ đạo nghiêng.        |
+| **53** | **MVT SUPERNOVA** | Vụ nổ siêu tân tinh: Sóng xung kích vũ trụ giãn nở chậm rãi, 40 hạt plasma trôi dạt và mây tinh vân xoay.  |
+| **54** | **THUNDERSTORM**  | Bão sấm sét Cyber: Tia sét fractal phóng giật từ trên xuống theo beat, mưa rơi Stereo và sóng biển dưới đáy. |
+| **55** | **CYBER COCKPIT** | Buồng lái phi thuyền vũ trụ HUD: Radar Stereo 2 bên, lò phản ứng trung tâm và sao 3D bay tốc độ ánh sáng. |
+| **56** | **SPACE INVADERS**| Game Arcade bắn quái không gian: Phi thuyền di chuyển tránh đạn theo Stereo, bắn chùm laser phá tàu mẹ khi có bass. |
+| **57** | **FLAPPY BEAT**   | Game chim bay Flappy Beat: Chú chim vỗ cánh theo âm lượng RMS, luồn lách qua các cột chướng ngại vật phổ FFT. |
+| **58** | **PAC-BEAT**      | Game Pac-Man: Pac-Man há miệng đớp sóng âm Waveform, ăn chấm năng lượng và săn ma khi nhạc bùng nổ.        |
+| **59** | **DINO RUNNER**   | Game khủng long T-Rex pixel tự động nhảy qua các bụi cây xương rồng theo từng nhịp trống bass kick.         |
+| **60** | **XIAOZHI AI**    | Khuôn mặt robot thông minh Xiaozhi: Đôi mắt OLED biểu cảm (chớp mắt, nhìn quanh) + miệng nói sóng âm live. |
+| **61** | **AI ROBOT**      | Người bạn robot AI: Đầu nhún nhảy theo nhạc, 2 tai là 2 cột phổ tần số Stereo và anten phát sóng radio.    |
+| **62** | **PLASMA BALL**   | Quả cầu Plasma ma thuật: Lõi điện cực trung tâm phóng các nhánh tia sét uốn lượn va chạm bề mặt quả cầu.  |
+| **63** | **LED ZIGZAG**    | Sân khấu LED Zigzag EDM: Dàn đèn chữ V đa tầng nhấp nháy đuổi theo nhịp điệu sân khấu sôi động.           |
+| **64** | **CYBER NEKO**    | Mèo máy tương lai Cyber Neko: Đôi tai cử động theo Stereo, miệng phát sóng âm nói chuyện và đuôi ngoe nguẩy. |
 
-> 💡 **Cách chuyển chế độ:** Nhấn nút **BOOT** trên board ESP32-S3 Super Mini để chuyển tuần hoàn giữa 50 chế độ. Tên chế độ mới sẽ tự động hiển thị overlay góc trái màn hình trong 1.5 giây.
+> 💡 **Cách chuyển chế độ:** Nhấn nút **BOOT** trên board ESP32-S3 Super Mini để chuyển tuần hoàn giữa 65 chế độ. Tên chế độ mới sẽ tự động hiển thị overlay góc trái màn hình trong 1.5 giây.
 
 ---
 
@@ -158,11 +173,12 @@ esp32-project/
     ├── i2s_mic.h/.cpp   # Driver I2S đọc dữ liệu stereo từ cặp mic INMP441
     ├── display.h/.cpp   # Render engine U8g2, AGC, FFT và điều phối chế độ
     ├── button.h/.cpp    # Xử lý nút bấm BOOT (GPIO 0) với debounce chống rung
-    └── effects/         # Mô-đun 50 hiệu ứng visualizer chuyên biệt
+    └── effects/         # Mô-đun 65 hiệu ứng visualizer chuyên biệt
         ├── safe_draw.h/.cpp        # Lớp đồ họa bảo vệ chống tràn biên màn hình
         ├── effects.h/.cpp          # Bảng tra cứu điều phối VisualEffect
         ├── effect_common.h/.cpp    # FFT & AGC buffer dùng chung
         ├── effect_waveform.cpp     # Mode 0: Waveform Stereo
+        ├── effect_circle.cpp       # Mode 6: Circle MVT Stereo 40-band
         ├── effect_chladni.cpp      # Mode 37: MVT Chladni
         ├── effect_tesseract.cpp    # Mode 38: MVT Tesseract
         └── effect_waterfall.cpp    # Mode 39: MVT Waterfall
@@ -216,7 +232,7 @@ _Baud rate mặc định: `115200`._
 | **Phase 3** | Tích hợp Auto Gain Control (AGC) độc lập từng kênh (attack/release) | ✅ Hoàn thành |
 | **Phase 4** | Thêm 4 chế độ nâng cao (Mirror, Spectrum FFT, Lissajous, VU Meter)  | ✅ Hoàn thành |
 | **Phase 5** | Nút bấm chuyển chế độ (GPIO 0), Overlay UI tên chế độ & Tối ưu FPS  | ✅ Hoàn thành |
-| **Phase 6** | Trọn bộ 32 chế độ visualizer sáng tạo & kiến trúc mô-đun hóa        | ✅ Hoàn thành |
+| **Phase 6** | Trọn bộ 65 chế độ visualizer sáng tạo & kiến trúc mô-đun hóa        | ✅ Hoàn thành |
 
 ---
 

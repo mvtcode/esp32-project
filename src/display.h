@@ -82,7 +82,22 @@ enum DisplayMode {
     MODE_GALAXY       = 47, // 3D Spiral Galaxy: Perspective tilted spiral arm particles pulsing to bass
     MODE_CRYSTAL3D    = 48, // 3D Crystal Polyhedron: Floating geometric gem bursting particle rays on beats
     MODE_CYLINDER3D   = 49, // 3D Audio Cylinder: Perspective wireframe audio tube with live waveform skin
-    MODE_COUNT        = 50
+    MODE_HEART3D      = 50, // 3D Parametric Heart: Rotating 3D wireframe heart mesh with live waveform ripples
+    MODE_TEXT3D       = 51, // 3D MVT Text: Extruded 3D wireframe MVT logo tumbling in space with audio deform
+    MODE_SOLAR        = 52, // 3D Solar System: Keplerian planetary orbits with bass-reactive solar flares & wind
+    MODE_SUPERNOVA    = 53, // MVT Supernova: Collapsing star & beat-drop cosmic explosion with plasma remnants
+    MODE_THUNDER      = 54, // Cyber Thunderstorm: Fractal lightning strikes, stereo wind rain & ocean waveform
+    MODE_COCKPIT      = 55, // Cyber Cockpit: Sci-Fi spaceship HUD with stereo radar, reactor & warp star speed
+    MODE_INVADERS     = 56, // Space Invaders: Retro arcade cannon dodging via stereo balance & laser bass blasts
+    MODE_FLAPPY       = 57, // Flappy Beat: Retro bird altitude reacting to RMS volume through FFT pipe obstacles
+    MODE_PACMAN       = 58, // Pac-Beat: Waveform chomp mouth Pac-Man navigating dots & beat power-pellet frenzy
+    MODE_DINO         = 59, // Dino Runner: Pixel T-Rex auto-jumping cacti on bass kicks across desert skyline
+    MODE_XIAOZHI      = 60, // Xiaozhi AI Face: Cute OLED expressive robot eyes & live waveform talking mouth
+    MODE_AI_BOT       = 61, // AI Robot Companion: Sci-fi antenna broadcast, stereo ear EQs & dancing head
+    MODE_PLASMA_BALL  = 62, // Magic Plasma Ball: Core electrode & twisting electric arcs discharging to glass sphere
+    MODE_ZIGZAG_STAGE = 63, // EDM Zigzag Stage: Multi-tier chevron stage LED arrays with chasing strobe pulses
+    MODE_CAT          = 64, // Cyber Neko Cat: Stereo ear twitches, waveform talking mouth & wagging tail
+    MODE_COUNT        = 65
 };
 
 // -----------------------------------------------------------------------

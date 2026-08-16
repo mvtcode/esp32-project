@@ -81,7 +81,7 @@ void effect_speaker_render(const int32_t *left, const int32_t *right, size_t n) 
     // 6. Middle Center Equalizer Column (x=58..70)
     SafeDraw::setFont(u8g2_font_4x6_tr);
     SafeDraw::drawStr(58, 8, "MVT");
-    SafeDraw::drawStr(58, 62, "BASS");
+    // SafeDraw::drawStr(58, 62, "BASS");
     int eq_h = (int)(bass_norm * 40.0f);
     for (int yb = 0; yb < eq_h; yb += 3) {
         SafeDraw::drawHLine(60, 52 - yb, 8);

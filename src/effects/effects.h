@@ -245,10 +245,88 @@ void effect_cylinder3d_render(const int32_t *left, const int32_t *right, size_t 
 void effect_cylinder3d_on_enter();
 void effect_cylinder3d_on_exit();
 
+// Mode 50: HEART3D
+void effect_heart3d_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_heart3d_on_enter();
+void effect_heart3d_on_exit();
+
+// Mode 51: TEXT3D
+void effect_text3d_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_text3d_on_enter();
+void effect_text3d_on_exit();
+
+// Mode 52: SOLAR
+void effect_solar_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_solar_on_enter();
+void effect_solar_on_exit();
+
+// Mode 53: SUPERNOVA
+void effect_supernova_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_supernova_on_enter();
+void effect_supernova_on_exit();
+
+// Mode 54: THUNDER
+void effect_thunder_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_thunder_on_enter();
+void effect_thunder_on_exit();
+
+// Mode 55: COCKPIT
+void effect_cockpit_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_cockpit_on_enter();
+void effect_cockpit_on_exit();
+
+// Mode 56: INVADERS
+void effect_invaders_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_invaders_on_enter();
+void effect_invaders_on_exit();
+
+// Mode 57: FLAPPY
+void effect_flappy_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_flappy_on_enter();
+void effect_flappy_on_exit();
+
+// Mode 58: PACMAN
+void effect_pacman_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_pacman_on_enter();
+void effect_pacman_on_exit();
+
+// Mode 59: DINO
+void effect_dino_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_dino_on_enter();
+void effect_dino_on_exit();
+
+// Mode 60: XIAOZHI
+void effect_xiaozhi_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_xiaozhi_on_enter();
+void effect_xiaozhi_on_exit();
+
+// Mode 61: AI_BOT
+void effect_ai_bot_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_ai_bot_on_enter();
+void effect_ai_bot_on_exit();
+
+// Mode 62: PLASMA_BALL
+void effect_plasma_ball_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_plasma_ball_on_enter();
+void effect_plasma_ball_on_exit();
+
+// Mode 63: ZIGZAG_STAGE
+void effect_zigzag_stage_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_zigzag_stage_on_enter();
+void effect_zigzag_stage_on_exit();
+
+// Mode 64: CAT
+void effect_cat_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_cat_on_enter();
+void effect_cat_on_exit();
+
 // -----------------------------------------------------------------------
 // Visual effect lookup table
 // -----------------------------------------------------------------------
 extern const VisualEffect EFFECTS[MODE_COUNT];
+
+
+
 
 
 

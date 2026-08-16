@@ -146,6 +146,6 @@ void effect_waterfall_render(const int32_t *left, const int32_t *right, size_t n
     SafeDraw::setFont(u8g2_font_04b_03_tr);
     SafeDraw::drawStr(1, 6, "L");
     SafeDraw::drawStr(123, 6, "R");
-    SafeDraw::drawStr(53, 6, "BASS");
+    // SafeDraw::drawStr(53, 6, "BASS");
 }
 

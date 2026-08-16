@@ -177,6 +177,25 @@ void SafeDraw::drawCircle(int x0, int y0, int r, uint8_t opt) {
     }
 }
 
+void SafeDraw::drawEllipse(int x0, int y0, int rx, int ry, uint8_t opt) {
+    if (rx <= 0 || ry <= 0) return;
+    if (x0 + rx < 0 || x0 - rx >= SCREEN_W || y0 + ry < 0 || y0 - ry >= SCREEN_H) return;
+
+    if (x0 - rx >= 0 && x0 + rx < SCREEN_W && y0 - ry >= 0 && y0 + ry < SCREEN_H) {
+        u8g2.drawEllipse(x0, y0, rx, ry, opt);
+    } else {
+        int steps = (rx > ry ? rx : ry) * 2;
+        if (steps < 16) steps = 16;
+        if (steps > 64) steps = 64;
+        for (int i = 0; i < steps; i++) {
+            float ang = (float)i * (6.28318f / (float)steps);
+            int px = x0 + (int)(cosf(ang) * (float)rx);
+            int py = y0 + (int)(sinf(ang) * (float)ry);
+            drawPixel(px, py);
+        }
+    }
+}
+
 void SafeDraw::drawDisc(int x0, int y0, int r, uint8_t opt) {
     if (r <= 0) return;
     if (x0 + r < 0 || x0 - r >= SCREEN_W || y0 + r < 0 || y0 - r >= SCREEN_H) return;

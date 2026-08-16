@@ -104,7 +104,7 @@ void effect_dj_render(const int32_t *left, const int32_t *right, size_t n) {
 
     // Labels
     SafeDraw::setFont(u8g2_font_4x6_tr);
-    SafeDraw::drawStr(18, 63, "A");
-    SafeDraw::drawStr(106, 63, "B");
-    SafeDraw::drawStr(59, 63, "MVT");
+    SafeDraw::drawStr(1, 63, "A");
+    SafeDraw::drawStr(123, 63, "B");
+    // SafeDraw::drawStr(59, 63, "MVT");
 }

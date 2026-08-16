@@ -43,6 +43,9 @@ public:
     /** Draw a circle if within or intersecting screen bounds. */
     static void drawCircle(int x0, int y0, int r, uint8_t opt = U8G2_DRAW_ALL);
 
+    /** Draw an ellipse if within or intersecting screen bounds. */
+    static void drawEllipse(int x0, int y0, int rx, int ry, uint8_t opt = U8G2_DRAW_ALL);
+
     /** Draw a filled disc if within or intersecting screen bounds. */
     static void drawDisc(int x0, int y0, int r, uint8_t opt = U8G2_DRAW_ALL);
 
