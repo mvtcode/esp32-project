@@ -1,28 +1,44 @@
 #pragma once
 #include <Arduino.h>
 
-#define BTN_GPIO        0       // BOOT button — active LOW, built-in pull-up
-#define BTN_DEBOUNCE_MS 200     // Debounce window in milliseconds (200ms prevents rapid crash on fast switching)
+enum BtnId {
+    BTN_PUSH = 0,   // GPIO 4  (Encoder Push - Switch MIC/BT)
+    BTN_BACK,       // GPIO 13 (Button Back - Play/Pause)
+    BTN_PLUS,       // GPIO 14 (Button Plus/CON - Next Effect / Auto-cycle)
+    BTN_BOOT,       // GPIO 0  (Board BOOT - Short: WiFi reset, Long >3s: BT pair)
+    BTN_COUNT
+};
+
+// GPIO pin mapping
+#define PIN_BTN_PUSH   4
+#define PIN_BTN_BACK   13
+#define PIN_BTN_PLUS   14
+#define PIN_BTN_BOOT   0
+
+#define BTN_DEBOUNCE_MS 50     // Debounce window in milliseconds
 
 /**
- * @brief Initialize the button GPIO with internal pull-up.
- * @param gpio  GPIO number (default: BTN_GPIO = 0, the BOOT button)
+ * @brief Initialize all button GPIOs with internal pull-up.
  */
-void button_init(uint8_t gpio = BTN_GPIO);
+void buttons_init();
 
 /**
- * @brief Update the internal button state. Call this frequently (e.g., in loop()).
+ * @brief Update the internal state of all buttons. Call in loop().
  */
-void button_update();
+void buttons_update();
 
 /**
- * @brief Check if the button was short pressed.
- * @return true if short pressed, false otherwise.
+ * @brief Check if a specific button was short pressed.
  */
-bool button_pressed();
+bool button_pressed(BtnId btn);
 
 /**
- * @brief Check if the button was long pressed (held > 1s).
- * @return true if long pressed, false otherwise.
+ * @brief Check if a specific button was long pressed.
  */
-bool button_long_pressed();
+bool button_long_pressed(BtnId btn);
+
+/**
+ * @brief Check if a button is currently held down.
+ */
+bool button_is_down(BtnId btn);
+

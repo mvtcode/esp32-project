@@ -5,9 +5,9 @@
 // I2S Pin assignments (confirmed, no conflict with OLED I2C on GPIO 8/9)
 // -----------------------------------------------------------------------
 #define I2S_MIC_PORT    0       // I2S_NUM_0
-#define I2S_PIN_SCK     4       // Bit Clock   (BCLK)
-#define I2S_PIN_WS      5       // Word Select (LRCLK)
-#define I2S_PIN_SD      6       // Serial Data – shared by both INMP441 mics
+#define I2S_PIN_SCK     26      // Bit Clock   (BCLK)
+#define I2S_PIN_WS      25      // Word Select (LRCLK)
+#define I2S_PIN_SD      27      // Serial Data – shared by both INMP441 mics
 
 // -----------------------------------------------------------------------
 // Audio parameters
@@ -19,6 +19,14 @@
 // Default audio processing parameters
 #define MIC_DEFAULT_GAIN        1.0f    // Pure 1:1 original microphone signal
 #define MIC_DEFAULT_NOISE_GATE  280     // Balanced noise gate threshold for both channels (~0.85% full scale)
+
+// -----------------------------------------------------------------------
+// AudioFrame: one stereo frame passed between cores via queue
+// -----------------------------------------------------------------------
+struct AudioFrame {
+    int32_t left[FRAME_SIZE];
+    int32_t right[FRAME_SIZE];
+};
 
 /**
  * @brief Initialize the I2S driver for stereo INMP441 microphones.
@@ -33,6 +41,11 @@
  * @return true on success, false if ESP-IDF driver returns an error.
  */
 bool i2s_mic_init();
+
+/**
+ * @brief Deinitialize the I2S mic driver and free port resources.
+ */
+bool i2s_mic_deinit();
 
 /**
  * @brief Read one stereo frame from I2S with DC-blocking, gain amplification, and noise gate.

@@ -76,10 +76,13 @@ void display_init() {
     delay(200);
     u8g2.begin();
 
+    // Hardware X-offset calibration (shifts display 1px to the left to perfectly center on OLED glass)
+    u8g2.getU8x8()->x_offset = OLED_X_OFFSET;
+
     u8g2.clearBuffer();
     u8g2.setFont(u8g2_font_6x10_tf);
     u8g2.drawStr(22, 22, "Sound Viz");
-    u8g2.drawStr(14, 38, "ESP32-S3 S3");
+    u8g2.drawStr(22, 38, "ESP32-WROOM");
     u8g2.drawHLine(0, 44, SCREEN_W);
     u8g2.setFont(u8g2_font_04b_03_tr);
     u8g2.drawStr(28, 56, "initialising...");
@@ -101,7 +104,36 @@ static bool s_auto_cycle = false;
 static uint32_t s_auto_cycle_interval = 20000;
 static uint32_t s_last_cycle_ts = 0;
 static uint32_t s_toast_ts = 0;
-static const char* s_toast_msg = "";
+static uint32_t s_toast_dur = 2000;
+static char s_toast_msg[32] = "";
+
+static uint32_t s_volume_ts = 0;
+static uint32_t s_volume_dur = 2000;
+static uint8_t  s_display_vol = 80;
+
+static bool s_is_bt_mode = false;
+static bool s_bt_connected = false;
+static bool s_bt_playing = false;
+
+void display_toast(const char *msg, uint32_t duration_ms) {
+    if (!msg) return;
+    strncpy(s_toast_msg, msg, sizeof(s_toast_msg) - 1);
+    s_toast_msg[sizeof(s_toast_msg) - 1] = '\0';
+    s_toast_dur = duration_ms;
+    s_toast_ts = millis();
+}
+
+void display_show_volume(uint8_t volume, uint32_t duration_ms) {
+    s_display_vol = volume > 127 ? 127 : volume;
+    s_volume_dur = duration_ms;
+    s_volume_ts = millis();
+}
+
+void display_set_audio_mode(bool is_bt, bool is_connected, bool is_playing) {
+    s_is_bt_mode = is_bt;
+    s_bt_connected = is_connected;
+    s_bt_playing = is_playing;
+}
 
 void display_set_mode(DisplayMode m, bool show_label) {
     if (m >= MODE_COUNT) m = (DisplayMode)0;
@@ -137,13 +169,67 @@ void display_set_auto_cycle(bool enable, uint32_t interval_ms) {
     s_auto_cycle = enable;
     if (interval_ms > 0) s_auto_cycle_interval = interval_ms;
     s_last_cycle_ts = millis();
-    
-    // Set toast notification
-    s_toast_ts = millis();
-    s_toast_msg = enable ? "AUTO CYCLE: ON" : "AUTO CYCLE: OFF";
+    display_toast(enable ? "AUTO CYCLE: ON" : "AUTO CYCLE: OFF");
 }
 
 bool display_get_auto_cycle() { return s_auto_cycle; }
+
+// -----------------------------------------------------------------------
+// Bluetooth Pairing & Waiting Standby Screen
+// -----------------------------------------------------------------------
+static void draw_bt_pairing_screen(uint32_t now) {
+    // 1. Title bar
+    u8g2.setFont(u8g2_font_6x10_tf);
+    const char *title = "[BLUETOOTH MODE]";
+    int tw = u8g2.getStrWidth(title);
+    u8g2.drawStr((SCREEN_W - tw) / 2, 10, title);
+    u8g2.drawHLine(4, 13, SCREEN_W - 8);
+
+    // 2. Animated Bluetooth Icon (X=24, Y=33)
+    int bx = 24;
+    int by = 33;
+    // Central stem
+    u8g2.drawLine(bx, by - 12, bx, by + 12);
+    u8g2.drawLine(bx + 1, by - 12, bx + 1, by + 12);
+    // Upper & Lower wings
+    u8g2.drawLine(bx, by - 12, bx + 7, by - 5);
+    u8g2.drawLine(bx + 7, by - 5, bx - 6, by + 4);
+    u8g2.drawLine(bx - 6, by - 4, bx + 7, by + 5);
+    u8g2.drawLine(bx + 7, by + 5, bx, by + 12);
+
+    // Animated radiating radar waves around icon
+    int phase = (now / 300) % 3;
+    for (int i = 0; i < 3; i++) {
+        int r = 11 + i * 5;
+        if (i <= phase) {
+            u8g2.drawCircle(bx, by, r, U8G2_DRAW_UPPER_RIGHT | U8G2_DRAW_LOWER_RIGHT);
+            u8g2.drawCircle(bx, by, r, U8G2_DRAW_UPPER_LEFT | U8G2_DRAW_LOWER_LEFT);
+        }
+    }
+
+    // 3. Connection info
+    u8g2.setFont(u8g2_font_5x8_tr);
+    u8g2.drawStr(50, 26, "Pair Name:");
+    u8g2.setFont(u8g2_font_6x10_tf);
+    u8g2.drawStr(50, 37, "MVT VU METER");
+
+    // 4. Animated Status line
+    static const char *states[] = {
+        "Status: Waiting   ",
+        "Status: Waiting . ",
+        "Status: Waiting ..",
+        "Status: Ready >>> "
+    };
+    int s_idx = (now / 400) % 4;
+    u8g2.setFont(u8g2_font_5x8_tr);
+    u8g2.drawStr(50, 48, states[s_idx]);
+
+    // 5. Bottom hint
+    u8g2.drawHLine(4, 53, SCREEN_W - 8);
+    u8g2.setFont(u8g2_font_04b_03_tr);
+    const char *hint = "DISCOVERABLE  -  CONNECT PHONE";
+    u8g2.drawStr((SCREEN_W - u8g2.getStrWidth(hint)) / 2, 62, hint);
+}
 
 void display_draw_waveform(const int32_t *left, const int32_t *right, size_t n) {
     if (s_auto_cycle && (millis() - s_last_cycle_ts > s_auto_cycle_interval)) {
@@ -158,24 +244,58 @@ void display_draw_waveform(const int32_t *left, const int32_t *right, size_t n) 
 
     u8g2.clearBuffer();
 
-    if (s_mode < MODE_COUNT && EFFECTS[s_mode].render) {
-        EFFECTS[s_mode].render(left, right, n);
+    // 1. If in Bluetooth mode and waiting for device connection -> Show Pairing Standby Screen
+    if (s_is_bt_mode && !s_bt_connected) {
+        draw_bt_pairing_screen(millis());
+    } else {
+        // 2. Active visualizer (MIC mode OR BT connected with music)
+        if (s_mode < MODE_COUNT && EFFECTS[s_mode].render) {
+            EFFECTS[s_mode].render(left, right, n);
+        }
+        draw_mode_label();
     }
 
-    draw_mode_label();
+    uint32_t now = millis();
 
-    // Draw toast notification if active (e.g. for AUTO CYCLE ON/OFF)
-    if (s_toast_ts > 0 && millis() - s_toast_ts < 2000) {
+    // Volume popup overlay (takes priority when active)
+    if (s_volume_ts > 0 && now - s_volume_ts < s_volume_dur) {
+        u8g2.setFont(u8g2_font_6x10_tf);
+        char vstr[16];
+        int pct = (int)((float)s_display_vol * 100.0f / 127.0f + 0.5f);
+        snprintf(vstr, sizeof(vstr), "VOL %d%%", pct);
+
+        int box_w = 90;
+        int box_h = 24;
+        int bx = (SCREEN_W - box_w) / 2;
+        int by = (SCREEN_H - box_h) / 2;
+
+        u8g2.setDrawColor(0);
+        u8g2.drawBox(bx, by, box_w, box_h);
+        u8g2.setDrawColor(1);
+        u8g2.drawFrame(bx, by, box_w, box_h);
+        u8g2.drawStr(bx + (box_w - u8g2.getStrWidth(vstr)) / 2, by + 10, vstr);
+
+        // Progress bar inside volume box
+        int bar_w = box_w - 12;
+        int fill_w = (bar_w * s_display_vol) / 127;
+        u8g2.drawFrame(bx + 6, by + 14, bar_w, 6);
+        if (fill_w > 0) {
+            u8g2.drawBox(bx + 6, by + 14, fill_w, 6);
+        }
+    }
+    // Toast notification banner
+    else if (s_toast_ts > 0 && now - s_toast_ts < s_toast_dur) {
         u8g2.setFont(u8g2_font_6x10_tf);
         int tw = u8g2.getStrWidth(s_toast_msg);
         int tx = (SCREEN_W - tw) / 2;
         int ty = 20;
         u8g2.setDrawColor(0);
-        u8g2.drawBox(tx - 4, ty - 10, tw + 8, 12);
+        u8g2.drawBox(tx - 4, ty - 10, tw + 8, 14);
         u8g2.setDrawColor(1);
-        u8g2.drawFrame(tx - 4, ty - 10, tw + 8, 12);
+        u8g2.drawFrame(tx - 4, ty - 10, tw + 8, 14);
         u8g2.drawStr(tx, ty, s_toast_msg);
     }
 
     u8g2.sendBuffer();
 }
+

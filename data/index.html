@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MVT VU METER V2 — Cấu Hình WiFi</title>
+  <style>
+    :root {
+      --bg-gradient: radial-gradient(circle at 50% 0%, #1a1e36 0%, #0c0e17 75%, #05060a 100%);
+      --card-bg: rgba(22, 27, 46, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent-cyan: #00f2fe;
+      --accent-blue: #4facfe;
+      --accent-gradient: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+      --accent-glow: rgba(0, 242, 254, 0.35);
+      --text-main: #f0f4fc;
+      --text-muted: #8e9bb4;
+      --success: #00e676;
+      --danger: #ff5252;
+      --warning: #ffd600;
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-gradient);
+      background-attachment: fixed;
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 24px 16px 40px;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Glows */
+    .ambient-glow {
+      position: fixed;
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(90px);
+      opacity: 0.25;
+    }
+    .glow-1 { top: -60px; left: -60px; background: var(--accent-cyan); }
+    .glow-2 { bottom: -60px; right: -60px; background: #7928ca; }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      padding: 10px 0 4px;
+    }
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 242, 254, 0.08);
+      border: 1px solid rgba(0, 242, 254, 0.25);
+      padding: 5px 14px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: 10px;
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+    .logo-badge svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(180deg, #ffffff 30%, #a5b4fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Glass Cards */
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      color: #fff;
+    }
+    .card-title .title-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title svg {
+      width: 18px;
+      height: 18px;
+      color: var(--accent-cyan);
+    }
+
+    /* Status Grid */
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .status-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+    }
+    .status-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 3px;
+    }
+    .status-val {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+    }
+    .dot.offline {
+      background: var(--danger);
+      box-shadow: 0 0 6px var(--danger);
+    }
+
+    /* WiFi Scanner List */
+    .scan-btn {
+      background: rgba(0, 242, 254, 0.1);
+      border: 1px solid rgba(0, 242, 254, 0.3);
+      color: var(--accent-cyan);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .scan-btn:hover { background: rgba(0, 242, 254, 0.2); }
+    .scan-btn.spinning svg { animation: spin 1s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    .wifi-list {
+      max-height: 160px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+      padding-right: 2px;
+    }
+    .wifi-list::-webkit-scrollbar { width: 4px; }
+    .wifi-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+
+    .wifi-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .wifi-item:hover {
+      background: rgba(0, 242, 254, 0.08);
+      border-color: rgba(0, 242, 254, 0.3);
+      transform: translateX(2px);
+    }
+    .wifi-item.active {
+      background: rgba(0, 242, 254, 0.12);
+      border-color: var(--accent-cyan);
+    }
+    .wifi-name {
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .wifi-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .wifi-signal {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 11px;
+    }
+    .signal-bar {
+      width: 3px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 1px;
+    }
+    .signal-bar:nth-child(1) { height: 30%; }
+    .signal-bar:nth-child(2) { height: 55%; }
+    .signal-bar:nth-child(3) { height: 80%; }
+    .signal-bar:nth-child(4) { height: 100%; }
+    .signal-bar.active {
+      background: var(--accent-cyan);
+      box-shadow: 0 0 6px var(--accent-glow);
+    }
+
+    /* Form Fields */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-bottom: 12px;
+    }
+    .form-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #cfd8dc;
+    }
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .form-input {
+      width: 100%;
+      background: rgba(10, 14, 26, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-family: inherit;
+      font-size: 13px;
+      color: #fff;
+      outline: none;
+      transition: all 0.25s ease;
+    }
+    .form-input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 10px var(--accent-glow);
+      background: rgba(10, 14, 26, 0.85);
+    }
+    .form-input::placeholder {
+      color: rgba(255, 255, 255, 0.25);
+    }
+    .toggle-pwd {
+      position: absolute;
+      right: 10px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      font-size: 14px;
+    }
+
+    /* Collapsible Weather/Settings */
+    .accordion-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0 2px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      user-select: none;
+    }
+    .accordion-header:hover { color: #fff; }
+    .accordion-body {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .accordion-body.open { display: flex; }
+
+    /* Buttons */
+    .btn-submit {
+      width: 100%;
+      background: var(--accent-gradient);
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #0c0e17;
+      cursor: pointer;
+      box-shadow: 0 6px 20px var(--accent-glow);
+      transition: all 0.25s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .btn-submit:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0, 242, 254, 0.5);
+    }
+
+    .action-links {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 12px;
+      font-size: 12px;
+    }
+    .action-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.2s;
+    }
+    .action-link:hover { color: var(--accent-cyan); }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      background: rgba(18, 22, 38, 0.95);
+      border: 1px solid var(--accent-cyan);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 14px var(--accent-glow);
+      backdrop-filter: blur(10px);
+      padding: 10px 18px;
+      border-radius: 99px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #fff;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 99;
+    }
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.3);
+      padding-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <div class="container">
+
+    <header class="header">
+      <div class="logo-badge">
+        <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+        MVT AUDIO LAB
+      </div>
+      <h1>MVT VU METER V2</h1>
+      <p class="subtitle">Trang Cấu Hình Mạng WiFi & Đồng Hồ Thời Tiết</p>
+    </header>
+
+    <div class="card">
+      <div class="card-title">
+        <div class="title-left">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+          <span>Trạng Thái Thiết Bị</span>
+        </div>
+        <span class="status-val" style="font-size:12px; color:var(--accent-cyan);">ESP32-WROOM</span>
+      </div>
+      <div class="status-grid">
+        <div class="status-item">
+          <div class="status-label">Trạng Thái WiFi</div>
+          <div class="status-val">
+            <span class="dot" id="dotStatus"></span>
+            <span id="wifiState">Đang quét...</span>
+          </div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Chế Độ Audio</div>
+          <div class="status-val" id="audioModeVal">MIC / BT DUAL</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Địa Chỉ IP</div>
+          <div class="status-val" id="ipAddressVal">192.168.4.1</div>
+        </div>
+        <div class="status-item">
+          <div class="status-label">Firmware</div>
+          <div class="status-val">v2.0 (OTA Ready)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <div class="title-left">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+          <span>Chọn Mạng WiFi</span>
+        </div>
+        <button class="scan-btn" id="btnScan" onclick="scanWifi()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Quét Mạng
+        </button>
+      </div>
+
+      <div class="wifi-list" id="wifiList">
+        <div style="text-align:center; padding: 15px; color: var(--text-muted); font-size:12px;">
+          Đang tải danh sách WiFi khả dụng...
+        </div>
+      </div>
+
+      <form id="wifiForm" onsubmit="saveConfig(event)">
+        <div class="form-group">
+          <label class="form-label" for="ssid">Tên Mạng (SSID)</label>
+          <div class="input-wrapper">
+            <input type="text" id="ssid" name="ssid" class="form-input" placeholder="Nhập hoặc chọn mạng phía trên..." required autocomplete="off">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="password">Mật Khẩu WiFi</label>
+          <div class="input-wrapper">
+            <input type="password" id="password" name="password" class="form-input" placeholder="Nhập mật khẩu WiFi..." autocomplete="current-password">
+            <button type="button" class="toggle-pwd" onclick="togglePasswordVisibility()">👁</button>
+          </div>
+        </div>
+
+        <div class="accordion-header" onclick="toggleAccordion()">
+          <span>⚙️ Cài Đặt Đồng Hồ & Thời Tiết (Tùy Chọn)</span>
+          <span id="accordionArrow">▼</span>
+        </div>
+
+        <div class="accordion-body" id="accordionBody">
+          <div class="form-group">
+            <label class="form-label" for="city">Tên Thành Phố (Thời tiết)</label>
+            <input type="text" id="city" name="city" class="form-input" placeholder="VD: Hanoi, Ho Chi Minh, Da Nang" value="Hanoi">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="timezone">Múi Giờ (GMT)</label>
+            <input type="number" id="timezone" name="timezone" class="form-input" value="7" min="-12" max="14">
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit" id="btnSubmit">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          LƯU & KẾT NỐI
+        </button>
+      </form>
+
+      <div class="action-links">
+        <a href="/update" class="action-link" target="_blank">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          OTA Web Update (/update)
+        </a>
+        <a href="javascript:void(0)" class="action-link" onclick="restartDevice()" style="color:var(--danger);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+          Khởi Động Lại
+        </a>
+      </div>
+    </div>
+
+    <footer class="footer">
+      ESP32 Dual Core Visualizer & A2DP Sink • MVT Audio System
+    </footer>
+  </div>
+
+  <div class="toast" id="toast">
+    <span id="toastMsg">Thông báo</span>
+  </div>
+
+  <script>
+    let sampleNetworks = [
+      { ssid: "Home_WiFi_5G", rssi: -45, secure: true },
+      { ssid: "MVT_Studio_Sound", rssi: -62, secure: true },
+      { ssid: "Coffee_Free_Guest", rssi: -75, secure: false }
+    ];
+
+    function showToast(msg, duration = 3000) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      toastMsg.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => { toast.classList.remove('show'); }, duration);
+    }
+
+    function togglePasswordVisibility() {
+      const pwd = document.getElementById('password');
+      pwd.type = (pwd.type === 'password') ? 'text' : 'password';
+    }
+
+    function toggleAccordion() {
+      const body = document.getElementById('accordionBody');
+      const arrow = document.getElementById('accordionArrow');
+      body.classList.toggle('open');
+      arrow.innerText = body.classList.contains('open') ? '▲' : '▼';
+    }
+
+    function renderWifiList(networks) {
+      const listEl = document.getElementById('wifiList');
+      if (!networks || networks.length === 0) {
+        listEl.innerHTML = '<div style="text-align:center; padding: 15px; color: var(--text-muted); font-size:12px;">Không tìm thấy mạng WiFi nào. Hãy bấm "Quét Mạng".</div>';
+        return;
+      }
+
+      listEl.innerHTML = networks.map((net) => {
+        const bars = getSignalBars(net.rssi);
+        return `
+          <div class="wifi-item" onclick="selectNetwork('${encodeURIComponent(net.ssid)}')">
+            <div class="wifi-name">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-cyan);"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+              <span>${net.ssid}</span>
+            </div>
+            <div class="wifi-meta">
+              ${net.secure ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' : ''}
+              <div class="wifi-signal">
+                <div class="signal-bar ${bars >= 1 ? 'active' : ''}"></div>
+                <div class="signal-bar ${bars >= 2 ? 'active' : ''}"></div>
+                <div class="signal-bar ${bars >= 3 ? 'active' : ''}"></div>
+                <div class="signal-bar ${bars >= 4 ? 'active' : ''}"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function getSignalBars(rssi) {
+      if (rssi >= -60) return 4;
+      if (rssi >= -70) return 3;
+      if (rssi >= -80) return 2;
+      return 1;
+    }
+
+    function selectNetwork(encodedSsid) {
+      const ssid = decodeURIComponent(encodedSsid);
+      document.getElementById('ssid').value = ssid;
+      const pwd = document.getElementById('password');
+      pwd.focus();
+      showToast('Đã chọn mạng: ' + ssid);
+
+      document.querySelectorAll('.wifi-item').forEach(el => el.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+    }
+
+    function scanWifi() {
+      const btn = document.getElementById('btnScan');
+      btn.classList.add('spinning');
+
+      fetch('/scan')
+        .then(res => res.json())
+        .then(data => {
+          btn.classList.remove('spinning');
+          renderWifiList(data);
+          showToast(`Tìm thấy ${data.length} mạng WiFi`);
+        })
+        .catch(err => {
+          btn.classList.remove('spinning');
+          renderWifiList(sampleNetworks);
+          showToast('Đã tải danh sách WiFi (Mẫu)');
+        });
+    }
+
+    function saveConfig(e) {
+      e.preventDefault();
+      const ssid = document.getElementById('ssid').value.trim();
+      const password = document.getElementById('password').value;
+      const city = document.getElementById('city').value.trim();
+      const timezone = document.getElementById('timezone').value;
+
+      if (!ssid) {
+        showToast('Vui lòng chọn hoặc nhập tên mạng WiFi!');
+        return;
+      }
+
+      const btn = document.getElementById('btnSubmit');
+      btn.disabled = true;
+      btn.innerText = 'ĐANG LƯU & KẾT NỐI...';
+
+      const payload = { ssid, password, city, timezone };
+
+      fetch('/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(res => {
+        showToast('✅ Đã lưu! ESP32 đang kết nối WiFi...');
+        setTimeout(() => { window.location.reload(); }, 4000);
+      })
+      .catch(err => {
+        showToast('✅ Cấu hình đã gửi! Thiết bị đang khởi động lại...');
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerText = 'LƯU & KẾT NỐI';
+        }, 3000);
+      });
+    }
+
+    function restartDevice() {
+      if (confirm('Bạn có chắc muốn khởi động lại thiết bị ESP32?')) {
+        fetch('/restart', { method: 'POST' }).catch(() => {});
+        showToast('Đang khởi động lại ESP32...');
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      fetch('/status')
+        .then(r => r.json())
+        .then(data => {
+          if (data.ip) document.getElementById('ipAddressVal').innerText = data.ip;
+          if (data.connected) {
+            document.getElementById('wifiState').innerText = 'Đã kết nối (' + data.ssid + ')';
+            document.getElementById('dotStatus').classList.remove('offline');
+          } else {
+            document.getElementById('wifiState').innerText = 'AP Setup Mode';
+            document.getElementById('dotStatus').classList.add('offline');
+          }
+        })
+        .catch(() => {
+          document.getElementById('wifiState').innerText = 'AP Setup Mode';
+        });
+
+      scanWifi();
+    });
+  </script>
+</body>
+</html>

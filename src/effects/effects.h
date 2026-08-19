@@ -320,6 +320,9 @@ void effect_cat_render(const int32_t *left, const int32_t *right, size_t n);
 void effect_cat_on_enter();
 void effect_cat_on_exit();
 
+// Mode 65: CLOCK & WEATHER
+void effect_clock_render(const int32_t *left, const int32_t *right, size_t n);
+
 // -----------------------------------------------------------------------
 // Visual effect lookup table
 // -----------------------------------------------------------------------

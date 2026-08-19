@@ -3,6 +3,8 @@
 
 static const i2s_port_t PORT = (i2s_port_t)I2S_MIC_PORT;
 
+static volatile bool s_i2s_initialized = false;
+
 // Audio processing settings
 static float   s_gain       = MIC_DEFAULT_GAIN;
 static int32_t s_noise_gate = MIC_DEFAULT_NOISE_GATE;
@@ -36,6 +38,8 @@ int32_t i2s_mic_get_noise_gate() {
 // i2s_mic_init
 // -----------------------------------------------------------------------
 bool i2s_mic_init() {
+    if (s_i2s_initialized) return true;
+
     // --- Driver configuration ---
     i2s_config_t cfg = {};
     cfg.mode                = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX);
@@ -44,8 +48,13 @@ bool i2s_mic_init() {
     cfg.channel_format      = I2S_CHANNEL_FMT_RIGHT_LEFT; // Stereo: [L, R] interleaved
     cfg.communication_format= I2S_COMM_FORMAT_STAND_I2S;  // Standard Philips format
     cfg.intr_alloc_flags    = ESP_INTR_FLAG_LEVEL1;
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION_MAJOR >= 5
     cfg.dma_desc_num        = 4;          // Number of DMA buffers in ring
     cfg.dma_frame_num       = FRAME_SIZE; // Samples per DMA buffer (frames per buffer)
+#else
+    cfg.dma_buf_count       = 4;
+    cfg.dma_buf_len         = FRAME_SIZE;
+#endif
     cfg.use_apll            = false;
     cfg.tx_desc_auto_clear  = false;
     cfg.fixed_mclk          = 0;
@@ -68,18 +77,36 @@ bool i2s_mic_init() {
     if (err != ESP_OK) {
         Serial.printf("[I2S] set_pin failed: %s\n", esp_err_to_name(err));
         i2s_driver_uninstall(PORT);
+        s_i2s_initialized = false;
         return false;
     }
 
+    s_i2s_initialized = true;
     Serial.printf("[I2S] OK — %d Hz, 16-bit stereo | SCK=GPIO%d  WS=GPIO%d  SD=GPIO%d | Gain=%.1fx Gate=%d\n",
                   SAMPLE_RATE, I2S_PIN_SCK, I2S_PIN_WS, I2S_PIN_SD, s_gain, s_noise_gate);
     return true;
 }
 
 // -----------------------------------------------------------------------
+// i2s_mic_deinit
+// -----------------------------------------------------------------------
+bool i2s_mic_deinit() {
+    if (!s_i2s_initialized) return true;
+    s_i2s_initialized = false;
+    esp_err_t err = i2s_driver_uninstall(PORT);
+    if (err == ESP_OK) {
+        Serial.println("[I2S] Mic driver uninstalled");
+        return true;
+    }
+    return false;
+}
+
+// -----------------------------------------------------------------------
 // i2s_mic_read
 // -----------------------------------------------------------------------
 bool i2s_mic_read(int32_t *left, int32_t *right, size_t n) {
+    if (!s_i2s_initialized) return false;
+
     // Interleaved stereo raw buffer: [L0, R0, L1, R1, ... ]
     // Size = n pairs × 2 channels × 4 bytes
     static int32_t raw[FRAME_SIZE * 2];
@@ -87,8 +114,8 @@ bool i2s_mic_read(int32_t *left, int32_t *right, size_t n) {
     size_t bytes_wanted = n * 2 * sizeof(int32_t);
     size_t bytes_read   = 0;
 
-    esp_err_t err = i2s_read(PORT, raw, bytes_wanted, &bytes_read, portMAX_DELAY);
-    if (err != ESP_OK) return false;
+    esp_err_t err = i2s_read(PORT, raw, bytes_wanted, &bytes_read, pdMS_TO_TICKS(100));
+    if (err != ESP_OK || bytes_read == 0) return false;
 
     size_t pairs = bytes_read / (2 * sizeof(int32_t));
     int32_t peak_l = 0;

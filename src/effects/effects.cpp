@@ -133,6 +133,8 @@ const VisualEffect EFFECTS[MODE_COUNT] = {
     // Mode 63: ZIGZAG_STAGE
     { "LED ZIGZAG",      effect_zigzag_stage_render, effect_zigzag_stage_on_enter, effect_zigzag_stage_on_exit },
     // Mode 64: CAT
-    { "CYBER NEKO",      effect_cat_render,          effect_cat_on_enter,          effect_cat_on_exit }
+    { "CYBER NEKO",      effect_cat_render,          effect_cat_on_enter,          effect_cat_on_exit },
+    // Mode 65: CLOCK & WEATHER
+    { "CLOCK & WEATHER", effect_clock_render,        nullptr,                      nullptr }
 };
 

@@ -2,40 +2,92 @@
 #include "i2s_mic.h"
 #include "display.h"
 #include "button.h"
+#include "encoder.h"
+#include "nvs_storage.h"
+#include "bt_audio.h"
+#include "wifi_app.h"
 
 /**
- * ESP32-S3 Super Mini — Dual-channel Sound Visualizer
+ * ESP32-WROOM — Dual-channel Sound Visualizer V2
  *
- * Hardware:
- *   OLED SH1106 1.3"  : SDA=GPIO8, SCL=GPIO9  (Hardware I2C, 800 kHz)
- *   INMP441 Left  mic : SCK=GPIO4, WS=GPIO5, SD=GPIO6, L/R=GND
- *   INMP441 Right mic : SCK=GPIO4, WS=GPIO5, SD=GPIO6, L/R=3V3
- *   Mode button       : GPIO0 (BOOT button, active LOW, no extra wiring)
- *
- * Architecture (FreeRTOS dual-core):
- *   Core 0 — mic_task : I2S read → AudioFrame → queue
- *   Core 1 — loop()   : button check → queue → display_draw_waveform()
+ * Pinout & Controls:
+ *   OLED SH1106 1.3"  : SDA=GPIO21, SCL=GPIO22 (Hardware I2C)
+ *   INMP441 Mic (L/R) : SCK=GPIO26, WS=GPIO25, SD=GPIO27
+ *   PCM5102A DAC      : BCK=GPIO18, LCK=GPIO19, DIN=GPIO23
+ *   Encoder EC11      : CLK=GPIO32, DT=GPIO33 (Volume adjust with AVRCP sync)
+ *   Button PUSH (PSH) : GPIO4  (Switch MIC <-> BT mode)
+ *   Button BACK (BAK) : GPIO13 (Play/Pause AVRCP)
+ *   Button PLUS (CON) : GPIO14 (Next display mode / Long: Auto-cycle)
+ *   Button BOOT       : GPIO0  (Short: WiFi reset, Long >3s: BT pair)
  */
 
-// -----------------------------------------------------------------------
-// AudioFrame: one stereo frame passed between cores via queue
-// -----------------------------------------------------------------------
-struct AudioFrame {
-    int32_t left[FRAME_SIZE];
-    int32_t right[FRAME_SIZE];
-};
-
-static QueueHandle_t s_audio_queue;
+static QueueHandle_t s_audio_queue = nullptr;
+static AudioMode     s_current_mode = AUDIO_MODE_MIC;
+static volatile bool s_mic_task_active = false;
 
 // -----------------------------------------------------------------------
-// FreeRTOS task — Core 0
+// FreeRTOS Mic Task — Core 0
 // -----------------------------------------------------------------------
 static void mic_task(void * /*arg*/) {
     static AudioFrame frame;
     for (;;) {
-        if (i2s_mic_read(frame.left, frame.right, FRAME_SIZE)) {
-            xQueueSend(s_audio_queue, &frame, /*timeout=*/0);
+        if (s_mic_task_active) {
+            if (i2s_mic_read(frame.left, frame.right, FRAME_SIZE)) {
+                if (s_audio_queue) {
+                    xQueueSend(s_audio_queue, &frame, 0);
+                }
+            } else {
+                vTaskDelay(pdMS_TO_TICKS(10));
+            }
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(50));
         }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Graceful Audio Mode Switcher
+// -----------------------------------------------------------------------
+static void switch_audio_mode(AudioMode target_mode) {
+    if (target_mode == s_current_mode) return;
+
+    Serial.printf("[Switch] Transitioning %s -> %s...\n",
+                  s_current_mode == AUDIO_MODE_BT ? "BT" : "MIC",
+                  target_mode == AUDIO_MODE_BT ? "BT" : "MIC");
+
+    if (target_mode == AUDIO_MODE_BT) {
+        // 1. Suspend mic task and deinit I2S mic
+        s_mic_task_active = false;
+        delay(60);
+        i2s_mic_deinit();
+
+        // 2. Clear audio queue
+        if (s_audio_queue) xQueueReset(s_audio_queue);
+
+        // 3. Start Bluetooth A2DP Sink
+        bt_audio_start();
+
+        s_current_mode = AUDIO_MODE_BT;
+        nvs_save_audio_mode(AUDIO_MODE_BT);
+        display_toast("MODE: BLUETOOTH");
+    } else {
+        // 1. Stop Bluetooth A2DP Sink
+        bt_audio_stop();
+        delay(60);
+
+        // 2. Clear audio queue
+        if (s_audio_queue) xQueueReset(s_audio_queue);
+
+        // 3. Re-init I2S mic and resume mic task
+        if (i2s_mic_init()) {
+            s_mic_task_active = true;
+        } else {
+            Serial.println("[WARN] Mic re-init failed (no hardware attached?)");
+        }
+
+        s_current_mode = AUDIO_MODE_MIC;
+        nvs_save_audio_mode(AUDIO_MODE_MIC);
+        display_toast("MODE: MICROPHONE");
     }
 }
 
@@ -45,38 +97,57 @@ static void mic_task(void * /*arg*/) {
 void setup() {
     Serial.begin(115200);
     delay(500);
-    Serial.println("=== ESP32-S3 Sound Visualizer ===");
-    Serial.printf("  Frame: %d samples @ %d Hz = %.1f ms\n",
-                  FRAME_SIZE, SAMPLE_RATE, 1000.0f * FRAME_SIZE / SAMPLE_RATE);
-    Serial.println("  BOOT button (GPIO0) = next mode");
+    Serial.println("=========================================");
+    Serial.println("=== ESP32-WROOM Sound Visualizer V2 ===");
+    Serial.println("=========================================");
 
-    // 1. Display (shows splash while I2S initialises)
+    // 1. NVS storage init
+    nvs_storage_init();
+
+    // 2. Display init and restore preferences
     display_init();
+    display_set_mode((DisplayMode)nvs_load_display_mode(), false);
+    display_set_auto_cycle(nvs_load_auto_cycle());
 
-    // 2. Mode button — GPIO 0 (BOOT, built-in, no extra wiring)
-    button_init(BTN_GPIO);
+    // 3. Multi-button & Encoder system
+    buttons_init();
+    encoder_init();
 
-    // 3. I2S microphones
-    if (!i2s_mic_init()) {
-        Serial.println("[FATAL] I2S mic init failed. Halting.");
-        display_error("I2S INIT FAIL");
-        while (true) { delay(1000); }
-    }
-
-    // 4. Audio queue
-    s_audio_queue = xQueueCreate(2, sizeof(AudioFrame));
+    // 4. Audio queue create
+    s_audio_queue = xQueueCreate(4, sizeof(AudioFrame));
     if (!s_audio_queue) {
-        Serial.println("[FATAL] Queue create failed (OOM).");
+        Serial.println("[FATAL] Audio queue creation failed (OOM)");
         display_error("QUEUE FAIL");
         while (true) { delay(1000); }
     }
 
-    // 5. Mic task on Core 0
+    // 5. Bluetooth audio subsystem init
+    bt_audio_init(s_audio_queue);
+
+    // 6. WiFi & OTA subsystem init (fault-tolerant, auto-timeout)
+    wifi_app_init();
+
+    // 7. Restore and start selected Audio Mode
+    s_current_mode = nvs_load_audio_mode();
+    if (s_current_mode == AUDIO_MODE_BT) {
+        s_mic_task_active = false;
+        bt_audio_start();
+        display_toast("MODE: BLUETOOTH");
+    } else {
+        if (i2s_mic_init()) {
+            s_mic_task_active = true;
+        } else {
+            Serial.println("[WARN] I2S mic init failed. Continuing (fault-tolerant).");
+        }
+        display_toast("MODE: MICROPHONE");
+    }
+
+    // 8. Create Mic task on Core 0 AFTER mode is configured & I2S initialized
     xTaskCreatePinnedToCore(
         mic_task, "mic_task", 4096, nullptr, 2, nullptr, 0
     );
 
-    Serial.println("[boot] Ready — press BOOT to cycle modes");
+    Serial.println("[boot] Setup completed successfully");
 }
 
 // -----------------------------------------------------------------------
@@ -87,30 +158,98 @@ void loop() {
     static uint32_t   fps_ts  = 0;
     static uint32_t   fps_cnt = 0;
 
-    // --- Button handling ---
-    button_update();
-    if (button_pressed()) {
+    // --- Button & Encoder handling ---
+    buttons_update();
+
+    // Button PLUS (GPIO 14) -> Next OLED mode / Long press: Auto-cycle
+    if (button_pressed(BTN_PLUS)) {
         display_next_mode();
+        nvs_save_display_mode((uint8_t)display_get_mode());
+        Serial.printf("[BTN] PLUS pressed -> Mode: %d\n", (int)display_get_mode());
     }
-    if (button_long_pressed()) {
+    if (button_long_pressed(BTN_PLUS)) {
         bool auto_cycle = !display_get_auto_cycle();
         display_set_auto_cycle(auto_cycle);
+        nvs_save_auto_cycle(auto_cycle);
         Serial.printf("[Mode] Auto-cycle %s\n", auto_cycle ? "ON" : "OFF");
     }
 
-    // --- Render: dequeue and draw ---
-    if (xQueueReceive(s_audio_queue, &frame, pdMS_TO_TICKS(5)) == pdTRUE) {
+    // Button PUSH (GPIO 4) -> Switch Mode MIC <-> BT
+    if (button_pressed(BTN_PUSH)) {
+        AudioMode next_mode = (s_current_mode == AUDIO_MODE_MIC) ? AUDIO_MODE_BT : AUDIO_MODE_MIC;
+        switch_audio_mode(next_mode);
+    }
+
+    // Button BACK (GPIO 13) -> Play/Pause via AVRCP (when in BT mode)
+    if (button_pressed(BTN_BACK)) {
+        if (s_current_mode == AUDIO_MODE_BT) {
+            bt_audio_play_pause();
+        } else {
+            display_toast("MIC MODE ACTIVE");
+        }
+    }
+
+    // Button BOOT (GPIO 0) -> Short: WiFi reset / Long (>3s): BT re-pairing
+    if (button_pressed(BTN_BOOT)) {
+        Serial.println("[BTN] BOOT short pressed -> Resetting WiFi...");
+        wifi_app_reset_settings();
+    }
+    if (button_long_pressed(BTN_BOOT)) {
+        Serial.println("[BTN] BOOT long pressed -> BT Re-pairing requested");
+        bt_audio_start_repairing();
+        display_toast("BT RE-PAIRING...");
+    }
+
+    // Rotary Encoder rotation -> Volume change & sync
+    int32_t enc_delta = encoder_get_delta();
+    if (enc_delta != 0) {
+        bt_audio_adjust_volume(enc_delta);
+        display_show_volume(bt_audio_get_volume());
+        Serial.printf("[ENC] Volume adjust: %d%%\n", (int)((float)bt_audio_get_volume() * 100.0f / 127.0f));
+    }
+
+    // Update display audio status
+    display_set_audio_mode(
+        s_current_mode == AUDIO_MODE_BT,
+        bt_audio_is_connected(),
+        bt_audio_is_playing()
+    );
+
+    // --- WiFi & OTA background loop (suspended while streaming BT for audio smoothness) ---
+    wifi_app_loop(s_current_mode == AUDIO_MODE_BT && bt_audio_is_playing());
+
+    // --- Render: dequeue audio frame (or generate silence if idle/BT standby) and draw ---
+    static uint32_t last_render_ts = 0;
+    bool has_audio = (xQueueReceive(s_audio_queue, &frame, pdMS_TO_TICKS(5)) == pdTRUE);
+
+    if (has_audio) {
         display_draw_waveform(frame.left, frame.right, FRAME_SIZE);
         fps_cnt++;
+        last_render_ts = millis();
+    } else {
+        // Maintain ~30 FPS continuous UI refresh during silence / BT standby / idle
+        uint32_t now = millis();
+        if (now - last_render_ts >= 33) {
+            memset(frame.left, 0, sizeof(frame.left));
+            memset(frame.right, 0, sizeof(frame.right));
+            display_draw_waveform(frame.left, frame.right, FRAME_SIZE);
+            fps_cnt++;
+            last_render_ts = now;
+        }
     }
 
     // --- FPS report every 5 seconds ---
     uint32_t now = millis();
     if (now - fps_ts >= 5000) {
-        Serial.printf("[FPS] %.1f  [Mode] %d\n",
+        Serial.printf("[STATUS] Mode: %s | FPS: %.1f | Effect: %d | WiFi: %s\n",
+                      s_current_mode == AUDIO_MODE_BT ? "BT" : "MIC",
                       (float)fps_cnt * 1000.0f / (float)(now - fps_ts),
-                      (int)display_get_mode());
+                      (int)display_get_mode(),
+                      wifi_app_is_connected() ? "ON" : "OFF");
         fps_cnt = 0;
         fps_ts  = now;
     }
 }
+
+
+

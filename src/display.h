@@ -1,4 +1,7 @@
 #pragma once
+#ifndef DISPLAY_H
+#define DISPLAY_H
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <U8g2lib.h>
@@ -7,8 +10,8 @@
 // -----------------------------------------------------------------------
 // OLED pin assignments (confirmed working)
 // -----------------------------------------------------------------------
-#define OLED_SDA    8
-#define OLED_SCL    9
+#define OLED_SDA    21
+#define OLED_SCL    22
 
 // I2C clock speed:
 //   400000 = 400 kHz  (safe, SH1106 datasheet max)
@@ -17,10 +20,11 @@
 #define I2C_CLOCK   400000
 
 // -----------------------------------------------------------------------
-// Screen geometry
+// Screen geometry & alignment calibration
 // -----------------------------------------------------------------------
-#define SCREEN_W      128
-#define SCREEN_H       64
+#define SCREEN_W        128
+#define SCREEN_H         64
+#define OLED_X_OFFSET     0   // SH1106 default is 2. Set to 1 to shift 1px left (fixes 1px right shift)
 
 // Dual-channel waveform layout (MODE_WAVEFORM)
 #define CH_L_CENTER    14   // Y center of LEFT waveform
@@ -97,7 +101,8 @@ enum DisplayMode {
     MODE_PLASMA_BALL  = 62, // Magic Plasma Ball: Core electrode & twisting electric arcs discharging to glass sphere
     MODE_ZIGZAG_STAGE = 63, // EDM Zigzag Stage: Multi-tier chevron stage LED arrays with chasing strobe pulses
     MODE_CAT          = 64, // Cyber Neko Cat: Stereo ear twitches, waveform talking mouth & wagging tail
-    MODE_COUNT        = 65
+    MODE_CLOCK        = 65, // NTP Clock & Weather: Big Digital Clock, Weather info & live bottom VU
+    MODE_COUNT        = 66
 };
 
 // -----------------------------------------------------------------------
@@ -134,3 +139,15 @@ void display_set_auto_cycle(bool enable, uint32_t interval_ms = 20000);
 
 /** Check if auto-cycling is enabled. */
 bool display_get_auto_cycle();
+
+/** Show a temporary toast message banner on the display. */
+void display_toast(const char *msg, uint32_t duration_ms = 2000);
+
+/** Show a temporary volume popup bar (0-127). */
+void display_show_volume(uint8_t volume, uint32_t duration_ms = 2000);
+
+/** Set the active audio source mode (for status indicator). */
+void display_set_audio_mode(bool is_bt, bool is_connected = false, bool is_playing = false);
+
+#endif // DISPLAY_H
+
