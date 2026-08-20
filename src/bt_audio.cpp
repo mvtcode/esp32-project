@@ -1,6 +1,7 @@
 #include "bt_audio.h"
 #include "nvs_storage.h"
 #include "display.h"
+#include "log.h"
 #include <math.h>
 
 static QueueHandle_t     s_vis_queue = nullptr;
@@ -71,14 +72,14 @@ static void a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
             uint8_t *temp = a2d->conn_stat.remote_bda;
             memcpy(s_connected_bda, temp, 6);
             nvs_save_bt_mac(s_connected_bda);
-            Serial.printf("[BT] Connected to device: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                          temp[0], temp[1], temp[2], temp[3], temp[4], temp[5]);
+            LOG_I("BT", "Connected: %02X:%02X:%02X:%02X:%02X:%02X",
+                  temp[0], temp[1], temp[2], temp[3], temp[4], temp[5]);
             display_toast("BT CONNECTED!");
         } else if (a2d->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
             s_is_connected = false;
             s_is_playing = false;
             memset(s_connected_bda, 0, 6);
-            Serial.printf("[BT] A2DP Disconnected (reason: %d)\n", a2d->conn_stat.disc_rsn);
+            LOG_I("BT", "A2DP Disconnected (reason: %d)", a2d->conn_stat.disc_rsn);
             display_toast("BT DISCONNECTED");
             // Re-enable discoverable
             esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
@@ -87,7 +88,7 @@ static void a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
     }
     case ESP_A2D_AUDIO_STATE_EVT: {
         s_is_playing = (a2d->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED);
-        Serial.printf("[BT] Audio state: %s\n", s_is_playing ? "STARTED" : "STOPPED");
+        LOG_I("BT", "Audio state: %s", s_is_playing ? "STARTED" : "STOPPED");
         break;
     }
     case ESP_A2D_AUDIO_CFG_EVT: {
@@ -103,7 +104,7 @@ static void a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
             } else if (oct0 & (0x01 << 7)) {
                 sample_rate = 16000;
             }
-            Serial.printf("[BT] SBC Configured: %u Hz\n", sample_rate);
+            LOG_I("BT", "SBC Configured: %u Hz", sample_rate);
             i2s_set_sample_rates(I2S_NUM_0, sample_rate);
         }
         break;
@@ -124,7 +125,7 @@ static void avrc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *par
     switch (event) {
     case ESP_AVRC_CT_CONNECTION_STATE_EVT: {
         if (rc->conn_stat.connected) {
-            Serial.println("[AVRCP CT] Connected to source!");
+            LOG_I("AVRCP CT", "Connected to source!");
             uint8_t attr_mask = ESP_AVRC_MD_ATTR_TITLE | ESP_AVRC_MD_ATTR_ARTIST;
             esp_avrc_ct_send_metadata_cmd(0, attr_mask);
             esp_avrc_ct_send_register_notification_cmd(1, ESP_AVRC_RN_PLAY_STATUS_CHANGE, 0);
@@ -136,7 +137,7 @@ static void avrc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *par
             size_t len = (rc->meta_rsp.attr_length < sizeof(s_device_name) - 1) ? rc->meta_rsp.attr_length : sizeof(s_device_name) - 1;
             memcpy(s_device_name, rc->meta_rsp.attr_text, len);
             s_device_name[len] = '\0';
-            Serial.printf("[AVRCP CT] Track Title: %s\n", s_device_name);
+            LOG_I("AVRCP CT", "Track Title: %s", s_device_name);
         }
         break;
     }
@@ -144,7 +145,7 @@ static void avrc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *par
         if (rc->change_ntf.event_id == ESP_AVRC_RN_PLAY_STATUS_CHANGE) {
             uint8_t status = rc->change_ntf.event_parameter.playback;
             s_is_playing = (status == ESP_AVRC_PLAYBACK_PLAYING);
-            Serial.printf("[AVRCP CT] Remote Play Status: %s\n", s_is_playing ? "PLAYING" : "PAUSED");
+            LOG_D("AVRCP CT", "Remote Play Status: %s", s_is_playing ? "PLAYING" : "PAUSED");
             // Re-register notification for next event
             esp_avrc_ct_send_register_notification_cmd(1, ESP_AVRC_RN_PLAY_STATUS_CHANGE, 0);
         }
@@ -163,18 +164,17 @@ static bool s_volume_notify_registered = false;
 static void avrc_tg_cb(esp_avrc_tg_cb_event_t event, esp_avrc_tg_cb_param_t *param) {
     switch (event) {
     case ESP_AVRC_TG_CONNECTION_STATE_EVT: {
-        Serial.printf("[AVRCP TG] Connection state: %s\n", param->conn_stat.connected ? "CONNECTED" : "DISCONNECTED");
+        LOG_I("AVRCP TG", "Connection state: %s", param->conn_stat.connected ? "CONNECTED" : "DISCONNECTED");
         if (!param->conn_stat.connected) {
             s_volume_notify_registered = false;
         }
         break;
     }
     case ESP_AVRC_TG_SET_ABSOLUTE_VOLUME_CMD_EVT: {
-        // Phone / host adjusted master volume slider -> sync ESP32 local volume!
         s_current_volume = param->set_abs_vol.volume;
         nvs_save_volume(s_current_volume);
-        Serial.printf("[AVRCP TG] Absolute Volume from Phone: %d (%.0f%%)\n", 
-                      s_current_volume, (float)s_current_volume * 100.0f / 127.0f);
+        LOG_D("AVRCP TG", "Absolute Volume from Phone: %d (%.0f%%)",
+              s_current_volume, (float)s_current_volume * 100.0f / 127.0f);
         display_show_volume(s_current_volume);
         break;
     }
@@ -184,7 +184,7 @@ static void avrc_tg_cb(esp_avrc_tg_cb_event_t event, esp_avrc_tg_cb_param_t *par
             esp_avrc_rn_param_t rn_param;
             rn_param.volume = s_current_volume;
             esp_avrc_tg_send_rn_rsp(ESP_AVRC_RN_VOLUME_CHANGE, ESP_AVRC_RN_RSP_INTERIM, &rn_param);
-            Serial.printf("[AVRCP TG] Phone registered for volume sync, initial volume: %d\n", s_current_volume);
+            LOG_D("AVRCP TG", "Phone registered for volume sync, initial volume: %d", s_current_volume);
         }
         break;
     }
@@ -199,12 +199,12 @@ static void avrc_tg_cb(esp_avrc_tg_cb_event_t event, esp_avrc_tg_cb_param_t *par
 void bt_audio_init(QueueHandle_t audio_queue) {
     s_vis_queue = audio_queue;
     s_current_volume = nvs_load_volume();
-    Serial.println("[BT] Bluetooth Audio Subsystem Initialized");
+    LOG_I("BT", "Bluetooth Audio Subsystem Initialized");
 }
 
 void bt_audio_start() {
     if (s_is_started) return;
-    Serial.println("[BT] Starting Native Bluetooth A2DP Sink with Absolute Volume Sync...");
+    LOG_I("BT", "Starting Native Bluetooth A2DP Sink with Absolute Volume Sync...");
 
     // 1. Install & Configure I2S Driver for DAC PCM5102A on I2S_NUM_0
     static const i2s_config_t i2s_config = {
@@ -258,20 +258,20 @@ void bt_audio_start() {
     esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
 
     s_is_started = true;
-    Serial.printf("[BT] Native A2DP Sink started as '%s' (Volume: %d)\n", BT_DEVICE_NAME, s_current_volume);
+    LOG_I("BT", "Native A2DP Sink started as '%s' (Volume: %d)", BT_DEVICE_NAME, s_current_volume);
 
     // 7. Auto-reconnect to last remembered device if available
     uint8_t mac[6];
     if (nvs_load_bt_mac(mac)) {
-        Serial.printf("[BT] Attempting reconnect to remembered device: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        LOG_I("BT", "Attempting reconnect to remembered device: %02X:%02X:%02X:%02X:%02X:%02X",
+              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         esp_a2d_sink_connect(mac);
     }
 }
 
 void bt_audio_stop() {
     if (!s_is_started) return;
-    Serial.println("[BT] Stopping Native A2DP Sink...");
+    LOG_I("BT", "Stopping Native A2DP Sink...");
 
     esp_a2d_sink_deinit();
     esp_avrc_ct_deinit();
@@ -280,13 +280,17 @@ void bt_audio_stop() {
     esp_bluedroid_deinit();
     btStop();
 
+    // Wait for any in-flight bt_i2s_data_callback to finish before uninstalling I2S driver.
+    // Without this, i2s_write() could be called on an already-freed DMA handle.
+    delay(80);
     i2s_driver_uninstall(I2S_NUM_0);
 
     s_is_started = false;
     s_is_connected = false;
     s_is_playing = false;
     s_volume_notify_registered = false;
-    Serial.println("[BT] Native A2DP Sink stopped");
+    s_fa.count = 0;   // Reset frame accumulator — prevent stale samples on next BT start
+    LOG_I("BT", "Native A2DP Sink stopped");
 }
 
 void bt_audio_adjust_volume(int32_t delta) {
@@ -300,7 +304,7 @@ void bt_audio_set_volume(uint8_t volume) {
     if (volume > 127) volume = 127;
     s_current_volume = volume;
     nvs_save_volume(s_current_volume);
-    Serial.printf("[Volume] Set to %d (%.0f%%)\n", s_current_volume, (float)s_current_volume * 100.0f / 127.0f);
+    LOG_D("Volume", "Set to %d (%.0f%%)", s_current_volume, (float)s_current_volume * 100.0f / 127.0f);
 
     // Synchronize volume with connected phone/PC via AVRCP Absolute Volume notification
     if (s_is_connected && s_volume_notify_registered) {
@@ -308,7 +312,7 @@ void bt_audio_set_volume(uint8_t volume) {
         rn_param.volume = s_current_volume;
         esp_avrc_tg_send_rn_rsp(ESP_AVRC_RN_VOLUME_CHANGE, ESP_AVRC_RN_RSP_CHANGED, &rn_param);
         s_volume_notify_registered = false;
-        Serial.printf("[AVRCP TG] Sent Volume Change Notification to Phone: %d\n", s_current_volume);
+        LOG_D("AVRCP TG", "Sent Volume Change Notification to Phone: %d", s_current_volume);
     }
 }
 
@@ -324,7 +328,7 @@ void bt_audio_play_pause() {
     }
     static uint8_t s_tl = 0;
     uint8_t cmd = s_is_playing ? ESP_AVRC_PT_CMD_PAUSE : ESP_AVRC_PT_CMD_PLAY;
-    Serial.printf("[AVRCP] Sending %s command to host (tl=%d)\n", s_is_playing ? "PAUSE" : "PLAY", s_tl);
+    LOG_D("AVRCP", "Sending %s command to host (tl=%d)", s_is_playing ? "PAUSE" : "PLAY", s_tl);
     display_toast(s_is_playing ? "PAUSE" : "PLAY");
     
     esp_avrc_ct_send_passthrough_cmd(s_tl, cmd, ESP_AVRC_PT_CMD_STATE_PRESSED);
@@ -334,7 +338,7 @@ void bt_audio_play_pause() {
 }
 
 void bt_audio_start_repairing() {
-    Serial.println("[BT] Re-pairing triggered: clearing saved MAC and disconnecting...");
+    LOG_I("BT", "Re-pairing triggered: clearing saved MAC and disconnecting...");
     if (s_is_connected && (s_connected_bda[0] || s_connected_bda[1] || s_connected_bda[2])) {
         esp_a2d_sink_disconnect(s_connected_bda);
     }

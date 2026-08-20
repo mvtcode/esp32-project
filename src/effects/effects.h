@@ -320,6 +320,21 @@ void effect_cat_render(const int32_t *left, const int32_t *right, size_t n);
 void effect_cat_on_enter();
 void effect_cat_on_exit();
 
+// Mode 65: BEAT_METER
+void effect_beat_meter_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_beat_meter_on_enter();
+void effect_beat_meter_on_exit();
+
+// Mode 66: OSCILLOSCOPE
+void effect_oscilloscope_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_oscilloscope_on_enter();
+void effect_oscilloscope_on_exit();
+
+// Mode 67: CHROMATIC_TUNER
+void effect_chromatic_tuner_render(const int32_t *left, const int32_t *right, size_t n);
+void effect_chromatic_tuner_on_enter();
+void effect_chromatic_tuner_on_exit();
+
 // -----------------------------------------------------------------------
 // Visual effect lookup table
 // -----------------------------------------------------------------------

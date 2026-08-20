@@ -1,32 +1,33 @@
 #include "nvs_storage.h"
 #include <Preferences.h>
+#include "log.h"
 
 static Preferences s_prefs;
 static const char *PREFS_NAMESPACE = "vu_meter";
 
 void nvs_storage_init() {
     s_prefs.begin(PREFS_NAMESPACE, false);
-    Serial.println("[NVS] Storage initialized");
+    LOG_I("NVS", "Storage initialized");
 }
 
 void nvs_save_audio_mode(AudioMode mode) {
     s_prefs.putUChar("audio_mode", (uint8_t)mode);
     const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : "MIC");
-    Serial.printf("[NVS] Saved audio_mode: %d (%s)\n", (int)mode, name);
+    LOG_D("NVS", "Saved audio_mode: %d (%s)", (int)mode, name);
 }
 
 AudioMode nvs_load_audio_mode() {
     uint8_t mode = s_prefs.getUChar("audio_mode", (uint8_t)AUDIO_MODE_MIC);
     if (mode > (uint8_t)AUDIO_MODE_CLOCK) mode = (uint8_t)AUDIO_MODE_MIC;
     const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : "MIC");
-    Serial.printf("[NVS] Loaded audio_mode: %d (%s)\n", (int)mode, name);
+    LOG_D("NVS", "Loaded audio_mode: %d (%s)", (int)mode, name);
     return (AudioMode)mode;
 }
 
 void nvs_save_bt_mac(const uint8_t mac[6]) {
     s_prefs.putBytes("bt_mac", mac, 6);
-    Serial.printf("[NVS] Saved BT MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    LOG_D("NVS", "Saved BT MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 bool nvs_load_bt_mac(uint8_t mac[6]) {
@@ -38,18 +39,18 @@ bool nvs_load_bt_mac(uint8_t mac[6]) {
             if (mac[i] != 0 && mac[i] != 0xFF) valid = true;
         }
         if (valid) {
-            Serial.printf("[NVS] Loaded BT MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            LOG_D("NVS", "Loaded BT MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
             return true;
         }
     }
-    Serial.println("[NVS] No valid saved BT MAC found");
+    LOG_D("NVS", "No valid saved BT MAC found");
     return false;
 }
 
 void nvs_erase_bt_mac() {
     s_prefs.remove("bt_mac");
-    Serial.println("[NVS] Erased BT MAC from storage");
+    LOG_I("NVS", "Erased BT MAC from storage");
 }
 
 void nvs_save_volume(uint8_t volume) {

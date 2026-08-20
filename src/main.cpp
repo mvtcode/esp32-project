@@ -7,6 +7,8 @@
 #include "nvs_storage.h"
 #include "bt_audio.h"
 #include "wifi_app.h"
+#include "beat_detector.h"
+#include "log.h"
 
 /**
  * ESP32-WROOM — Dual-channel Sound Visualizer V2
@@ -53,18 +55,21 @@ static void mic_task(void * /*arg*/) {
 static void switch_audio_mode(AudioMode target_mode) {
     if (target_mode == s_current_mode) return;
 
-    Serial.printf("[Switch] Transitioning %s -> %s...\n",
+    LOG_I("Switch", "Transitioning %s -> %s...",
                   s_current_mode == AUDIO_MODE_BT ? "BT" : (s_current_mode == AUDIO_MODE_CLOCK ? "CLOCK" : "MIC"),
                   target_mode == AUDIO_MODE_BT ? "BT" : (target_mode == AUDIO_MODE_CLOCK ? "CLOCK" : "MIC"));
 
     if (target_mode == AUDIO_MODE_BT) {
         // 1. Suspend mic task and deinit I2S mic
         s_mic_task_active = false;
-        delay(40);
+        // Wait 150ms: mic_task's i2s_read() has a 100ms timeout, so 150ms guarantees it has
+        // returned and the task is idle before we call i2s_mic_deinit() on the same driver.
+        delay(150);
         i2s_mic_deinit();
 
-        // 2. Clear audio queue
+        // 2. Clear audio queue + reset beat detector
         if (s_audio_queue) xQueueReset(s_audio_queue);
+        beat_detector_reset();
 
         // 3. Stop WiFi completely -> 100% 2.4GHz RF dedicated to BT Classic
         wifi_app_stop();
@@ -85,11 +90,12 @@ static void switch_audio_mode(AudioMode target_mode) {
 
         // 2. Suspend mic task and deinit I2S mic
         s_mic_task_active = false;
-        delay(40);
+        delay(150);  // Cover 100ms i2s_read() timeout + margin
         i2s_mic_deinit();
 
-        // 3. Clear audio queue
+        // 3. Clear audio queue + reset beat detector
         if (s_audio_queue) xQueueReset(s_audio_queue);
+        beat_detector_reset();
 
         // 4. Start WiFi for NTP clock & weather
         wifi_app_init();
@@ -108,14 +114,15 @@ static void switch_audio_mode(AudioMode target_mode) {
         // 2. Stop WiFi completely (no background web/OTA/NTP)
         wifi_app_stop();
 
-        // 3. Clear audio queue
+        // 3. Clear audio queue + reset beat detector
         if (s_audio_queue) xQueueReset(s_audio_queue);
+        beat_detector_reset();
 
         // 4. Re-init I2S mic and resume mic task
         if (i2s_mic_init()) {
             s_mic_task_active = true;
         } else {
-            Serial.println("[WARN] Mic re-init failed (no hardware attached?)");
+            LOG_W("Switch", "Mic re-init failed (no hardware attached?)");
         }
         display_set_audio_mode(AUDIO_MODE_MIC, false, false);
 
@@ -150,7 +157,7 @@ void setup() {
     // 4. Audio queue create
     s_audio_queue = xQueueCreate(4, sizeof(AudioFrame));
     if (!s_audio_queue) {
-        Serial.println("[FATAL] Audio queue creation failed (OOM)");
+        LOG_E("Boot", "Audio queue creation failed (OOM)");
         display_error("QUEUE FAIL");
         while (true) { delay(1000); }
     }
@@ -158,7 +165,10 @@ void setup() {
     // 5. Bluetooth audio subsystem init
     bt_audio_init(s_audio_queue);
 
-    // 6. Restore and start ONLY the selected Audio Mode
+    // 6. Beat detector init
+    beat_detector_init();
+
+    // 7. Restore and start ONLY the selected Audio Mode
     s_current_mode = nvs_load_audio_mode();
     if (s_current_mode == AUDIO_MODE_BT) {
         s_mic_task_active = false;
@@ -182,7 +192,7 @@ void setup() {
         if (i2s_mic_init()) {
             s_mic_task_active = true;
         } else {
-            Serial.println("[WARN] I2S mic init failed. Continuing (fault-tolerant).");
+            LOG_W("Boot", "I2S mic init failed. Continuing (fault-tolerant).");
         }
         display_toast("MODE: MICROPHONE");
     }
@@ -192,7 +202,7 @@ void setup() {
         mic_task, "mic_task", 4096, nullptr, 2, nullptr, 0
     );
 
-    Serial.println("[boot] Setup completed successfully");
+    LOG_I("Boot", "Setup completed successfully");
 }
 
 // -----------------------------------------------------------------------
@@ -210,13 +220,13 @@ void loop() {
     if (button_pressed(BTN_PLUS)) {
         display_next_mode();
         nvs_save_display_mode((uint8_t)display_get_mode());
-        Serial.printf("[BTN] PLUS pressed -> Mode: %d\n", (int)display_get_mode());
+        LOG_D("BTN", "PLUS pressed -> Mode: %d", (int)display_get_mode());
     }
     if (button_long_pressed(BTN_PLUS)) {
         bool auto_cycle = !display_get_auto_cycle();
         display_set_auto_cycle(auto_cycle);
         nvs_save_auto_cycle(auto_cycle);
-        Serial.printf("[Mode] Auto-cycle %s\n", auto_cycle ? "ON" : "OFF");
+        LOG_D("Mode", "Auto-cycle %s", auto_cycle ? "ON" : "OFF");
     }
 
     // Button PUSH (GPIO 4) -> Cycle Mode: MIC -> BT -> CLOCK -> MIC
@@ -244,13 +254,13 @@ void loop() {
     // - In CLOCK Mode: Press -> Launch WiFi Config Portal AP Mode
     if (s_current_mode == AUDIO_MODE_BT) {
         if (button_long_pressed(BTN_BOOT)) {
-            Serial.println("[BTN] BT Mode: BOOT long pressed -> BT Re-pairing requested");
+            LOG_I("BTN", "BT Mode: BOOT long pressed -> BT Re-pairing requested");
             bt_audio_start_repairing();
             display_toast("BT RE-PAIRING...");
         }
     } else if (s_current_mode == AUDIO_MODE_CLOCK) {
         if (button_pressed(BTN_BOOT) || button_long_pressed(BTN_BOOT)) {
-            Serial.println("[BTN] CLOCK Mode: BOOT pressed -> Launching WiFi Web Setup AP...");
+            LOG_I("BTN", "CLOCK Mode: BOOT pressed -> Launching WiFi Web Setup AP...");
             wifi_app_start_ap_portal();
         }
     }
@@ -261,7 +271,7 @@ void loop() {
         if (enc_delta != 0) {
             bt_audio_adjust_volume(enc_delta);
             display_show_volume(bt_audio_get_volume());
-            Serial.printf("[ENC] Volume adjust: %d%%\n", (int)((float)bt_audio_get_volume() * 100.0f / 127.0f));
+            LOG_D("ENC", "Volume adjust: %d%%", (int)((float)bt_audio_get_volume() * 100.0f / 127.0f));
         }
     }
 
@@ -300,8 +310,8 @@ void loop() {
     // --- FPS report every 5 seconds ---
     uint32_t now = millis();
     if (now - fps_ts >= 5000) {
-        Serial.printf("[STATUS] Mode: %s | FPS: %.1f | Effect: %d | WiFi: %s\n",
-                      s_current_mode == AUDIO_MODE_BT ? "BT" : "MIC",
+        LOG_I("STATUS", "Mode: %s | FPS: %.1f | Effect: %d | WiFi: %s",
+                      s_current_mode == AUDIO_MODE_BT ? "BT" : (s_current_mode == AUDIO_MODE_CLOCK ? "CLOCK" : "MIC"),
                       (float)fps_cnt * 1000.0f / (float)(now - fps_ts),
                       (int)display_get_mode(),
                       wifi_app_is_connected() ? "ON" : "OFF");

@@ -2,6 +2,8 @@
 #include "effects/effects.h"
 #include "wifi_app.h"
 #include "lunar_calendar.h"
+#include "log.h"
+#include "beat_detector.h"
 #include <WiFi.h>
 
 // -----------------------------------------------------------------------
@@ -91,7 +93,7 @@ void display_init() {
     u8g2.drawStr(28, 56, "initialising...");
     u8g2.sendBuffer();
 
-    Serial.printf("[OLED] Init OK — HW_I2C %d kHz, %d modes\n", I2C_CLOCK / 1000, MODE_COUNT);
+    LOG_I("OLED", "Init OK - HW_I2C %d kHz, %d modes", I2C_CLOCK / 1000, MODE_COUNT);
 }
 
 void display_error(const char *msg) {
@@ -171,7 +173,7 @@ void display_set_mode(DisplayMode m, bool show_label) {
     s_label_ts  = show_label ? millis() : 0;         // 3. show mode label conditionally
     s_last_cycle_ts = millis();                      // 4. reset auto-cycle timer on ANY mode switch
     s_switching = false;
-    Serial.printf("[Mode] » %s\n", EFFECTS[m].name);
+    LOG_D("Mode", "» %s", EFFECTS[m].name);
 }
 
 void display_next_mode(bool show_label) {
@@ -531,6 +533,7 @@ void display_draw_waveform(const int32_t *left, const int32_t *right, size_t n) 
 
     update_agc(left, right, n);
     audio_compute_bands(left, right, n, g_frame_bands); // pre-compute once per frame
+    beat_detector_update(g_frame_bands);                // update BPM & beat state
 
     u8g2.clearBuffer();
 
@@ -538,6 +541,20 @@ void display_draw_waveform(const int32_t *left, const int32_t *right, size_t n) 
         EFFECTS[s_mode].render(left, right, n);
     }
     draw_mode_label();
+
+    // Beat flash overlay: invert a thin border for EXACTLY 1 frame when beat fires.
+    // s_beat_flashed guards against g_beat.beat_now staying true across multiple frames,
+    // which would cause persistent rectangles around the screen corners.
+    static bool s_beat_flashed = false;
+    if (g_beat.beat_now && !s_beat_flashed && s_mode != MODE_BEAT_METER && g_beat.confidence > 0.5f) {
+        u8g2.setDrawColor(2); // XOR mode — inverts pixels
+        u8g2.drawFrame(0, 0, SCREEN_W, SCREEN_H);
+        u8g2.drawFrame(1, 1, SCREEN_W - 2, SCREEN_H - 2);
+        u8g2.setDrawColor(1); // restore normal mode
+        s_beat_flashed = true;
+    } else if (!g_beat.beat_now) {
+        s_beat_flashed = false; // reset when beat ends, ready for next beat
+    }
 
     // Volume popup overlay (takes priority when active)
     if (s_volume_ts > 0 && now - s_volume_ts < s_volume_dur) {

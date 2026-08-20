@@ -101,7 +101,10 @@ enum DisplayMode {
     MODE_PLASMA_BALL  = 62, // Magic Plasma Ball: Core electrode & twisting electric arcs discharging to glass sphere
     MODE_ZIGZAG_STAGE = 63, // EDM Zigzag Stage: Multi-tier chevron stage LED arrays with chasing strobe pulses
     MODE_CAT          = 64, // Cyber Neko Cat: Stereo ear twitches, waveform talking mouth & wagging tail
-    MODE_COUNT        = 65
+    MODE_BEAT_METER   = 65, // Beat Meter: Realtime BPM detector + 3-band energy bars + pulse ring
+    MODE_OSCILLOSCOPE = 66, // Oscilloscope: Triggered dual-channel waveform with graticule grid
+    MODE_CHROMATIC_TUNER = 67, // Chromatic Tuner: Autocorrelation pitch detection + note/cents display
+    MODE_COUNT        = 68
 };
 
 #include "nvs_storage.h"

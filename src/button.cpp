@@ -1,4 +1,5 @@
 #include "button.h"
+#include "log.h"
 
 struct ButtonState {
     uint8_t  gpio;
@@ -28,7 +29,7 @@ void buttons_init() {
         s_buttons[i].down_ts = 0;
         s_buttons[i].release_ts = 0;
     }
-    Serial.printf("[BTN] Multi-buttons initialized (PUSH: GPIO%d, BACK: GPIO%d, PLUS: GPIO%d, BOOT: GPIO%d)\n",
+    LOG_I("BTN", "Multi-buttons initialized (PUSH:GPIO%d BACK:GPIO%d PLUS:GPIO%d BOOT:GPIO%d)",
                   PIN_BTN_PUSH, PIN_BTN_BACK, PIN_BTN_PLUS, PIN_BTN_BOOT);
 }
 

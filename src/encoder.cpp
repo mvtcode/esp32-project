@@ -1,4 +1,5 @@
 #include "encoder.h"
+#include "log.h"
 
 static volatile int32_t s_encoder_delta = 0;
 static volatile uint8_t s_prev_state = 0;
@@ -41,8 +42,7 @@ void encoder_init() {
 
     attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_CLK), encoder_isr, CHANGE);
     attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_DT), encoder_isr, CHANGE);
-    Serial.printf("[ENC] EC11 Rotary Encoder initialized on CLK: GPIO%d, DT: GPIO%d\n",
-                  ENCODER_PIN_CLK, ENCODER_PIN_DT);
+    LOG_I("ENC", "EC11 initialized on CLK: GPIO%d, DT: GPIO%d", ENCODER_PIN_CLK, ENCODER_PIN_DT);
 }
 
 void encoder_set_enabled(bool enabled) {
@@ -52,7 +52,7 @@ void encoder_set_enabled(bool enabled) {
         s_encoder_delta = 0;
         portEXIT_CRITICAL(&s_encoder_mux);
     }
-    Serial.printf("[ENC] Rotary encoder %s\n", enabled ? "ENABLED" : "DISABLED");
+    LOG_I("ENC", "Rotary encoder %s", enabled ? "ENABLED" : "DISABLED");
 }
 
 bool encoder_is_enabled() {

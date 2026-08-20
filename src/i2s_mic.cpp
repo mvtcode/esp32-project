@@ -1,5 +1,6 @@
 #include "i2s_mic.h"
 #include "driver/i2s.h"     // Legacy I2S API — available in Arduino-ESP32 v2.x & v3.x
+#include "log.h"
 
 static const i2s_port_t PORT = (i2s_port_t)I2S_MIC_PORT;
 
@@ -61,7 +62,7 @@ bool i2s_mic_init() {
 
     esp_err_t err = i2s_driver_install(PORT, &cfg, 0, NULL);
     if (err != ESP_OK) {
-        Serial.printf("[I2S] driver_install failed: %s\n", esp_err_to_name(err));
+        LOG_E("I2S", "driver_install failed: %s", esp_err_to_name(err));
         return false;
     }
 
@@ -75,15 +76,15 @@ bool i2s_mic_init() {
 
     err = i2s_set_pin(PORT, &pins);
     if (err != ESP_OK) {
-        Serial.printf("[I2S] set_pin failed: %s\n", esp_err_to_name(err));
+        LOG_E("I2S", "set_pin failed: %s", esp_err_to_name(err));
         i2s_driver_uninstall(PORT);
         s_i2s_initialized = false;
         return false;
     }
 
     s_i2s_initialized = true;
-    Serial.printf("[I2S] OK — %d Hz, 16-bit stereo | SCK=GPIO%d  WS=GPIO%d  SD=GPIO%d | Gain=%.1fx Gate=%d\n",
-                  SAMPLE_RATE, I2S_PIN_SCK, I2S_PIN_WS, I2S_PIN_SD, s_gain, s_noise_gate);
+    LOG_I("I2S", "OK - %d Hz | SCK=GPIO%d WS=GPIO%d SD=GPIO%d | Gain=%.1fx Gate=%d",
+          SAMPLE_RATE, I2S_PIN_SCK, I2S_PIN_WS, I2S_PIN_SD, s_gain, s_noise_gate);
     return true;
 }
 
@@ -95,7 +96,7 @@ bool i2s_mic_deinit() {
     s_i2s_initialized = false;
     esp_err_t err = i2s_driver_uninstall(PORT);
     if (err == ESP_OK) {
-        Serial.println("[I2S] Mic driver uninstalled");
+        LOG_I("I2S", "Mic driver uninstalled");
         return true;
     }
     return false;

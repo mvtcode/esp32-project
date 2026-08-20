@@ -133,6 +133,12 @@ const VisualEffect EFFECTS[MODE_COUNT] = {
     // Mode 63: ZIGZAG_STAGE
     { "LED ZIGZAG",      effect_zigzag_stage_render, effect_zigzag_stage_on_enter, effect_zigzag_stage_on_exit },
     // Mode 64: CAT
-    { "CYBER NEKO",      effect_cat_render,          effect_cat_on_enter,          effect_cat_on_exit }
+    { "CYBER NEKO",      effect_cat_render,               effect_cat_on_enter,               effect_cat_on_exit },
+    // Mode 65: BEAT_METER
+    { "BEAT METER",      effect_beat_meter_render,         effect_beat_meter_on_enter,         effect_beat_meter_on_exit },
+    // Mode 66: OSCILLOSCOPE
+    { "OSCILLOSCOPE",    effect_oscilloscope_render,       effect_oscilloscope_on_enter,       effect_oscilloscope_on_exit },
+    // Mode 67: CHROMATIC TUNER
+    { "CHROMA TUNER",    effect_chromatic_tuner_render,    effect_chromatic_tuner_on_enter,    effect_chromatic_tuner_on_exit }
 };
 

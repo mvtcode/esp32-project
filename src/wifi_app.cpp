@@ -26,6 +26,7 @@ static uint32_t       s_connect_start_ts = 0;
 static bool           s_wifi_connected = false;
 static WeatherData    s_cached_weather = { 28.5f, 65, "Partly Cloudy", true };
 static TaskHandle_t   s_weather_task_handle = nullptr;
+static volatile bool  s_weather_task_exit   = false;
 
 // Persistent Config
 static char           s_config_ssid[64] = "";
@@ -549,9 +550,11 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 )rawliteral";
 
 // FreeRTOS Weather Task on Core 0
+// Uses exit flag so it can finish current HTTP request cleanly before dying,
+// preventing TCP socket leak when wifi_app_stop() is called mid-fetch.
 static void weather_task(void *pv) {
     vTaskDelay(pdMS_TO_TICKS(3000));
-    while (true) {
+    while (!s_weather_task_exit) {
         if (WiFi.status() == WL_CONNECTED) {
             char url[160];
             snprintf(url, sizeof(url),
@@ -563,9 +566,9 @@ static void weather_task(void *pv) {
             client.setInsecure();
             HTTPClient http;
             http.begin(client, url);
-            http.setTimeout(5000);
+            http.setTimeout(5000);  // 5s timeout — task checks exit flag after this returns
             int code = http.GET();
-            if (code == 200) {
+            if (!s_weather_task_exit && code == 200) {
                 String payload = http.getString();
                 JsonDocument doc;
                 DeserializationError err = deserializeJson(doc, payload);
@@ -575,13 +578,20 @@ static void weather_task(void *pv) {
                     s_cached_weather.valid = true;
                     Serial.printf("[Weather Task] Updated: %.1f C, %d%% Hum\n", s_cached_weather.temp_c, s_cached_weather.humidity);
                 }
-            } else {
+            } else if (code != 200) {
                 Serial.printf("[Weather Task] HTTP failed: %d\n", code);
             }
-            http.end();
+            http.end();  // Always close connection to free socket
         }
-        vTaskDelay(pdMS_TO_TICKS(600000)); // 10 minutes
+
+        // Sleep in short intervals to check exit flag quickly (100ms slices × 6000 = 10 min)
+        for (int i = 0; i < 6000 && !s_weather_task_exit; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
     }
+    // Clean self-delete
+    s_weather_task_handle = nullptr;
+    vTaskDelete(NULL);
 }
 
 static void load_stored_config() {
@@ -773,6 +783,7 @@ void wifi_app_init() {
     configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
 
     // Spawn Core 0 Weather background task
+    s_weather_task_exit = false;  // Ensure flag is clear before spawning
     if (!s_weather_task_handle) {
         xTaskCreatePinnedToCore(weather_task, "weather_task", 6144, nullptr, 1, &s_weather_task_handle, 0);
     }
@@ -799,9 +810,21 @@ void wifi_app_start_ap_portal() {
 void wifi_app_stop() {
     s_dns_server.stop();
 
+    // Signal weather_task to exit cleanly (it will finish current HTTP call, close socket, then self-delete)
     if (s_weather_task_handle) {
-        vTaskDelete(s_weather_task_handle);
-        s_weather_task_handle = nullptr;
+        s_weather_task_exit = true;
+        // Give it up to 6s to finish any ongoing HTTP request (timeout is 5s)
+        uint32_t wait_start = millis();
+        while (s_weather_task_handle && (millis() - wait_start < 6000)) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        // If still running after 6s (shouldn't happen), force kill as last resort
+        if (s_weather_task_handle) {
+            Serial.println("[WiFi] Weather task did not exit in time — force killing");
+            vTaskDelete(s_weather_task_handle);
+            s_weather_task_handle = nullptr;
+        }
+        s_weather_task_exit = false;  // Reset for potential re-init
     }
 
     if (s_wifi_state != WIFI_STATE_IDLE || WiFi.getMode() != WIFI_OFF) {
