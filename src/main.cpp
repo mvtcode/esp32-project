@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WiFi.h>
 #include "i2s_mic.h"
 #include "display.h"
 #include "button.h"
@@ -46,44 +47,77 @@ static void mic_task(void * /*arg*/) {
 }
 
 // -----------------------------------------------------------------------
+// -----------------------------------------------------------------------
 // Graceful Audio Mode Switcher
 // -----------------------------------------------------------------------
 static void switch_audio_mode(AudioMode target_mode) {
     if (target_mode == s_current_mode) return;
 
     Serial.printf("[Switch] Transitioning %s -> %s...\n",
-                  s_current_mode == AUDIO_MODE_BT ? "BT" : "MIC",
-                  target_mode == AUDIO_MODE_BT ? "BT" : "MIC");
+                  s_current_mode == AUDIO_MODE_BT ? "BT" : (s_current_mode == AUDIO_MODE_CLOCK ? "CLOCK" : "MIC"),
+                  target_mode == AUDIO_MODE_BT ? "BT" : (target_mode == AUDIO_MODE_CLOCK ? "CLOCK" : "MIC"));
 
     if (target_mode == AUDIO_MODE_BT) {
         // 1. Suspend mic task and deinit I2S mic
         s_mic_task_active = false;
-        delay(60);
+        delay(40);
         i2s_mic_deinit();
 
         // 2. Clear audio queue
         if (s_audio_queue) xQueueReset(s_audio_queue);
 
-        // 3. Start Bluetooth A2DP Sink
+        // 3. Stop WiFi completely -> 100% 2.4GHz RF dedicated to BT Classic
+        wifi_app_stop();
+
+        // 4. Start Bluetooth A2DP Sink & Enable Rotary Encoder
         bt_audio_start();
+        encoder_set_enabled(true);
+        display_set_audio_mode(AUDIO_MODE_BT, bt_audio_is_connected(), false);
 
         s_current_mode = AUDIO_MODE_BT;
         nvs_save_audio_mode(AUDIO_MODE_BT);
         display_toast("MODE: BLUETOOTH");
-    } else {
-        // 1. Stop Bluetooth A2DP Sink
+    } 
+    else if (target_mode == AUDIO_MODE_CLOCK) {
+        // 1. Stop Bluetooth A2DP Sink & Disable Rotary Encoder
+        encoder_set_enabled(false);
         bt_audio_stop();
-        delay(60);
 
-        // 2. Clear audio queue
+        // 2. Suspend mic task and deinit I2S mic
+        s_mic_task_active = false;
+        delay(40);
+        i2s_mic_deinit();
+
+        // 3. Clear audio queue
         if (s_audio_queue) xQueueReset(s_audio_queue);
 
-        // 3. Re-init I2S mic and resume mic task
+        // 4. Start WiFi for NTP clock & weather
+        wifi_app_init();
+
+        display_set_audio_mode(AUDIO_MODE_CLOCK, false, false);
+
+        s_current_mode = AUDIO_MODE_CLOCK;
+        nvs_save_audio_mode(AUDIO_MODE_CLOCK);
+        display_toast("MODE: CLOCK & WEATHER");
+    }
+    else { // AUDIO_MODE_MIC
+        // 1. Stop Bluetooth A2DP Sink & Disable Rotary Encoder
+        encoder_set_enabled(false);
+        bt_audio_stop();
+
+        // 2. Stop WiFi completely (no background web/OTA/NTP)
+        wifi_app_stop();
+
+        // 3. Clear audio queue
+        if (s_audio_queue) xQueueReset(s_audio_queue);
+
+        // 4. Re-init I2S mic and resume mic task
         if (i2s_mic_init()) {
             s_mic_task_active = true;
         } else {
             Serial.println("[WARN] Mic re-init failed (no hardware attached?)");
         }
+        display_set_audio_mode(AUDIO_MODE_MIC, false, false);
 
         s_current_mode = AUDIO_MODE_MIC;
         nvs_save_audio_mode(AUDIO_MODE_MIC);
@@ -124,16 +158,27 @@ void setup() {
     // 5. Bluetooth audio subsystem init
     bt_audio_init(s_audio_queue);
 
-    // 6. WiFi & OTA subsystem init (fault-tolerant, auto-timeout)
-    wifi_app_init();
-
-    // 7. Restore and start selected Audio Mode
+    // 6. Restore and start ONLY the selected Audio Mode
     s_current_mode = nvs_load_audio_mode();
     if (s_current_mode == AUDIO_MODE_BT) {
         s_mic_task_active = false;
+        wifi_app_stop();
         bt_audio_start();
+        encoder_set_enabled(true);
+        display_set_audio_mode(AUDIO_MODE_BT, false, false);
         display_toast("MODE: BLUETOOTH");
+    } else if (s_current_mode == AUDIO_MODE_CLOCK) {
+        s_mic_task_active = false;
+        encoder_set_enabled(false);
+        bt_audio_stop();
+        wifi_app_init();
+        display_set_audio_mode(AUDIO_MODE_CLOCK, false, false);
+        display_toast("MODE: CLOCK & WEATHER");
     } else {
+        encoder_set_enabled(false);
+        bt_audio_stop();
+        wifi_app_stop();
+        display_set_audio_mode(AUDIO_MODE_MIC, false, false);
         if (i2s_mic_init()) {
             s_mic_task_active = true;
         } else {
@@ -142,7 +187,7 @@ void setup() {
         display_toast("MODE: MICROPHONE");
     }
 
-    // 8. Create Mic task on Core 0 AFTER mode is configured & I2S initialized
+    // 7. Create Mic task on Core 0 AFTER mode is configured
     xTaskCreatePinnedToCore(
         mic_task, "mic_task", 4096, nullptr, 2, nullptr, 0
     );
@@ -174,9 +219,12 @@ void loop() {
         Serial.printf("[Mode] Auto-cycle %s\n", auto_cycle ? "ON" : "OFF");
     }
 
-    // Button PUSH (GPIO 4) -> Switch Mode MIC <-> BT
+    // Button PUSH (GPIO 4) -> Cycle Mode: MIC -> BT -> CLOCK -> MIC
     if (button_pressed(BTN_PUSH)) {
-        AudioMode next_mode = (s_current_mode == AUDIO_MODE_MIC) ? AUDIO_MODE_BT : AUDIO_MODE_MIC;
+        AudioMode next_mode;
+        if (s_current_mode == AUDIO_MODE_MIC) next_mode = AUDIO_MODE_BT;
+        else if (s_current_mode == AUDIO_MODE_BT) next_mode = AUDIO_MODE_CLOCK;
+        else next_mode = AUDIO_MODE_MIC;
         switch_audio_mode(next_mode);
     }
 
@@ -184,39 +232,50 @@ void loop() {
     if (button_pressed(BTN_BACK)) {
         if (s_current_mode == AUDIO_MODE_BT) {
             bt_audio_play_pause();
+        } else if (s_current_mode == AUDIO_MODE_CLOCK) {
+            display_toast("CLOCK MODE");
         } else {
-            display_toast("MIC MODE ACTIVE");
+            display_toast("MIC MODE");
         }
     }
 
-    // Button BOOT (GPIO 0) -> Short: WiFi reset / Long (>3s): BT re-pairing
-    if (button_pressed(BTN_BOOT)) {
-        Serial.println("[BTN] BOOT short pressed -> Resetting WiFi...");
-        wifi_app_reset_settings();
-    }
-    if (button_long_pressed(BTN_BOOT)) {
-        Serial.println("[BTN] BOOT long pressed -> BT Re-pairing requested");
-        bt_audio_start_repairing();
-        display_toast("BT RE-PAIRING...");
+    // Button BOOT (GPIO 0) -> Mode-dependent actions:
+    // - In BT Mode: Long press (>1s) -> BT Re-pairing
+    // - In CLOCK Mode: Press -> Launch WiFi Config Portal AP Mode
+    if (s_current_mode == AUDIO_MODE_BT) {
+        if (button_long_pressed(BTN_BOOT)) {
+            Serial.println("[BTN] BT Mode: BOOT long pressed -> BT Re-pairing requested");
+            bt_audio_start_repairing();
+            display_toast("BT RE-PAIRING...");
+        }
+    } else if (s_current_mode == AUDIO_MODE_CLOCK) {
+        if (button_pressed(BTN_BOOT) || button_long_pressed(BTN_BOOT)) {
+            Serial.println("[BTN] CLOCK Mode: BOOT pressed -> Launching WiFi Web Setup AP...");
+            wifi_app_start_ap_portal();
+        }
     }
 
-    // Rotary Encoder rotation -> Volume change & sync
-    int32_t enc_delta = encoder_get_delta();
-    if (enc_delta != 0) {
-        bt_audio_adjust_volume(enc_delta);
-        display_show_volume(bt_audio_get_volume());
-        Serial.printf("[ENC] Volume adjust: %d%%\n", (int)((float)bt_audio_get_volume() * 100.0f / 127.0f));
+    // Rotary Encoder rotation -> Volume change & sync ONLY in Bluetooth mode
+    if (s_current_mode == AUDIO_MODE_BT) {
+        int32_t enc_delta = encoder_get_delta();
+        if (enc_delta != 0) {
+            bt_audio_adjust_volume(enc_delta);
+            display_show_volume(bt_audio_get_volume());
+            Serial.printf("[ENC] Volume adjust: %d%%\n", (int)((float)bt_audio_get_volume() * 100.0f / 127.0f));
+        }
     }
 
     // Update display audio status
     display_set_audio_mode(
-        s_current_mode == AUDIO_MODE_BT,
+        s_current_mode,
         bt_audio_is_connected(),
         bt_audio_is_playing()
     );
 
-    // --- WiFi & OTA background loop (suspended while streaming BT for audio smoothness) ---
-    wifi_app_loop(s_current_mode == AUDIO_MODE_BT && bt_audio_is_playing());
+    // --- WiFi & OTA background loop (ONLY run when in CLOCK mode) ---
+    if (s_current_mode == AUDIO_MODE_CLOCK) {
+        wifi_app_loop(false);
+    }
 
     // --- Render: dequeue audio frame (or generate silence if idle/BT standby) and draw ---
     static uint32_t last_render_ts = 0;

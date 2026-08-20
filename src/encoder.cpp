@@ -2,6 +2,7 @@
 
 static volatile int32_t s_encoder_delta = 0;
 static volatile uint8_t s_prev_state = 0;
+static volatile bool    s_encoder_enabled = true;
 static portMUX_TYPE s_encoder_mux = portMUX_INITIALIZER_UNLOCKED;
 
 // State transition lookup table for quadrature decoding
@@ -13,6 +14,8 @@ static const int8_t ENC_STATES[] = {
 };
 
 static void IRAM_ATTR encoder_isr() {
+    if (!s_encoder_enabled) return;
+
     uint8_t a = digitalRead(ENCODER_PIN_CLK);
     uint8_t b = digitalRead(ENCODER_PIN_DT);
     uint8_t curr = (a << 1) | b;
@@ -42,7 +45,23 @@ void encoder_init() {
                   ENCODER_PIN_CLK, ENCODER_PIN_DT);
 }
 
+void encoder_set_enabled(bool enabled) {
+    s_encoder_enabled = enabled;
+    if (!enabled) {
+        portENTER_CRITICAL(&s_encoder_mux);
+        s_encoder_delta = 0;
+        portEXIT_CRITICAL(&s_encoder_mux);
+    }
+    Serial.printf("[ENC] Rotary encoder %s\n", enabled ? "ENABLED" : "DISABLED");
+}
+
+bool encoder_is_enabled() {
+    return s_encoder_enabled;
+}
+
 int32_t encoder_get_delta() {
+    if (!s_encoder_enabled) return 0;
+
     portENTER_CRITICAL(&s_encoder_mux);
     int32_t raw = s_encoder_delta;
     // Standard EC11 detent has 2 transitions per notch

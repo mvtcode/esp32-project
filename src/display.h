@@ -101,9 +101,10 @@ enum DisplayMode {
     MODE_PLASMA_BALL  = 62, // Magic Plasma Ball: Core electrode & twisting electric arcs discharging to glass sphere
     MODE_ZIGZAG_STAGE = 63, // EDM Zigzag Stage: Multi-tier chevron stage LED arrays with chasing strobe pulses
     MODE_CAT          = 64, // Cyber Neko Cat: Stereo ear twitches, waveform talking mouth & wagging tail
-    MODE_CLOCK        = 65, // NTP Clock & Weather: Big Digital Clock, Weather info & live bottom VU
-    MODE_COUNT        = 66
+    MODE_COUNT        = 65
 };
+
+#include "nvs_storage.h"
 
 // -----------------------------------------------------------------------
 // API
@@ -146,8 +147,11 @@ void display_toast(const char *msg, uint32_t duration_ms = 2000);
 /** Show a temporary volume popup bar (0-127). */
 void display_show_volume(uint8_t volume, uint32_t duration_ms = 2000);
 
-/** Set the active audio source mode (for status indicator). */
-void display_set_audio_mode(bool is_bt, bool is_connected = false, bool is_playing = false);
+/** Set the active system audio mode (MIC, BT, CLOCK). */
+void display_set_audio_mode(AudioMode mode, bool is_connected = false, bool is_playing = false);
+
+/** Set display contrast/brightness (10 - 100%). */
+void display_set_brightness(uint8_t percent);
 
 #endif // DISPLAY_H
 

@@ -11,13 +11,15 @@ void nvs_storage_init() {
 
 void nvs_save_audio_mode(AudioMode mode) {
     s_prefs.putUChar("audio_mode", (uint8_t)mode);
-    Serial.printf("[NVS] Saved audio_mode: %d (%s)\n", (int)mode, mode == AUDIO_MODE_BT ? "BT" : "MIC");
+    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : "MIC");
+    Serial.printf("[NVS] Saved audio_mode: %d (%s)\n", (int)mode, name);
 }
 
 AudioMode nvs_load_audio_mode() {
     uint8_t mode = s_prefs.getUChar("audio_mode", (uint8_t)AUDIO_MODE_MIC);
-    if (mode > AUDIO_MODE_BT) mode = (uint8_t)AUDIO_MODE_MIC;
-    Serial.printf("[NVS] Loaded audio_mode: %d (%s)\n", (int)mode, mode == AUDIO_MODE_BT ? "BT" : "MIC");
+    if (mode > (uint8_t)AUDIO_MODE_CLOCK) mode = (uint8_t)AUDIO_MODE_MIC;
+    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : "MIC");
+    Serial.printf("[NVS] Loaded audio_mode: %d (%s)\n", (int)mode, name);
     return (AudioMode)mode;
 }
 

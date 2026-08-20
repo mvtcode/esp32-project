@@ -10,6 +10,12 @@
 void encoder_init();
 
 /**
+ * @brief Enable or disable rotary encoder hardware decoding.
+ */
+void encoder_set_enabled(bool enabled);
+bool encoder_is_enabled();
+
+/**
  * @brief Get the accumulated rotation delta (+steps or -steps) and reset to 0.
  * @return Signed change in volume/encoder position.
  */

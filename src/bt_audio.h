@@ -1,9 +1,15 @@
 #pragma once
 #include <Arduino.h>
-#include "BluetoothA2DPSink.h"
-#include "i2s_mic.h"    // for FRAME_SIZE
+#include "esp_bt.h"
+#include "esp_bt_main.h"
+#include "esp_bt_device.h"
+#include "esp_gap_bt_api.h"
+#include "esp_a2dp_api.h"
+#include "esp_avrc_api.h"
+#include "driver/i2s.h"
+#include "i2s_mic.h"    // for FRAME_SIZE and AudioFrame
 
-#define BT_DEVICE_NAME "MVT VU METER V2"
+#define BT_DEVICE_NAME "MVT-Audio-Player"
 
 // DAC PCM5102A Pin assignments
 #define DAC_PIN_BCK     18
@@ -11,7 +17,7 @@
 #define DAC_PIN_DIN     23
 
 /**
- * @brief Initialize Bluetooth A2DP Sink & AVRCP.
+ * @brief Initialize Bluetooth Audio subsystem.
  * @param audio_queue Queue to pass decoded PCM frames to visualizer
  */
 void bt_audio_init(QueueHandle_t audio_queue);

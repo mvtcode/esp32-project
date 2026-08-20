@@ -15,7 +15,7 @@ static ButtonState s_buttons[BTN_COUNT] = {
     { PIN_BTN_PUSH, 1000, false, false, false, false, 0, 0 },
     { PIN_BTN_BACK, 1000, false, false, false, false, 0, 0 },
     { PIN_BTN_PLUS, 1000, false, false, false, false, 0, 0 },
-    { PIN_BTN_BOOT, 3000, false, false, false, false, 0, 0 }  // BOOT requires >3s for long press
+    { PIN_BTN_BOOT, 1000, false, false, false, false, 0, 0 }  // BOOT long press is 1s
 };
 
 void buttons_init() {
