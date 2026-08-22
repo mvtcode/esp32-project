@@ -12,14 +12,14 @@ void nvs_storage_init() {
 
 void nvs_save_audio_mode(AudioMode mode) {
     s_prefs.putUChar("audio_mode", (uint8_t)mode);
-    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : ((mode == AUDIO_MODE_SD_MP3) ? "MP3" : "MIC"));
+    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : ((mode == AUDIO_MODE_SD_MP3) ? "MP3" : ((mode == AUDIO_MODE_GAME) ? "GAME" : "MIC")));
     LOG_D("NVS", "Saved audio_mode: %d (%s)", (int)mode, name);
 }
 
 AudioMode nvs_load_audio_mode() {
     uint8_t mode = s_prefs.getUChar("audio_mode", (uint8_t)AUDIO_MODE_MIC);
-    if (mode > (uint8_t)AUDIO_MODE_SD_MP3) mode = (uint8_t)AUDIO_MODE_MIC;
-    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : ((mode == AUDIO_MODE_SD_MP3) ? "MP3" : "MIC"));
+    if (mode > (uint8_t)AUDIO_MODE_GAME) mode = (uint8_t)AUDIO_MODE_MIC;
+    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : ((mode == AUDIO_MODE_SD_MP3) ? "MP3" : ((mode == AUDIO_MODE_GAME) ? "GAME" : "MIC")));
     LOG_D("NVS", "Loaded audio_mode: %d (%s)", (int)mode, name);
     return (AudioMode)mode;
 }

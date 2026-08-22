@@ -11,6 +11,7 @@
 #include "sd_card.h"
 #include "mp3_player.h"
 #include "beat_detector.h"
+#include "games/game_manager.h"
 #include "log.h"
 
 /**
@@ -67,9 +68,10 @@ static void switch_audio_mode(AudioMode target_mode) {
         "MICROPHONE",
         "BLUETOOTH",
         "CLOCK & WEATHER",
-        "MP3 PLAYER"
+        "MP3 PLAYER",
+        "GAME CONSOLE"
     };
-    const char *tgt_title = TARGET_NAMES[target_mode % 4];
+    const char *tgt_title = TARGET_NAMES[target_mode % 5];
 
     LOG_I("Switch", "Transitioning Mode %d -> %d (%s)...", 
           (int)s_current_mode, (int)target_mode, tgt_title);
@@ -172,6 +174,15 @@ void setup() {
             display_set_audio_mode(AUDIO_MODE_MIC, false, false);
             display_toast("MODE: MICROPHONE");
         }
+    } else if (s_current_mode == AUDIO_MODE_GAME) {
+        s_mic_task_active = false;
+        encoder_set_enabled(true);
+        bt_audio_stop();
+        wifi_app_stop();
+        mp3_player_stop();
+        game_manager_init();
+        display_set_audio_mode(AUDIO_MODE_GAME, false, false);
+        display_toast("MODE: GAME CONSOLE");
     } else {
         encoder_set_enabled(false);
         bt_audio_stop();
@@ -206,15 +217,41 @@ void loop() {
 
     // =======================================================================
     // 1. BUTTON PUSH (GPIO 4 - Encoder Push Button)
-    // Rule: ALWAYS switches audio mode (MIC -> BT -> CLOCK -> MP3 -> MIC) in all modes.
+    // Rule: ALWAYS switches audio mode (MIC -> BT -> CLOCK -> MP3 -> GAME -> MIC).
     // =======================================================================
     if (button_pressed(BTN_PUSH)) {
         AudioMode next_mode;
         if (s_current_mode == AUDIO_MODE_MIC) next_mode = AUDIO_MODE_BT;
         else if (s_current_mode == AUDIO_MODE_BT) next_mode = AUDIO_MODE_CLOCK;
         else if (s_current_mode == AUDIO_MODE_CLOCK) next_mode = AUDIO_MODE_SD_MP3;
+        else if (s_current_mode == AUDIO_MODE_SD_MP3) next_mode = AUDIO_MODE_GAME;
         else next_mode = AUDIO_MODE_MIC;
         switch_audio_mode(next_mode);
+    }
+
+    // =======================================================================
+    // GAME CONSOLE MODE HANDLING (Dedicated 35-40 FPS Game Loop)
+    // =======================================================================
+    if (s_current_mode == AUDIO_MODE_GAME) {
+        bool btn_plus_pressed = button_pressed(BTN_PLUS);
+        bool btn_back_pressed = button_pressed(BTN_BACK);
+        bool btn_plus_down    = button_is_down(BTN_PLUS);
+        int32_t enc_delta     = encoder_get_delta();
+
+        game_manager_update(enc_delta, btn_plus_pressed, btn_back_pressed, btn_plus_down);
+        game_manager_render();
+        fps_cnt++;
+
+        uint32_t now = millis();
+        if (now - fps_ts >= 5000) {
+            LOG_I("STATUS", "Mode: GAME CONSOLE | FPS: %.1f", (float)fps_cnt * 1000.0f / (float)(now - fps_ts));
+            fps_cnt = 0;
+            fps_ts  = now;
+        }
+
+        esp_task_wdt_reset();
+        vTaskDelay(pdMS_TO_TICKS(15)); // ~40 FPS smooth frame rate
+        return;
     }
 
     // =======================================================================

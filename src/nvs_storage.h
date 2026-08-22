@@ -5,7 +5,8 @@ enum AudioMode {
     AUDIO_MODE_MIC    = 0,
     AUDIO_MODE_BT     = 1,
     AUDIO_MODE_CLOCK  = 2,
-    AUDIO_MODE_SD_MP3 = 3
+    AUDIO_MODE_SD_MP3 = 3,
+    AUDIO_MODE_GAME   = 4
 };
 
 /**
