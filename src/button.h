@@ -28,14 +28,19 @@ void buttons_init();
 void buttons_update();
 
 /**
- * @brief Check if a specific button was short pressed.
+ * @brief Check if a specific button was short pressed (< 1s) and released.
  */
 bool button_pressed(BtnId btn);
 
 /**
- * @brief Check if a specific button was long pressed.
+ * @brief Check if a specific button was long pressed (held >= 1s and < 3s).
  */
 bool button_long_pressed(BtnId btn);
+
+/**
+ * @brief Check if a specific button was held for >= 3 seconds (fires at 3s mark).
+ */
+bool button_held_3s(BtnId btn);
 
 /**
  * @brief Check if a button is currently held down.

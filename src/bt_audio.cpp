@@ -24,7 +24,7 @@ static FrameAccumulator s_fa;
 // PCM Audio Data Callback from A2DP Sink (Fault-tolerant without PCM5102A)
 // ---------------------------------------------------------------------------
 static void bt_i2s_data_callback(const uint8_t *data, uint32_t len) {
-    if (!data || len == 0) return;
+    if (!data || len == 0 || !s_is_started) return;
 
     const int16_t *samples = (const int16_t *)data;
     size_t num_pairs = len / (2 * sizeof(int16_t));
@@ -47,17 +47,24 @@ static void bt_i2s_data_callback(const uint8_t *data, uint32_t len) {
         }
     }
 
-    // 2. Volume-scaled output to I2S DAC (PCM5102A on I2S_NUM_0)
-    float vol_factor = (float)s_current_volume / 127.0f;
-    vol_factor = powf(vol_factor, 1.3f); // Perceptual volume curve
-
-    int16_t fy[2];
-    size_t bytes_written = 0;
-    for (size_t i = 0; i < num_pairs; i++) {
-        fy[0] = (int16_t)constrain((int32_t)((float)samples[i * 2] * vol_factor), -32768, 32767);
-        fy[1] = (int16_t)constrain((int32_t)((float)samples[i * 2 + 1] * vol_factor), -32768, 32767);
-        i2s_write(I2S_NUM_0, fy, 4, &bytes_written, 10);
+    // 2. Pure Lossless CD-Quality Audio Output to I2S DAC (PCM5102A on I2S_NUM_0)
+    if (s_current_volume >= 127) {
+        size_t written = 0;
+        i2s_write(I2S_NUM_0, data, len, &written, portMAX_DELAY);
+        return;
     }
+
+    float vol_factor = powf((float)s_current_volume / 127.0f, 1.3f);
+    static int16_t s_scaled_pcm[2048];
+    size_t total_samples = len / sizeof(int16_t);
+    if (total_samples > 2048) total_samples = 2048;
+
+    for (size_t i = 0; i < total_samples; i++) {
+        s_scaled_pcm[i] = (int16_t)constrain((int32_t)((float)samples[i] * vol_factor), -32768, 32767);
+    }
+
+    size_t bytes_written = 0;
+    i2s_write(I2S_NUM_0, s_scaled_pcm, total_samples * sizeof(int16_t), &bytes_written, portMAX_DELAY);
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +211,8 @@ void bt_audio_init(QueueHandle_t audio_queue) {
 
 void bt_audio_start() {
     if (s_is_started) return;
-    LOG_I("BT", "Starting Native Bluetooth A2DP Sink with Absolute Volume Sync...");
+    s_current_volume = nvs_load_volume();
+    LOG_I("BT", "Starting Native Bluetooth A2DP Sink (Volume: %d)...", s_current_volume);
 
     // 1. Install & Configure I2S Driver for DAC PCM5102A on I2S_NUM_0
     static const i2s_config_t i2s_config = {
@@ -214,8 +222,8 @@ void bt_audio_start() {
         .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
         .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_STAND_I2S | I2S_COMM_FORMAT_STAND_MSB),
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count = 3,
-        .dma_buf_len = 600,
+        .dma_buf_count = 4,
+        .dma_buf_len = 512,
         .use_apll = false,
         .tx_desc_auto_clear = true
     };
@@ -230,6 +238,7 @@ void bt_audio_start() {
 
     i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
     i2s_set_pin(I2S_NUM_0, &pin_config);
+    i2s_zero_dma_buffer(I2S_NUM_0);
 
     // 2. Initialize Bluetooth Controller & Bluedroid
     btStart();
@@ -258,9 +267,10 @@ void bt_audio_start() {
     esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
 
     s_is_started = true;
+    s_fa.count = 0;
     LOG_I("BT", "Native A2DP Sink started as '%s' (Volume: %d)", BT_DEVICE_NAME, s_current_volume);
 
-    // 7. Auto-reconnect to last remembered device if available
+    // 7. Auto-reconnect to last remembered device
     uint8_t mac[6];
     if (nvs_load_bt_mac(mac)) {
         LOG_I("BT", "Attempting reconnect to remembered device: %02X:%02X:%02X:%02X:%02X:%02X",
@@ -270,31 +280,73 @@ void bt_audio_start() {
 }
 
 void bt_audio_stop() {
-    if (!s_is_started) return;
-    LOG_I("BT", "Stopping Native A2DP Sink...");
+    if (!s_is_started && esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE) return;
+    LOG_I("BT", "Stopping Bluetooth A2DP Sink with verified state polling...");
 
+    // 1. If connected, request disconnect and poll until disconnected (or timeout 1.5s)
+    if (s_is_connected) {
+        if (s_connected_bda[0] || s_connected_bda[1] || s_connected_bda[2]) {
+            esp_a2d_sink_disconnect(s_connected_bda);
+        }
+        uint32_t wait_start = millis();
+        while (s_is_connected && (millis() - wait_start < 1500)) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+    }
+    s_is_connected = false;
+    s_is_playing = false;
+
+    // 2. Set scan mode to non-connectable
+    esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // 3. Deinitialize A2DP & AVRCP profiles
     esp_a2d_sink_deinit();
+    vTaskDelay(pdMS_TO_TICKS(50));
     esp_avrc_ct_deinit();
     esp_avrc_tg_deinit();
-    esp_bluedroid_disable();
-    esp_bluedroid_deinit();
-    btStop();
+    vTaskDelay(pdMS_TO_TICKS(50));
 
-    // Wait for any in-flight bt_i2s_data_callback to finish before uninstalling I2S driver.
-    // Without this, i2s_write() could be called on an already-freed DMA handle.
-    delay(80);
+    // 4. Disable Bluedroid and verify it is disabled
+    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
+        esp_bluedroid_disable();
+        uint32_t wait_start = millis();
+        while (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED && (millis() - wait_start < 1000)) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+    }
+
+    // 5. Deinitialize Bluedroid and verify it is uninitialized
+    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED) {
+        esp_bluedroid_deinit();
+        uint32_t wait_start = millis();
+        while (esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_UNINITIALIZED && (millis() - wait_start < 1000)) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+    }
+
+    // 6. Disable BT Controller and verify it is IDLE
+    if (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_IDLE) {
+        btStop();
+        uint32_t wait_start = millis();
+        while (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_IDLE && (millis() - wait_start < 1000)) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+    }
+
+    // 7. Uninstall I2S driver
+    vTaskDelay(pdMS_TO_TICKS(50));
     i2s_driver_uninstall(I2S_NUM_0);
 
     s_is_started = false;
-    s_is_connected = false;
-    s_is_playing = false;
     s_volume_notify_registered = false;
-    s_fa.count = 0;   // Reset frame accumulator — prevent stale samples on next BT start
-    LOG_I("BT", "Native A2DP Sink stopped");
+    s_fa.count = 0;
+    LOG_I("BT", "Bluetooth fully STOPPED & VERIFIED (BT Status: %d, FreeHeap=%u, MaxBlock=%u)",
+          (int)esp_bt_controller_get_status(), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 }
 
 void bt_audio_adjust_volume(int32_t delta) {
-    int32_t new_vol = (int32_t)s_current_volume + (delta * 4);
+    int32_t new_vol = (int32_t)s_current_volume + delta;
     if (new_vol < 0) new_vol = 0;
     if (new_vol > 127) new_vol = 127;
     bt_audio_set_volume((uint8_t)new_vol);

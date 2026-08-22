@@ -147,11 +147,33 @@ bool display_get_auto_cycle();
 /** Show a temporary toast message banner on the display. */
 void display_toast(const char *msg, uint32_t duration_ms = 2000);
 
+/** Show an interactive animated loading / mode transition screen. */
+void display_show_loading(const char *title, const char *detail, uint8_t percent);
+
 /** Show a temporary volume popup bar (0-127). */
 void display_show_volume(uint8_t volume, uint32_t duration_ms = 2000);
 
-/** Set the active system audio mode (MIC, BT, CLOCK). */
+/** Set the active system audio mode (MIC, BT, CLOCK, SD_MP3). */
 void display_set_audio_mode(AudioMode mode, bool is_connected = false, bool is_playing = false);
+
+/** MP3 Player screen types (s1, s2, s3) */
+enum Mp3Screen {
+    MP3_SCREEN_NORMAL     = 0,  // s1: Normal Player screen with Marquee title, progress, track #, volume
+    MP3_SCREEN_VISUALIZER = 1,  // s2: Full clean sound visualizer
+    MP3_SCREEN_PLAYLIST   = 2   // s3: Playlist menu with focus & play icon
+};
+
+/** MP3 Player UI: Screen selection (s1, s2, s3) */
+void display_set_mp3_screen(Mp3Screen screen);
+Mp3Screen display_get_mp3_screen();
+
+/** MP3 Player UI: Playlist focus / scroll */
+void display_mp3_playlist_scroll(int delta);
+int  display_mp3_playlist_get_focus();
+void display_mp3_playlist_set_focus(int index);
+
+/** MP3 Player UI: Update playback status for screens */
+void display_set_mp3_status(bool is_playing, bool is_paused, const char *title, int index, int total, uint32_t cur_sec, uint32_t tot_sec, uint8_t pct, uint8_t volume);
 
 /** Set display contrast/brightness (10 - 100%). */
 void display_set_brightness(uint8_t percent);

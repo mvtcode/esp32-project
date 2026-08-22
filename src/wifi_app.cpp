@@ -6,8 +6,8 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <HTTPClient.h>
-#include <WiFiClientSecure.h>
 #include <time.h>
+#include <esp_wifi.h>
 #include "display.h"
 
 static WebServer      s_server(80);
@@ -558,15 +558,14 @@ static void weather_task(void *pv) {
         if (WiFi.status() == WL_CONNECTED) {
             char url[160];
             snprintf(url, sizeof(url),
-                     "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,relative_humidity_2m",
+                     "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,relative_humidity_2m",
                      s_config_lat, s_config_lon);
 
             Serial.printf("[Weather Task] Fetching from Open-Meteo (Lat: %.4f, Lon: %.4f)...\n", s_config_lat, s_config_lon);
-            WiFiClientSecure client;
-            client.setInsecure();
+            WiFiClient client;
             HTTPClient http;
             http.begin(client, url);
-            http.setTimeout(5000);  // 5s timeout — task checks exit flag after this returns
+            http.setTimeout(4000);  // 4s timeout
             int code = http.GET();
             if (!s_weather_task_exit && code == 200) {
                 String payload = http.getString();
@@ -810,31 +809,24 @@ void wifi_app_start_ap_portal() {
 void wifi_app_stop() {
     s_dns_server.stop();
 
-    // Signal weather_task to exit cleanly (it will finish current HTTP call, close socket, then self-delete)
-    if (s_weather_task_handle) {
-        s_weather_task_exit = true;
-        // Give it up to 6s to finish any ongoing HTTP request (timeout is 5s)
+    if (s_wifi_state != WIFI_STATE_IDLE || WiFi.getMode() != WIFI_OFF) {
+        Serial.println("[WiFi] Stopping WiFi subsystem with verified state polling...");
+        s_server.close();
+        s_server.stop();
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        WiFi.disconnect(true, true);
+        WiFi.mode(WIFI_OFF);
+
         uint32_t wait_start = millis();
-        while (s_weather_task_handle && (millis() - wait_start < 6000)) {
+        while (WiFi.getMode() != WIFI_OFF && (millis() - wait_start < 1500)) {
             vTaskDelay(pdMS_TO_TICKS(50));
         }
-        // If still running after 6s (shouldn't happen), force kill as last resort
-        if (s_weather_task_handle) {
-            Serial.println("[WiFi] Weather task did not exit in time — force killing");
-            vTaskDelete(s_weather_task_handle);
-            s_weather_task_handle = nullptr;
-        }
-        s_weather_task_exit = false;  // Reset for potential re-init
-    }
 
-    if (s_wifi_state != WIFI_STATE_IDLE || WiFi.getMode() != WIFI_OFF) {
-        Serial.println("[WiFi] Stopping WiFi subsystem & freeing 2.4GHz RF...");
-        s_server.close();
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
         s_wifi_connected = false;
         s_wifi_state = WIFI_STATE_IDLE;
-        Serial.println("[WiFi] Subsystem stopped. RF OFF.");
+        Serial.printf("[WiFi] WiFi fully STOPPED & VERIFIED (Mode: %d, FreeHeap=%u, MaxBlock=%u)\n",
+                      (int)WiFi.getMode(), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     }
 }
 

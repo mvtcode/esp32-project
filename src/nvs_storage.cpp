@@ -12,16 +12,25 @@ void nvs_storage_init() {
 
 void nvs_save_audio_mode(AudioMode mode) {
     s_prefs.putUChar("audio_mode", (uint8_t)mode);
-    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : "MIC");
+    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : ((mode == AUDIO_MODE_SD_MP3) ? "MP3" : "MIC"));
     LOG_D("NVS", "Saved audio_mode: %d (%s)", (int)mode, name);
 }
 
 AudioMode nvs_load_audio_mode() {
     uint8_t mode = s_prefs.getUChar("audio_mode", (uint8_t)AUDIO_MODE_MIC);
-    if (mode > (uint8_t)AUDIO_MODE_CLOCK) mode = (uint8_t)AUDIO_MODE_MIC;
-    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : "MIC");
+    if (mode > (uint8_t)AUDIO_MODE_SD_MP3) mode = (uint8_t)AUDIO_MODE_MIC;
+    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : ((mode == AUDIO_MODE_SD_MP3) ? "MP3" : "MIC"));
     LOG_D("NVS", "Loaded audio_mode: %d (%s)", (int)mode, name);
     return (AudioMode)mode;
+}
+
+void nvs_save_sd_track_index(uint16_t index) {
+    s_prefs.putUShort("sd_track", index);
+    LOG_D("NVS", "Saved SD track index: %u", (unsigned int)index);
+}
+
+uint16_t nvs_load_sd_track_index() {
+    return s_prefs.getUShort("sd_track", 0);
 }
 
 void nvs_save_bt_mac(const uint8_t mac[6]) {

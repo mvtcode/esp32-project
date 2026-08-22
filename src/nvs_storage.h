@@ -2,9 +2,10 @@
 #include <Arduino.h>
 
 enum AudioMode {
-    AUDIO_MODE_MIC   = 0,
-    AUDIO_MODE_BT    = 1,
-    AUDIO_MODE_CLOCK = 2
+    AUDIO_MODE_MIC    = 0,
+    AUDIO_MODE_BT     = 1,
+    AUDIO_MODE_CLOCK  = 2,
+    AUDIO_MODE_SD_MP3 = 3
 };
 
 /**
@@ -13,10 +14,16 @@ enum AudioMode {
 void nvs_storage_init();
 
 /**
- * @brief Audio Mode (MIC vs BT) persistence.
+ * @brief Audio Mode persistence.
  */
 void nvs_save_audio_mode(AudioMode mode);
 AudioMode nvs_load_audio_mode();
+
+/**
+ * @brief SD Card MP3 player track index persistence.
+ */
+void nvs_save_sd_track_index(uint16_t index);
+uint16_t nvs_load_sd_track_index();
 
 /**
  * @brief Bluetooth last paired MAC address (6 bytes).
