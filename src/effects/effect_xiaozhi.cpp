@@ -10,6 +10,13 @@ static float s_eye_look_y = 0.0f;
 static float s_mouth_open = 0.0f;
 static float s_mouth_smooth_w = 12.0f;
 static float s_beat_pulse = 0.0f;
+static int   s_xz_state = 0; // 0=IDLE, 1=CONNECTING, 2=LISTENING, 3=SPEAKING, 4=ERROR
+static float s_xz_tts_energy = 0.0f;
+
+void effect_xiaozhi_set_state(int state, float tts_energy) {
+    s_xz_state = state;
+    s_xz_tts_energy = tts_energy;
+}
 
 void effect_xiaozhi_on_enter() {
     s_blink_timer = 0;
@@ -19,6 +26,8 @@ void effect_xiaozhi_on_enter() {
     s_mouth_open = 0.0f;
     s_mouth_smooth_w = 12.0f;
     s_beat_pulse = 0.0f;
+    s_xz_state = 0;
+    s_xz_tts_energy = 0.0f;
 }
 
 void effect_xiaozhi_on_exit() {}
@@ -206,6 +215,12 @@ void effect_xiaozhi_render(const int32_t *left, const int32_t *right, size_t n) 
     // -------------------------------------------------------------------
     s_blink_timer++;
     int blink_period = (avg > 0.30f) ? 140 : 85;
+    if (s_xz_state == 1) { // CONNECTING: blink rapidly
+        blink_period = 25;
+    } else if (s_xz_state == 3) { // SPEAKING: cheerful, less frequent blink
+        blink_period = 180;
+    }
+
     if (s_blink_timer > blink_period) {
         s_is_blinking = true;
         if (s_blink_timer > blink_period + 4) {
@@ -214,10 +229,23 @@ void effect_xiaozhi_render(const int32_t *left, const int32_t *right, size_t n) 
         }
     }
 
-    // Happy singing expression (when music has lively energy)
-    bool is_happy = (avg > 0.30f && (treble > 0.22f || s_beat_pulse > 0.45f));
-    bool wink_l = (!is_happy && norm_r > norm_l + 0.38f);
-    bool wink_r = (!is_happy && norm_l > norm_r + 0.38f);
+    // Expression selection based on state or audio
+    bool is_happy = false;
+    bool wink_l = false;
+    bool wink_r = false;
+
+    if (s_xz_state == 3) { // SPEAKING: smiling arch eyes (^ ^)
+        is_happy = true;
+    } else if (s_xz_state == 4) { // ERROR: wink/squint
+        wink_l = true;
+    } else if (s_xz_state == 1) { // CONNECTING: regular eye
+        is_happy = false;
+    } else {
+        // Normal sound-reactive
+        is_happy = (avg > 0.30f && (treble > 0.22f || s_beat_pulse > 0.45f));
+        wink_l = (!is_happy && norm_r > norm_l + 0.38f);
+        wink_r = (!is_happy && norm_l > norm_r + 0.38f);
+    }
 
     const int eye_w = 26;
     const int eye_h = 28;
@@ -247,6 +275,7 @@ void effect_xiaozhi_render(const int32_t *left, const int32_t *right, size_t n) 
     // 6. Cute Cheeks Blush (Má hồng tỏa sáng vui vẻ)
     // -------------------------------------------------------------------
     int blush_len = 4 + (int)(avg * 5.0f);
+    if (s_xz_state == 3) blush_len = 7; // Bright blush when speaking
     if (blush_len > 8) blush_len = 8;
     // Left cheek
     SafeDraw::drawHLine(18, 40, blush_len);
@@ -259,9 +288,17 @@ void effect_xiaozhi_render(const int32_t *left, const int32_t *right, size_t n) 
     // 7. Cheerful Animated Singing & Smiling Mouth
     // -------------------------------------------------------------------
     float target_open = avg * 11.0f + s_beat_pulse * 4.0f;
+    if (s_xz_state == 3) {
+        target_open = s_xz_tts_energy * 12.0f; // Driven by TTS energy!
+    } else if (s_xz_state == 1 || s_xz_state == 4) {
+        target_open = 0.0f;
+    }
     s_mouth_open += (target_open - s_mouth_open) * 0.32f;
 
     float target_w = 12.0f + avg * 8.0f + s_beat_pulse * 3.0f;
+    if (s_xz_state == 3) {
+        target_w = 14.0f + s_xz_tts_energy * 6.0f;
+    }
     s_mouth_smooth_w += (target_w - s_mouth_smooth_w) * 0.25f;
 
     draw_xiaozhi_mouth(mouth_cx, mouth_y, s_mouth_open, s_mouth_smooth_w);

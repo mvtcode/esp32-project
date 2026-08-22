@@ -150,11 +150,21 @@ void display_toast(const char *msg, uint32_t duration_ms = 2000);
 /** Show a temporary volume popup bar (0-127). */
 void display_show_volume(uint8_t volume, uint32_t duration_ms = 2000);
 
-/** Set the active system audio mode (MIC, BT, CLOCK). */
+/** Set the active system audio mode (MIC, BT, CLOCK, XIAOZHI). */
 void display_set_audio_mode(AudioMode mode, bool is_connected = false, bool is_playing = false);
+
+/** Get the active system audio mode. */
+AudioMode display_get_audio_mode();
 
 /** Set display contrast/brightness (10 - 100%). */
 void display_set_brightness(uint8_t percent);
+
+/** Render XiaoZhi activation screen (6-digit code display / WiFi status). */
+void display_draw_xiaozhi_activation(const char *code, const char *message,
+                                     int timeout_sec, int act_sub_state);
+
+/** Render XiaoZhi AI chat screen (eye/mouth animation). */
+void display_draw_xiaozhi_chat(int state, float tts_energy);
 
 #endif // DISPLAY_H
 

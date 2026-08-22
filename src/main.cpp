@@ -7,6 +7,7 @@
 #include "nvs_storage.h"
 #include "bt_audio.h"
 #include "wifi_app.h"
+#include "xiaozhi_mode.h"
 #include "beat_detector.h"
 #include "log.h"
 
@@ -56,8 +57,13 @@ static void switch_audio_mode(AudioMode target_mode) {
     if (target_mode == s_current_mode) return;
 
     LOG_I("Switch", "Transitioning %s -> %s...",
-                  s_current_mode == AUDIO_MODE_BT ? "BT" : (s_current_mode == AUDIO_MODE_CLOCK ? "CLOCK" : "MIC"),
-                  target_mode == AUDIO_MODE_BT ? "BT" : (target_mode == AUDIO_MODE_CLOCK ? "CLOCK" : "MIC"));
+                  s_current_mode == AUDIO_MODE_BT ? "BT" : (s_current_mode == AUDIO_MODE_CLOCK ? "CLOCK" : (s_current_mode == AUDIO_MODE_XIAOZHI ? "XIAOZHI" : "MIC")),
+                  target_mode == AUDIO_MODE_BT ? "BT" : (target_mode == AUDIO_MODE_CLOCK ? "CLOCK" : (target_mode == AUDIO_MODE_XIAOZHI ? "XIAOZHI" : "MIC")));
+
+    // Clean up current mode before entering target mode
+    if (s_current_mode == AUDIO_MODE_XIAOZHI) {
+        xiaozhi_stop();
+    }
 
     if (target_mode == AUDIO_MODE_BT) {
         // 1. Suspend mic task and deinit I2S mic
@@ -105,6 +111,31 @@ static void switch_audio_mode(AudioMode target_mode) {
         s_current_mode = AUDIO_MODE_CLOCK;
         nvs_save_audio_mode(AUDIO_MODE_CLOCK);
         display_toast("MODE: CLOCK & WEATHER");
+    }
+    else if (target_mode == AUDIO_MODE_XIAOZHI) {
+        // 1. Stop Bluetooth A2DP Sink & Disable Rotary Encoder
+        encoder_set_enabled(false);
+        bt_audio_stop();
+
+        // 2. Suspend mic task and deinit I2S mic
+        s_mic_task_active = false;
+        delay(150);
+        i2s_mic_deinit();
+
+        // 3. Clear audio queue + reset beat detector
+        if (s_audio_queue) xQueueReset(s_audio_queue);
+        beat_detector_reset();
+
+        // 4. Start WiFi (reusing existing WiFi connection) & XiaoZhi mode
+        wifi_app_init();
+        xiaozhi_start(s_audio_queue);
+
+        display_set_audio_mode(AUDIO_MODE_XIAOZHI, false, false);
+        display_set_mode(MODE_XIAOZHI, false);
+
+        s_current_mode = AUDIO_MODE_XIAOZHI;
+        nvs_save_audio_mode(AUDIO_MODE_XIAOZHI);
+        display_toast("MODE: XIAOZHI AI");
     }
     else { // AUDIO_MODE_MIC
         // 1. Stop Bluetooth A2DP Sink & Disable Rotary Encoder
@@ -181,9 +212,20 @@ void setup() {
         s_mic_task_active = false;
         encoder_set_enabled(false);
         bt_audio_stop();
+        i2s_mic_deinit();
         wifi_app_init();
         display_set_audio_mode(AUDIO_MODE_CLOCK, false, false);
         display_toast("MODE: CLOCK & WEATHER");
+    } else if (s_current_mode == AUDIO_MODE_XIAOZHI) {
+        s_mic_task_active = false;
+        encoder_set_enabled(false);
+        bt_audio_stop();
+        i2s_mic_deinit();
+        wifi_app_init();
+        xiaozhi_start(s_audio_queue);
+        display_set_audio_mode(AUDIO_MODE_XIAOZHI, false, false);
+        display_set_mode(MODE_XIAOZHI, false);
+        display_toast("MODE: XIAOZHI AI");
     } else {
         encoder_set_enabled(false);
         bt_audio_stop();
@@ -197,10 +239,12 @@ void setup() {
         display_toast("MODE: MICROPHONE");
     }
 
-    // 7. Create Mic task on Core 0 AFTER mode is configured
-    xTaskCreatePinnedToCore(
-        mic_task, "mic_task", 4096, nullptr, 2, nullptr, 0
-    );
+    // 7. Create Mic task on Core 0 AFTER mode is configured (only if in MIC mode)
+    if (s_current_mode == AUDIO_MODE_MIC) {
+        xTaskCreatePinnedToCore(
+            mic_task, "mic_task", 4096, nullptr, 2, nullptr, 0
+        );
+    }
 
     LOG_I("Boot", "Setup completed successfully");
 }
@@ -218,30 +262,52 @@ void loop() {
 
     // Button PLUS (GPIO 14) -> Next OLED mode / Long press: Auto-cycle
     if (button_pressed(BTN_PLUS)) {
-        display_next_mode();
-        nvs_save_display_mode((uint8_t)display_get_mode());
-        LOG_D("BTN", "PLUS pressed -> Mode: %d", (int)display_get_mode());
+        if (s_current_mode == AUDIO_MODE_XIAOZHI) {
+            xiaozhi_next_face_theme();
+            LOG_D("BTN", "XIAOZHI: Next Face Theme");
+        } else {
+            display_next_mode();
+            nvs_save_display_mode((uint8_t)display_get_mode());
+            LOG_D("BTN", "PLUS pressed -> Mode: %d", (int)display_get_mode());
+        }
     }
     if (button_long_pressed(BTN_PLUS)) {
-        bool auto_cycle = !display_get_auto_cycle();
-        display_set_auto_cycle(auto_cycle);
-        nvs_save_auto_cycle(auto_cycle);
-        LOG_D("Mode", "Auto-cycle %s", auto_cycle ? "ON" : "OFF");
+        if (s_current_mode == AUDIO_MODE_XIAOZHI) {
+            bool is_auto = !xiaozhi_is_auto_mode();
+            xiaozhi_set_auto_mode(is_auto);
+            display_toast(is_auto ? "MODE: AUTO CHAT" : "MODE: MANUAL PTT");
+        } else {
+            bool auto_cycle = !display_get_auto_cycle();
+            display_set_auto_cycle(auto_cycle);
+            nvs_save_auto_cycle(auto_cycle);
+            LOG_D("Mode", "Auto-cycle %s", auto_cycle ? "ON" : "OFF");
+        }
     }
 
-    // Button PUSH (GPIO 4) -> Cycle Mode: MIC -> BT -> CLOCK -> MIC
+    // Button PUSH (GPIO 4) -> Cycle Mode: MIC -> BT -> CLOCK -> XIAOZHI -> MIC
     if (button_pressed(BTN_PUSH)) {
         AudioMode next_mode;
         if (s_current_mode == AUDIO_MODE_MIC) next_mode = AUDIO_MODE_BT;
         else if (s_current_mode == AUDIO_MODE_BT) next_mode = AUDIO_MODE_CLOCK;
+        else if (s_current_mode == AUDIO_MODE_CLOCK) next_mode = AUDIO_MODE_XIAOZHI;
         else next_mode = AUDIO_MODE_MIC;
         switch_audio_mode(next_mode);
     }
 
-    // Button BACK (GPIO 13) -> Play/Pause via AVRCP (when in BT mode)
+    // Button BACK (GPIO 13) -> Play/Pause via AVRCP (BT) / Push-to-Talk (XiaoZhi)
     if (button_pressed(BTN_BACK)) {
         if (s_current_mode == AUDIO_MODE_BT) {
             bt_audio_play_pause();
+        } else if (s_current_mode == AUDIO_MODE_XIAOZHI) {
+            if (xiaozhi_get_screen() == XZ_SCREEN_CHAT) {
+                if (xiaozhi_get_state() == XZ_SPEAKING) {
+                    xiaozhi_abort_speaking();
+                } else if (xiaozhi_get_state() == XZ_LISTENING) {
+                    xiaozhi_stop_listen();
+                } else {
+                    xiaozhi_start_listen();
+                }
+            }
         } else if (s_current_mode == AUDIO_MODE_CLOCK) {
             display_toast("CLOCK MODE");
         } else {
@@ -251,27 +317,31 @@ void loop() {
 
     // Button BOOT (GPIO 0) -> Mode-dependent actions:
     // - In BT Mode: Long press (>1s) -> BT Re-pairing
-    // - In CLOCK Mode: Press -> Launch WiFi Config Portal AP Mode
+    // - In CLOCK / XIAOZHI Mode: Press -> Launch WiFi Config Portal AP Mode
     if (s_current_mode == AUDIO_MODE_BT) {
         if (button_long_pressed(BTN_BOOT)) {
             LOG_I("BTN", "BT Mode: BOOT long pressed -> BT Re-pairing requested");
             bt_audio_start_repairing();
             display_toast("BT RE-PAIRING...");
         }
-    } else if (s_current_mode == AUDIO_MODE_CLOCK) {
+    } else if (s_current_mode == AUDIO_MODE_CLOCK || s_current_mode == AUDIO_MODE_XIAOZHI) {
         if (button_pressed(BTN_BOOT) || button_long_pressed(BTN_BOOT)) {
-            LOG_I("BTN", "CLOCK Mode: BOOT pressed -> Launching WiFi Web Setup AP...");
+            LOG_I("BTN", "BOOT pressed -> Launching WiFi Web Setup AP...");
             wifi_app_start_ap_portal();
         }
     }
 
-    // Rotary Encoder rotation -> Volume change & sync ONLY in Bluetooth mode
-    if (s_current_mode == AUDIO_MODE_BT) {
+    // Rotary Encoder rotation -> Volume change & sync in Bluetooth and XiaoZhi mode
+    if (s_current_mode == AUDIO_MODE_BT || s_current_mode == AUDIO_MODE_XIAOZHI) {
         int32_t enc_delta = encoder_get_delta();
         if (enc_delta != 0) {
-            bt_audio_adjust_volume(enc_delta);
-            display_show_volume(bt_audio_get_volume());
-            LOG_D("ENC", "Volume adjust: %d%%", (int)((float)bt_audio_get_volume() * 100.0f / 127.0f));
+            if (s_current_mode == AUDIO_MODE_BT) {
+                bt_audio_adjust_volume(enc_delta);
+                display_show_volume(bt_audio_get_volume());
+            } else {
+                xiaozhi_adjust_volume(enc_delta);
+                display_show_volume(xiaozhi_get_volume());
+            }
         }
     }
 
@@ -282,39 +352,62 @@ void loop() {
         bt_audio_is_playing()
     );
 
-    // --- WiFi & OTA background loop (ONLY run when in CLOCK mode) ---
-    if (s_current_mode == AUDIO_MODE_CLOCK) {
+    // --- WiFi & OTA background loop (run in CLOCK or XIAOZHI mode) ---
+    if (s_current_mode == AUDIO_MODE_CLOCK || s_current_mode == AUDIO_MODE_XIAOZHI) {
         wifi_app_loop(false);
     }
+    if (s_current_mode == AUDIO_MODE_XIAOZHI) {
+        xiaozhi_loop();
+    }
 
-    // --- Render: dequeue audio frame (or generate silence if idle/BT standby) and draw ---
-    static uint32_t last_render_ts = 0;
-    bool has_audio = (xQueueReceive(s_audio_queue, &frame, pdMS_TO_TICKS(5)) == pdTRUE);
-
-    if (has_audio) {
-        display_draw_waveform(frame.left, frame.right, FRAME_SIZE);
+    // --- Render logic ---
+    if (s_current_mode == AUDIO_MODE_XIAOZHI && xiaozhi_get_screen() == XZ_SCREEN_ACTIVATION) {
+        display_draw_xiaozhi_activation(
+            xiaozhi_get_act_code(),
+            xiaozhi_get_act_message(),
+            xiaozhi_get_act_timeout_sec(),
+            (int)xiaozhi_get_act_state()
+        );
         fps_cnt++;
-        last_render_ts = millis();
+        delay(33); // ~30 FPS for activation screen
     } else {
-        // Maintain ~30 FPS continuous UI refresh during silence / BT standby / idle
-        uint32_t now = millis();
-        if (now - last_render_ts >= 33) {
-            memset(frame.left, 0, sizeof(frame.left));
-            memset(frame.right, 0, sizeof(frame.right));
+        if (s_current_mode == AUDIO_MODE_XIAOZHI) {
+            display_draw_xiaozhi_chat((int)xiaozhi_get_state(), xiaozhi_get_tts_energy());
+        }
+
+        static uint32_t last_render_ts = 0;
+        bool has_audio = (xQueueReceive(s_audio_queue, &frame, pdMS_TO_TICKS(5)) == pdTRUE);
+
+        if (has_audio) {
             display_draw_waveform(frame.left, frame.right, FRAME_SIZE);
             fps_cnt++;
-            last_render_ts = now;
+            last_render_ts = millis();
+        } else {
+            // Maintain ~30 FPS continuous UI refresh during silence / BT standby / idle
+            uint32_t now = millis();
+            if (now - last_render_ts >= 33) {
+                memset(frame.left, 0, sizeof(frame.left));
+                memset(frame.right, 0, sizeof(frame.right));
+                display_draw_waveform(frame.left, frame.right, FRAME_SIZE);
+                fps_cnt++;
+                last_render_ts = now;
+            }
         }
     }
 
     // --- FPS report every 5 seconds ---
     uint32_t now = millis();
     if (now - fps_ts >= 5000) {
+        const char *mode_str = "MIC";
+        if (s_current_mode == AUDIO_MODE_BT) mode_str = "BT";
+        else if (s_current_mode == AUDIO_MODE_CLOCK) mode_str = "CLOCK";
+        else if (s_current_mode == AUDIO_MODE_XIAOZHI) mode_str = "XIAOZHI";
+
         LOG_I("STATUS", "Mode: %s | FPS: %.1f | Effect: %d | WiFi: %s",
-                      s_current_mode == AUDIO_MODE_BT ? "BT" : (s_current_mode == AUDIO_MODE_CLOCK ? "CLOCK" : "MIC"),
-                      (float)fps_cnt * 1000.0f / (float)(now - fps_ts),
-                      (int)display_get_mode(),
-                      wifi_app_is_connected() ? "ON" : "OFF");
+              mode_str,
+              (float)fps_cnt * 1000.0f / (float)(now - fps_ts),
+              (int)display_get_mode(),
+              wifi_app_is_connected() ? "ON" : "OFF");
         fps_cnt = 0;
         fps_ts  = now;
     }

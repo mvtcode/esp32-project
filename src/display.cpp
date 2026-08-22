@@ -152,6 +152,10 @@ void display_set_audio_mode(AudioMode mode, bool is_connected, bool is_playing) 
     s_bt_playing = is_playing;
 }
 
+AudioMode display_get_audio_mode() {
+    return s_audio_mode;
+}
+
 void display_set_mode(DisplayMode m, bool show_label) {
     if (m >= MODE_COUNT) m = (DisplayMode)0;
     if (m == s_mode) return;
@@ -464,7 +468,57 @@ void display_draw_waveform(const int32_t *left, const int32_t *right, size_t n) 
         return;
     }
 
-    // 2. BLUETOOTH PAIRING STANDBY SCREEN (When in BT mode and waiting for device connection)
+    // 2. DEDICATED XIAOZHI AI CHAT MODE (Mode 3)
+    if (s_audio_mode == AUDIO_MODE_XIAOZHI) {
+        if (s_switching) return;
+        s_last_cycle_ts = now; // Freeze visualizer auto-cycle
+
+        u8g2.clearBuffer();
+        if (EFFECTS[MODE_XIAOZHI].render) {
+            EFFECTS[MODE_XIAOZHI].render(left, right, n);
+        }
+
+        // Volume popup overlay (takes priority when active)
+        if (s_volume_ts > 0 && now - s_volume_ts < s_volume_dur) {
+            u8g2.setFont(u8g2_font_6x10_tf);
+            char vstr[16];
+            int pct = (int)((float)s_display_vol * 100.0f / 127.0f + 0.5f);
+            snprintf(vstr, sizeof(vstr), "VOL %d%%", pct);
+
+            int box_w = 90;
+            int box_h = 24;
+            int bx = (SCREEN_W - box_w) / 2;
+            int by = (SCREEN_H - box_h) / 2;
+
+            u8g2.setDrawColor(0);
+            u8g2.drawBox(bx, by, box_w, box_h);
+            u8g2.setDrawColor(1);
+            u8g2.drawFrame(bx, by, box_w, box_h);
+            u8g2.drawStr(bx + (box_w - u8g2.getStrWidth(vstr)) / 2, by + 10, vstr);
+
+            int bar_w = box_w - 12;
+            int fill_w = (bar_w * s_display_vol) / 127;
+            u8g2.drawFrame(bx + 6, by + 14, bar_w, 6);
+            if (fill_w > 0) {
+                u8g2.drawBox(bx + 6, by + 14, fill_w, 6);
+            }
+        } else if (s_toast_ts > 0 && now - s_toast_ts < s_toast_dur) {
+            u8g2.setFont(u8g2_font_6x10_tf);
+            int tw = u8g2.getStrWidth(s_toast_msg);
+            int tx = (SCREEN_W - tw) / 2;
+            int ty = 20;
+            u8g2.setDrawColor(0);
+            u8g2.drawBox(tx - 4, ty - 10, tw + 8, 14);
+            u8g2.setDrawColor(1);
+            u8g2.drawFrame(tx - 4, ty - 10, tw + 8, 14);
+            u8g2.drawStr(tx, ty, s_toast_msg);
+        }
+
+        u8g2.sendBuffer();
+        return;
+    }
+
+    // 3. BLUETOOTH PAIRING STANDBY SCREEN (When in BT mode and waiting for device connection)
     if (s_audio_mode == AUDIO_MODE_BT && !s_bt_connected) {
         if (s_switching) return;
         s_last_cycle_ts = now; // Freeze auto-cycle timer while waiting
@@ -596,5 +650,96 @@ void display_draw_waveform(const int32_t *left, const int32_t *right, size_t n) 
     }
 
     u8g2.sendBuffer();
+}
+
+void display_draw_xiaozhi_activation(const char *code, const char *message,
+                                     int timeout_sec, int act_sub_state) {
+    u8g2.clearBuffer();
+
+    // Top Header Status Bar
+    u8g2.setFont(u8g2_font_6x10_tf);
+    u8g2.setDrawColor(1);
+    u8g2.drawStr(2, 9, "XIAOZHI AI");
+
+    const char *state_str = "SETUP";
+    if (act_sub_state == 1) state_str = "WIFI AP";
+    else if (act_sub_state == 2) state_str = "FETCH...";
+    else if (act_sub_state == 3) state_str = "ACTIVATION";
+    else if (act_sub_state == 4) state_str = "SUCCESS";
+    else if (act_sub_state == 5) state_str = "ERROR";
+
+    int sw = u8g2.getStrWidth(state_str);
+    u8g2.drawStr(SCREEN_W - sw - 2, 9, state_str);
+    u8g2.drawHLine(0, 11, SCREEN_W);
+
+    if (act_sub_state == 3 && code && strlen(code) > 0) {
+        // Render 6-digit Activation Code in center with box
+        u8g2.setFont(u8g2_font_6x10_tf);
+        
+        // Code box
+        int box_w = 116;
+        int box_h = 24;
+        int bx = (SCREEN_W - box_w) / 2;
+        int by = 15;
+        u8g2.drawFrame(bx, by, box_w, box_h);
+
+        // Calculate digit spacing
+        int code_w = u8g2.getStrWidth(code);
+        int cx = bx + (box_w - code_w) / 2;
+        u8g2.drawStr(cx, by + 16, code);
+
+        // Server message or instruction
+        u8g2.setFont(u8g2_font_6x10_tf);
+        const char *hint = (message && strlen(message) > 0) ? message : "Nhap code vao App/Web";
+        int hw = u8g2.getStrWidth(hint);
+        if (hw > SCREEN_W - 4) {
+            u8g2.drawStr(2, 50, hint);
+        } else {
+            u8g2.drawStr((SCREEN_W - hw) / 2, 50, hint);
+        }
+
+        // Timeout countdown & progress dots
+        char t_str[32];
+        snprintf(t_str, sizeof(t_str), "Het han sau: %ds", timeout_sec > 0 ? timeout_sec : 0);
+        int tw = u8g2.getStrWidth(t_str);
+        u8g2.drawStr((SCREEN_W - tw) / 2, 62, t_str);
+
+    } else if (act_sub_state == 1) {
+        // WiFi AP Mode notice
+        u8g2.setFont(u8g2_font_6x10_tf);
+        u8g2.drawStr(10, 26, "Ket noi WiFi AP:");
+        u8g2.drawStr(10, 38, AP_SSID_NAME);
+        u8g2.drawStr(10, 52, "Web: 192.168.4.1");
+    } else if (act_sub_state == 2) {
+        // Fetching code spinner
+        u8g2.setFont(u8g2_font_6x10_tf);
+        u8g2.drawStr(16, 32, "Dang lay ma kich hoat");
+        static uint8_t spin_step = 0;
+        spin_step = (spin_step + 1) % 4;
+        char dots[8] = "";
+        for (int i = 0; i <= spin_step; i++) strcat(dots, ".");
+        u8g2.drawStr(56, 46, dots);
+    } else if (act_sub_state == 4) {
+        // Done
+        u8g2.setFont(u8g2_font_6x10_tf);
+        int tw = u8g2.getStrWidth("THANH CONG!");
+        u8g2.drawStr((SCREEN_W - tw) / 2, 38, "THANH CONG!");
+        u8g2.setFont(u8g2_font_6x10_tf);
+        u8g2.drawStr(20, 54, "Dang vao AI Chat...");
+    } else {
+        // Error
+        u8g2.setFont(u8g2_font_6x10_tf);
+        u8g2.drawStr(24, 30, "Loi ket noi Server!");
+        if (message && strlen(message) > 0) {
+            u8g2.drawStr(10, 44, message);
+        }
+        u8g2.drawStr(20, 58, "Tu dong thu lai...");
+    }
+
+    u8g2.sendBuffer();
+}
+
+void display_draw_xiaozhi_chat(int state, float tts_energy) {
+    effect_xiaozhi_set_state(state, tts_energy);
 }
 

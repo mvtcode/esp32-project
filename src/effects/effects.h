@@ -299,6 +299,7 @@ void effect_dino_on_exit();
 void effect_xiaozhi_render(const int32_t *left, const int32_t *right, size_t n);
 void effect_xiaozhi_on_enter();
 void effect_xiaozhi_on_exit();
+void effect_xiaozhi_set_state(int state, float tts_energy);
 
 // Mode 61: AI_BOT
 void effect_ai_bot_render(const int32_t *left, const int32_t *right, size_t n);

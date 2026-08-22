@@ -12,14 +12,14 @@ void nvs_storage_init() {
 
 void nvs_save_audio_mode(AudioMode mode) {
     s_prefs.putUChar("audio_mode", (uint8_t)mode);
-    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : "MIC");
+    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : ((mode == AUDIO_MODE_XIAOZHI) ? "XIAOZHI" : "MIC"));
     LOG_D("NVS", "Saved audio_mode: %d (%s)", (int)mode, name);
 }
 
 AudioMode nvs_load_audio_mode() {
     uint8_t mode = s_prefs.getUChar("audio_mode", (uint8_t)AUDIO_MODE_MIC);
-    if (mode > (uint8_t)AUDIO_MODE_CLOCK) mode = (uint8_t)AUDIO_MODE_MIC;
-    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : "MIC");
+    if (mode > (uint8_t)AUDIO_MODE_XIAOZHI) mode = (uint8_t)AUDIO_MODE_MIC;
+    const char *name = (mode == AUDIO_MODE_BT) ? "BT" : ((mode == AUDIO_MODE_CLOCK) ? "CLOCK" : ((mode == AUDIO_MODE_XIAOZHI) ? "XIAOZHI" : "MIC"));
     LOG_D("NVS", "Loaded audio_mode: %d (%s)", (int)mode, name);
     return (AudioMode)mode;
 }
@@ -77,4 +77,90 @@ void nvs_save_auto_cycle(bool auto_cycle) {
 
 bool nvs_load_auto_cycle() {
     return s_prefs.getBool("auto_cycle", false);
+}
+
+void nvs_save_xz_ota_url(const char *url) {
+    if (!url) return;
+    s_prefs.putString("xz_ota_url", url);
+    LOG_D("NVS", "Saved xz_ota_url: %s", url);
+}
+
+bool nvs_load_xz_ota_url(char *out, size_t max_len) {
+    if (!out || max_len == 0) return false;
+    String val = s_prefs.getString("xz_ota_url", "");
+    if (val.length() > 0 && val.length() < max_len) {
+        strncpy(out, val.c_str(), max_len - 1);
+        out[max_len - 1] = '\0';
+        return true;
+    }
+    return false;
+}
+
+void nvs_save_xz_ws_url(const char *url) {
+    if (!url) return;
+    s_prefs.putString("xz_ws_url", url);
+    LOG_D("NVS", "Saved xz_ws_url: %s", url);
+}
+
+bool nvs_load_xz_ws_url(char *out, size_t max_len) {
+    if (!out || max_len == 0) return false;
+    String val = s_prefs.getString("xz_ws_url", "");
+    if (val.length() > 0 && val.length() < max_len) {
+        strncpy(out, val.c_str(), max_len - 1);
+        out[max_len - 1] = '\0';
+        return true;
+    }
+    return false;
+}
+
+void nvs_save_xz_token(const char *token) {
+    if (!token) return;
+    s_prefs.putString("xz_tok", token);
+    LOG_D("NVS", "Saved xz_tok: %s", token);
+}
+
+bool nvs_load_xz_token(char *out, size_t max_len) {
+    if (!out || max_len == 0) return false;
+    String val = s_prefs.getString("xz_tok", "");
+    if (val.length() > 0 && val.length() < max_len) {
+        strncpy(out, val.c_str(), max_len - 1);
+        out[max_len - 1] = '\0';
+        return true;
+    }
+    return false;
+}
+
+void nvs_save_xz_client_id(const char *cid) {
+    if (!cid) return;
+    s_prefs.putString("xz_cid", cid);
+    LOG_D("NVS", "Saved xz_cid: %s", cid);
+}
+
+bool nvs_load_xz_client_id(char *out, size_t max_len) {
+    if (!out || max_len == 0) return false;
+    String val = s_prefs.getString("xz_cid", "");
+    if (val.length() > 0 && val.length() < max_len) {
+        strncpy(out, val.c_str(), max_len - 1);
+        out[max_len - 1] = '\0';
+        return true;
+    }
+    return false;
+}
+
+void nvs_save_xz_activated(bool activated) {
+    s_prefs.putBool("xz_act", activated);
+    LOG_D("NVS", "Saved xz_act: %d", activated ? 1 : 0);
+}
+
+bool nvs_load_xz_activated() {
+    return s_prefs.getBool("xz_act", false);
+}
+
+void nvs_save_xz_volume(uint8_t volume) {
+    if (volume > 127) volume = 127;
+    s_prefs.putUChar("xz_vol", volume);
+}
+
+uint8_t nvs_load_xz_volume() {
+    return s_prefs.getUChar("xz_vol", 80);
 }

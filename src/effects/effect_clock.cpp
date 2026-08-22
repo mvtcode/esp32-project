@@ -8,10 +8,10 @@ void effect_clock_render(const int32_t *left, const int32_t *right, size_t n) {
 
     WeatherData w = wifi_app_get_weather();
 
-    // 1. Digital Clock (large centered font)
-    u8g2.setFont(u8g2_font_7x14_tf);
+    // 1. Digital Clock (centered font)
+    u8g2.setFont(u8g2_font_6x10_tf);
     int tw = u8g2.getStrWidth(time_str);
-    u8g2.drawStr((SCREEN_W - tw) / 2, 18, time_str);
+    u8g2.drawStr((SCREEN_W - tw) / 2, 16, time_str);
 
     // Separator line
     u8g2.drawHLine(4, 24, SCREEN_W - 8);

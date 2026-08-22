@@ -136,10 +136,10 @@ void effect_text_warp_render(const int32_t *left, const int32_t *right, size_t n
             int w = SafeDraw::getStrWidth(txt);
             SafeDraw::drawStr(sx - w / 2, sy + 4, txt);
         } else {
-            // Close 3D distance -> Large Bold Font with Box outline
-            SafeDraw::setFont(u8g2_font_helvB12_tr);
+            // Close 3D distance -> Font with Box outline
+            SafeDraw::setFont(u8g2_font_6x10_tf);
             int w = SafeDraw::getStrWidth(txt);
-            int h = 12;
+            int h = 10;
             int tx = sx - w / 2;
             int ty = sy + h / 2;
 

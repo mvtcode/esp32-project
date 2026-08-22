@@ -24,30 +24,19 @@ static int jdFromDate(int d, int m, int y) {
 
 /* ---------- New Moon ---------- */
 static int getNewMoonDay(int k) {
-    float T  = k / 1236.85f;
+    float T  = (float)k / 1236.85f;
     float T2 = T * T;
     float T3 = T2 * T;
 
-    float jd = 2415020.75933f
-        + 29.53058868f * k
-        + 0.0001178f * T2
-        - 0.000000155f * T3;
-
+    float jd = 2415020.75933f + 29.53058868f * (float)k + 0.0001178f * T2 - 0.000000155f * T3;
     jd += 0.00033f * sinf((166.56f + 132.87f * T - 0.009173f * T2) * DR);
 
-    float M  = 359.2242f + 29.10535608f * k;
-    float Mp = 306.0253f + 385.81691806f * k;
-    float F  = 21.2964f  + 390.67050646f * k;
+    float M  = 359.2242f + 29.10535608f * (float)k;
+    float Mp = 306.0253f + 385.81691806f * (float)k;
+    float F  = 21.2964f  + 390.67050646f * (float)k;
 
-    float C =
-        (0.1734f - 0.000393f * T) * sinf(M * DR)
-        - 0.4068f * sinf(Mp * DR)
-        + 0.0161f * sinf(2 * Mp * DR)
-        + 0.0104f * sinf(2 * F * DR);
-
-    float deltaT = (T < -11)
-        ? (0.001f + 0.000839f * T)
-        : (-0.000278f + 0.000265f * T);
+    float C = (0.1734f - 0.000393f * T) * sinf(M * DR) - 0.4068f * sinf(Mp * DR) + 0.0161f * sinf(2 * Mp * DR) + 0.0104f * sinf(2 * F * DR);
+    float deltaT = (T < -11.0f) ? (0.001f + 0.000839f * T) : (-0.000278f + 0.000265f * T);
 
     return (int)(jd + C - deltaT + 0.5f + LUNAR_TZ / 24.0f);
 }
