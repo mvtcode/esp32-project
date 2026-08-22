@@ -31,6 +31,7 @@
 static QueueHandle_t s_audio_queue = nullptr;
 static AudioMode     s_current_mode = AUDIO_MODE_MIC;
 static volatile bool s_mic_task_active = false;
+static volatile bool s_mic_is_reading = false;
 
 // -----------------------------------------------------------------------
 // FreeRTOS Mic Task — Core 0
@@ -39,6 +40,7 @@ static void mic_task(void * /*arg*/) {
     static AudioFrame frame;
     for (;;) {
         if (s_mic_task_active) {
+            s_mic_is_reading = true;
             if (i2s_mic_read(frame.left, frame.right, FRAME_SIZE)) {
                 if (s_audio_queue) {
                     xQueueSend(s_audio_queue, &frame, 0);
@@ -46,6 +48,7 @@ static void mic_task(void * /*arg*/) {
             } else {
                 vTaskDelay(pdMS_TO_TICKS(10));
             }
+            s_mic_is_reading = false;
         } else {
             vTaskDelay(pdMS_TO_TICKS(50));
         }
@@ -71,113 +74,19 @@ static void switch_audio_mode(AudioMode target_mode) {
     LOG_I("Switch", "Transitioning Mode %d -> %d (%s)...", 
           (int)s_current_mode, (int)target_mode, tgt_title);
 
-    // 1. Initial Transition Screen on OLED
-    display_show_loading(tgt_title, "Giai phong tai nguyen...", 15);
-
-    // 2. Clean Teardown of Current Subsystems with VERIFIED resource release
+    // Lưu trạng thái trước khi khởi động lại
+    nvs_save_audio_mode(target_mode);
+    if (s_current_mode == AUDIO_MODE_SD_MP3 && mp3_player_get_current_track_index() >= 0) {
+        nvs_save_sd_track_index((uint16_t)mp3_player_get_current_track_index());
+    }
     if (s_current_mode == AUDIO_MODE_SD_MP3) {
-        display_show_loading(tgt_title, "Dung phat & dong file MP3...", 30);
-        mp3_player_stop();
-        display_set_mp3_screen(MP3_SCREEN_NORMAL);
-        vTaskDelay(pdMS_TO_TICKS(50));
-    } else if (s_current_mode == AUDIO_MODE_BT) {
-        display_show_loading(tgt_title, "Ngat & huy Bluetooth...", 30);
-        bt_audio_stop();
-    } else if (s_current_mode == AUDIO_MODE_CLOCK) {
-        display_show_loading(tgt_title, "Ngat ket noi WiFi...", 30);
-        wifi_app_stop();
-    } else if (s_current_mode == AUDIO_MODE_MIC) {
-        display_show_loading(tgt_title, "Giai phong Micro I2S...", 30);
-        s_mic_task_active = false;
-        vTaskDelay(pdMS_TO_TICKS(80));
-        i2s_mic_deinit();
+        mp3_player_stop(); // Clean stop I2S before reboot
     }
 
-    // 3. Clear audio pipeline and verify memory state
-    display_show_loading(tgt_title, "Kiem tra RAM & DSP...", 50);
-    if (s_audio_queue) xQueueReset(s_audio_queue);
-    beat_detector_reset();
-    vTaskDelay(pdMS_TO_TICKS(60));
-
-    LOG_I("Switch", "Subsystem cleared. Current FreeHeap: %u, MaxBlock: %u",
-          (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
-
-    // 4. Setup Target Mode
-    if (target_mode == AUDIO_MODE_BT) {
-        display_show_loading(tgt_title, "Khoi dong DAC & Radio...", 75);
-        bt_audio_start();
-        encoder_set_enabled(true);
-        display_set_audio_mode(AUDIO_MODE_BT, bt_audio_is_connected(), false);
-
-        s_current_mode = AUDIO_MODE_BT;
-        nvs_save_audio_mode(AUDIO_MODE_BT);
-        display_show_loading(tgt_title, "San sang ket noi!", 100);
-        delay(120);
-        display_toast("MODE: BLUETOOTH");
-    } 
-    else if (target_mode == AUDIO_MODE_CLOCK) {
-        display_show_loading(tgt_title, "Ket noi mang WiFi...", 75);
-        encoder_set_enabled(false);
-        wifi_app_init();
-        display_set_audio_mode(AUDIO_MODE_CLOCK, false, false);
-
-        s_current_mode = AUDIO_MODE_CLOCK;
-        nvs_save_audio_mode(AUDIO_MODE_CLOCK);
-        display_show_loading(tgt_title, "Da san sang!", 100);
-        delay(120);
-        display_toast("MODE: CLOCK & WEATHER");
-    }
-    else if (target_mode == AUDIO_MODE_SD_MP3) {
-        encoder_set_enabled(true);
-        display_show_loading(tgt_title, "Kiem tra the nho MicroSD...", 60);
-
-        if (!sd_card_is_mounted() && !sd_card_init()) {
-            display_show_loading(tgt_title, "Khong tim thay the!", 100);
-            delay(1500);
-            switch_audio_mode(AUDIO_MODE_MIC);
-            return;
-        }
-
-        if (sd_card_get_track_count() == 0) {
-            sd_card_scan_tracks();
-        }
-
-        if (sd_card_get_track_count() == 0) {
-            display_show_loading(tgt_title, "The khong co nhac MP3!", 100);
-            delay(1500);
-            switch_audio_mode(AUDIO_MODE_MIC);
-            return;
-        }
-
-        display_set_mp3_screen(MP3_SCREEN_NORMAL);
-        s_mp3_prev_screen = MP3_SCREEN_NORMAL;
-        display_show_loading(tgt_title, "Khoi dong trinh phat...", 90);
-        mp3_player_start();
-        display_set_audio_mode(AUDIO_MODE_SD_MP3, true, true);
-
-        s_current_mode = AUDIO_MODE_SD_MP3;
-        nvs_save_audio_mode(AUDIO_MODE_SD_MP3);
-        display_show_loading(tgt_title, "Phat nhac...", 100);
-        delay(120);
-        display_toast("MODE: MP3 PLAYER");
-    }
-    else { // AUDIO_MODE_MIC
-        display_show_loading(tgt_title, "Bat Micro INMP441...", 75);
-        encoder_set_enabled(false);
-
-        if (i2s_mic_init()) {
-            s_mic_task_active = true;
-        } else {
-            LOG_W("Switch", "Mic re-init failed");
-        }
-        display_set_audio_mode(AUDIO_MODE_MIC, false, false);
-
-        s_current_mode = AUDIO_MODE_MIC;
-        nvs_save_audio_mode(AUDIO_MODE_MIC);
-        display_show_loading(tgt_title, "Nhan tin hieu Micro!", 100);
-        delay(120);
-        display_toast("MODE: MICROPHONE");
-    }
+    // Khởi động lại lập tức để tạo cảm giác chuyển mode siêu tốc
+    // (Màn hình sẽ chỉ chớp đen trong nháy mắt ~1s thay vì hiện thông báo loading)
+    LOG_I("Switch", "Rebooting to guarantee clean RAM for new mode...");
+    ESP.restart();
 }
 
 // -----------------------------------------------------------------------
@@ -185,7 +94,7 @@ static void switch_audio_mode(AudioMode target_mode) {
 // -----------------------------------------------------------------------
 void setup() {
     Serial.begin(115200);
-    delay(500);
+    delay(200);
     Serial.println("=========================================");
     Serial.println("=== ESP32-WROOM Sound Visualizer V2 ===");
     Serial.println("=========================================");
@@ -217,7 +126,12 @@ void setup() {
     // 6. Beat detector init
     beat_detector_init();
 
-    // 7. Restore and start ONLY the selected Audio Mode
+    // 7. Mount SD Card immediately to secure ~25KB DMA memory BEFORE BT stack fragments the heap
+    if (!sd_card_init()) {
+        LOG_W("Boot", "SD Card not found at boot. MP3 mode might be unavailable.");
+    }
+
+    // 8. Restore and start ONLY the selected Audio Mode
     s_current_mode = nvs_load_audio_mode();
     if (s_current_mode == AUDIO_MODE_BT) {
         s_mic_task_active = false;
@@ -238,13 +152,19 @@ void setup() {
         encoder_set_enabled(true);
         bt_audio_stop();
         wifi_app_stop();
-        if (sd_card_init() && sd_card_scan_tracks() > 0) {
+        
+        mp3_player_start(); // Reserve I2S DMA memory first
+
+        if (sd_card_is_mounted() && sd_card_scan_tracks() > 0) {
             display_set_mp3_screen(MP3_SCREEN_NORMAL);
             s_mp3_prev_screen = MP3_SCREEN_NORMAL;
-            mp3_player_start();
+            if (!mp3_player_is_playing()) {
+                mp3_player_play_track(nvs_load_sd_track_index() % sd_card_get_track_count());
+            }
             display_set_audio_mode(AUDIO_MODE_SD_MP3, true, true);
             display_toast("MODE: MP3 PLAYER");
         } else {
+            mp3_player_stop(); // Free I2S so Mic can use it
             s_current_mode = AUDIO_MODE_MIC;
             nvs_save_audio_mode(AUDIO_MODE_MIC);
             encoder_set_enabled(false);

@@ -27,6 +27,7 @@ static bool           s_wifi_connected = false;
 static WeatherData    s_cached_weather = { 28.5f, 65, "Partly Cloudy", true };
 static TaskHandle_t   s_weather_task_handle = nullptr;
 static volatile bool  s_weather_task_exit   = false;
+static bool           s_web_inited          = false;
 
 // Persistent Config
 static char           s_config_ssid[64] = "";
@@ -798,8 +799,11 @@ void wifi_app_start_ap_portal() {
     s_dns_server.setErrorReplyCode(DNSReplyCode::NoError);
     s_dns_server.start(53, "*", WiFi.softAPIP());
 
-    setup_web_endpoints();
-    ElegantOTA.begin(&s_server);
+    if (!s_web_inited) {
+        setup_web_endpoints();
+        ElegantOTA.begin(&s_server);
+        s_web_inited = true;
+    }
     s_server.begin();
     s_wifi_state = WIFI_STATE_AP_MODE;
     Serial.printf("[WiFi] AP Captive Portal active at: %s (IP: %s)\n", AP_SSID_NAME, WiFi.softAPIP().toString().c_str());
@@ -847,8 +851,11 @@ void wifi_app_loop(bool is_bt_streaming) {
 
             configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
 
-            setup_web_endpoints();
-            ElegantOTA.begin(&s_server);
+            if (!s_web_inited) {
+                setup_web_endpoints();
+                ElegantOTA.begin(&s_server);
+                s_web_inited = true;
+            }
             s_server.begin();
             Serial.println("[HTTP] Web Server & ElegantOTA active on port 80");
             display_toast("WIFI CONNECTED");

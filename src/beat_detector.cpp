@@ -189,8 +189,12 @@ const BeatInfo& beat_detector_update(const AudioBands& bands) {
         g_beat.bpm        = s_bpm_smooth;
         g_beat.confidence = s_confidence;
 
-        LOG_D("Beat", "BEAT! band=%d ratio=%.2f BPM=%.1f conf=%.2f",
-              best_band, best_ratio, s_bpm_smooth, s_confidence);
+        static uint32_t s_last_log_ms = 0;
+        if (now - s_last_log_ms >= 3000) {
+            LOG_D("Beat", "BEAT! band=%d ratio=%.2f BPM=%.1f conf=%.2f",
+                  best_band, best_ratio, s_bpm_smooth, s_confidence);
+            s_last_log_ms = now;
+        }
     }
 
     return g_beat;

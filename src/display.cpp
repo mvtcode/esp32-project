@@ -366,12 +366,6 @@ void display_init() {
     u8g2.getU8x8()->x_offset = OLED_X_OFFSET;
 
     gfx.clearBuffer();
-    gfx.setFont(u8g2_font_6x10_tf);
-    gfx.drawStr(22, 22, "Sound Viz");
-    gfx.drawStr(22, 38, "ESP32-WROOM");
-    gfx.drawHLine(0, 44, SCREEN_W);
-    gfx.setFont(u8g2_font_04b_03_tr);
-    gfx.drawStr(28, 56, "initialising...");
     gfx.sendBuffer();
 
     LOG_I("OLED", "Init OK - HW_I2C %d kHz, %d modes", I2C_CLOCK / 1000, MODE_COUNT);

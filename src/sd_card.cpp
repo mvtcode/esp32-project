@@ -7,7 +7,7 @@
 SPIClass g_spiSD(HSPI);
 
 static bool s_sd_mounted = false;
-static PlaylistItem *s_playlist = nullptr;
+static PlaylistItem *s_playlist[MAX_PLAYLIST_TRACKS] = {nullptr};
 static int s_track_count = 0;
 
 // ---------------------------------------------------------------------------
@@ -171,7 +171,11 @@ bool sd_card_init() {
     digitalWrite(SD_PIN_CS, HIGH);
     delay(30);
 
-    g_spiSD.begin(SD_PIN_SCK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
+    static bool s_spi_inited = false;
+    if (!s_spi_inited) {
+        g_spiSD.begin(SD_PIN_SCK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
+        s_spi_inited = true;
+    }
 
     // Multi-speed mounting strategy: 20MHz -> 10MHz -> 4MHz (clean SD.begin without raw transfer collisions)
     bool mounted = SD.begin(SD_PIN_CS, g_spiSD, 20000000);
@@ -203,23 +207,14 @@ bool sd_card_init() {
     s_sd_mounted = true;
     uint64_t cardSize = SD.cardSize() / (1024 * 1024);
     LOG_I("SD", "MicroSD Card mounted successfully! Size: %llu MB", cardSize);
-
-    // Allocate initial playlist buffer (32 tracks = ~7.1KB, avoiding OOM on mode switch)
-    if (!s_playlist) {
-        s_playlist_capacity = 32;
-        s_playlist = (PlaylistItem *)malloc(sizeof(PlaylistItem) * s_playlist_capacity);
-        if (!s_playlist) {
-            LOG_E("SD", "Failed to allocate playlist buffer on heap (OOM)!");
-            return false;
-        }
-        memset(s_playlist, 0, sizeof(PlaylistItem) * s_playlist_capacity);
-    }
     return true;
 }
 
 void sd_card_deinit() {
-    // Keep SD card mounted and playlist preserved in RAM to prevent SPI bus re-mount corruption.
-    // Memory footprint is only ~4.7KB for 21 tracks.
+    if (!s_sd_mounted) return;
+    SD.end();
+    s_sd_mounted = false;
+    LOG_I("SD", "MicroSD Card unmounted to free RAM.");
 }
 
 bool sd_card_is_mounted() {
@@ -242,7 +237,7 @@ static bool is_supported_audio(const char *name) {
 }
 
 static void scan_directory_recursive(File dir, int depth) {
-    if (!s_playlist || depth > 6 || s_track_count >= MAX_PLAYLIST_TRACKS) return;
+    if (depth > 6 || s_track_count >= MAX_PLAYLIST_TRACKS) return;
 
     File file = dir.openNextFile();
     while (file && s_track_count < MAX_PLAYLIST_TRACKS) {
@@ -261,33 +256,26 @@ static void scan_directory_recursive(File dir, int depth) {
                 scan_directory_recursive(file, depth + 1);
             } else {
                 if (is_supported_audio(basename)) {
-                    // Dynamically expand capacity if needed
-                    if (s_track_count >= s_playlist_capacity && s_playlist_capacity < MAX_PLAYLIST_TRACKS) {
-                        int new_cap = s_playlist_capacity + 16;
-                        if (new_cap > MAX_PLAYLIST_TRACKS) new_cap = MAX_PLAYLIST_TRACKS;
-                        PlaylistItem *expanded = (PlaylistItem *)realloc(s_playlist, sizeof(PlaylistItem) * new_cap);
-                        if (expanded) {
-                            s_playlist = expanded;
-                            s_playlist_capacity = new_cap;
+                    if (s_track_count < MAX_PLAYLIST_TRACKS) {
+                        if (s_playlist[s_track_count] == nullptr) {
+                            s_playlist[s_track_count] = (PlaylistItem*)malloc(sizeof(PlaylistItem));
                         }
-                    }
+                        PlaylistItem *item = s_playlist[s_track_count];
+                        if (item) {
+                            // Ensure full path has leading slash
+                            if (full_path[0] == '/') {
+                                strncpy(item->path, full_path, sizeof(item->path) - 1);
+                            } else {
+                                snprintf(item->path, sizeof(item->path), "/%s", full_path);
+                            }
+                            item->path[sizeof(item->path) - 1] = '\0';
 
-                    if (s_track_count < s_playlist_capacity) {
-                        PlaylistItem &item = s_playlist[s_track_count];
+                            // Generate clean display title
+                            sd_sanitize_title(basename, item->title, sizeof(item->title));
 
-                        // Ensure full path has leading slash
-                        if (full_path[0] == '/') {
-                            strncpy(item.path, full_path, sizeof(item.path) - 1);
-                        } else {
-                            snprintf(item.path, sizeof(item.path), "/%s", full_path);
+                            LOG_I("SD", "[%d] %s -> '%s'", s_track_count + 1, item->path, item->title);
+                            s_track_count++;
                         }
-                        item.path[sizeof(item.path) - 1] = '\0';
-
-                        // Generate clean display title
-                        sd_sanitize_title(basename, item.title, sizeof(item.title));
-
-                        LOG_I("SD", "[%d] %s -> '%s'", s_track_count + 1, item.path, item.title);
-                        s_track_count++;
                     }
                 }
             }
@@ -299,8 +287,8 @@ static void scan_directory_recursive(File dir, int depth) {
 
 // Case-insensitive natural alphabetical comparator for PlaylistItem
 static int compare_playlist_items(const void *a, const void *b) {
-    const PlaylistItem *item_a = (const PlaylistItem*)a;
-    const PlaylistItem *item_b = (const PlaylistItem*)b;
+    const PlaylistItem *item_a = *(const PlaylistItem**)a;
+    const PlaylistItem *item_b = *(const PlaylistItem**)b;
 
     const char *sa = item_a->title;
     const char *sb = item_b->title;
@@ -343,19 +331,18 @@ int sd_card_scan_tracks() {
 
     // Sort playlist alphabetically (A-Z / Natural Sort)
     if (s_track_count > 1) {
-        qsort(s_playlist, s_track_count, sizeof(PlaylistItem), compare_playlist_items);
+        qsort(s_playlist, s_track_count, sizeof(PlaylistItem*), compare_playlist_items);
         LOG_I("SD", "Tracks sorted alphabetically (A-Z):");
         for (int i = 0; i < s_track_count; i++) {
-            LOG_I("SD", "  [%02d] %s", i + 1, s_playlist[i].title);
+            LOG_I("SD", "  [%02d] %s", i + 1, s_playlist[i]->title);
         }
     }
 
-    // Shrink playlist to exact track count to release ~19KB contiguous Heap for MP3 decoder
-    if (s_track_count > 0 && s_playlist) {
-        PlaylistItem *shrunk = (PlaylistItem *)realloc(s_playlist, sizeof(PlaylistItem) * s_track_count);
-        if (shrunk) {
-            s_playlist = shrunk;
-            s_playlist_capacity = s_track_count;
+    // Free unused allocated pointers from previous larger scans
+    for (int i = s_track_count; i < MAX_PLAYLIST_TRACKS; i++) {
+        if (s_playlist[i]) {
+            free(s_playlist[i]);
+            s_playlist[i] = nullptr;
         }
     }
 
@@ -369,6 +356,6 @@ int sd_card_get_track_count() {
 }
 
 const PlaylistItem* sd_card_get_track(int index) {
-    if (!s_playlist || index < 0 || index >= s_track_count) return nullptr;
-    return &s_playlist[index];
+    if (index < 0 || index >= s_track_count) return nullptr;
+    return s_playlist[index];
 }

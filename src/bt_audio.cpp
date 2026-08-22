@@ -236,32 +236,41 @@ void bt_audio_start() {
         .data_in_num = I2S_PIN_NO_CHANGE
     };
 
-    i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
+    esp_err_t err = i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
+    if (err != ESP_OK) {
+        LOG_E("BT", "Failed to install I2S driver: %d", err);
+        return;
+    }
     i2s_set_pin(I2S_NUM_0, &pin_config);
     i2s_zero_dma_buffer(I2S_NUM_0);
 
-    // 2. Initialize Bluetooth Controller & Bluedroid
-    btStart();
-    esp_bluedroid_init();
-    esp_bluedroid_enable();
+    static bool s_bt_inited = false;
+    if (!s_bt_inited) {
+        // 2. Initialize Bluetooth Controller & Bluedroid
+        btStart();
+        esp_bluedroid_init();
+        esp_bluedroid_enable();
 
-    // 3. Set Device Name
-    esp_bt_dev_set_device_name(BT_DEVICE_NAME);
+        // 3. Set Device Name
+        esp_bt_dev_set_device_name(BT_DEVICE_NAME);
 
-    // 4. Initialize AVRCP Controller (CT) & Target (TG for Volume Sync)
-    esp_avrc_ct_init();
-    esp_avrc_ct_register_callback(avrc_ct_cb);
+        // 4. Initialize AVRCP Controller (CT) & Target (TG for Volume Sync)
+        esp_avrc_ct_init();
+        esp_avrc_ct_register_callback(avrc_ct_cb);
 
-    esp_avrc_tg_init();
-    esp_avrc_tg_register_callback(avrc_tg_cb);
-    esp_avrc_rn_evt_cap_mask_t evt_set = {0};
-    esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET, &evt_set, ESP_AVRC_RN_VOLUME_CHANGE);
-    esp_avrc_tg_set_rn_evt_cap(&evt_set);
+        esp_avrc_tg_init();
+        esp_avrc_tg_register_callback(avrc_tg_cb);
+        esp_avrc_rn_evt_cap_mask_t evt_set = {0};
+        esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET, &evt_set, ESP_AVRC_RN_VOLUME_CHANGE);
+        esp_avrc_tg_set_rn_evt_cap(&evt_set);
 
-    // 5. Initialize A2DP Sink & Register Data Callback
-    esp_a2d_sink_init();
-    esp_a2d_register_callback(a2d_cb);
-    esp_a2d_sink_register_data_callback(bt_i2s_data_callback);
+        // 5. Initialize A2DP Sink & Register Data Callback
+        esp_a2d_sink_init();
+        esp_a2d_register_callback(a2d_cb);
+        esp_a2d_sink_register_data_callback(bt_i2s_data_callback);
+        
+        s_bt_inited = true;
+    }
 
     // 6. Set Discoverable & Connectable
     esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
@@ -280,7 +289,7 @@ void bt_audio_start() {
 }
 
 void bt_audio_stop() {
-    if (!s_is_started && esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE) return;
+    if (!s_is_started) return;
     LOG_I("BT", "Stopping Bluetooth A2DP Sink with verified state polling...");
 
     // 1. If connected, request disconnect and poll until disconnected (or timeout 1.5s)
@@ -300,39 +309,8 @@ void bt_audio_stop() {
     esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    // 3. Deinitialize A2DP & AVRCP profiles
-    esp_a2d_sink_deinit();
-    vTaskDelay(pdMS_TO_TICKS(50));
-    esp_avrc_ct_deinit();
-    esp_avrc_tg_deinit();
-    vTaskDelay(pdMS_TO_TICKS(50));
-
-    // 4. Disable Bluedroid and verify it is disabled
-    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
-        esp_bluedroid_disable();
-        uint32_t wait_start = millis();
-        while (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED && (millis() - wait_start < 1000)) {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-    }
-
-    // 5. Deinitialize Bluedroid and verify it is uninitialized
-    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED) {
-        esp_bluedroid_deinit();
-        uint32_t wait_start = millis();
-        while (esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_UNINITIALIZED && (millis() - wait_start < 1000)) {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-    }
-
-    // 6. Disable BT Controller and verify it is IDLE
-    if (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_IDLE) {
-        btStop();
-        uint32_t wait_start = millis();
-        while (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_IDLE && (millis() - wait_start < 1000)) {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-    }
+    // We no longer deinitialize the BT stack to prevent heap fragmentation and core panics.
+    // By keeping it initialized but non-connectable, we save CPU and avoid OS memory reallocations.
 
     // 7. Uninstall I2S driver
     vTaskDelay(pdMS_TO_TICKS(50));

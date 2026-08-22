@@ -612,7 +612,11 @@ void mp3_player_start() {
         .data_in_num = I2S_PIN_NO_CHANGE
     };
 
-    i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
+    esp_err_t err = i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
+    if (err != ESP_OK) {
+        LOG_E("MP3", "Failed to install I2S driver: %d", err);
+        return;
+    }
     i2s_set_pin(I2S_NUM_0, &pin_config);
 
     if (!s_audio_out) {
@@ -669,13 +673,8 @@ void mp3_player_stop() {
         }
     }
 
-    // 3. Unregister from Task Watchdog and delete audio task
-    if (s_mp3_task_handle) {
-        esp_task_wdt_delete(s_mp3_task_handle);
-        vTaskDelete(s_mp3_task_handle);
-        s_mp3_task_handle = nullptr;
-    }
-
+    // 3. We no longer delete the task to avoid heap fragmentation and memory leaks.
+    // The task will remain in an idle state waiting for new commands.
     // 4. Cleanly close and free audio decoders, file buffers, and file handles
     close_current_stream();
 
