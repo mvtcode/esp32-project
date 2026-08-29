@@ -745,7 +745,7 @@ void mp3_player_resume() {
 }
 
 void mp3_player_adjust_volume(int32_t delta) {
-    int32_t new_vol = (int32_t)s_current_volume + delta;
+    int32_t new_vol = (int32_t)s_current_volume + (delta * 4);
     if (new_vol < 0) new_vol = 0;
     if (new_vol > 127) new_vol = 127;
     mp3_player_set_volume((uint8_t)new_vol);

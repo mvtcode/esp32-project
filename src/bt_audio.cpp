@@ -324,7 +324,7 @@ void bt_audio_stop() {
 }
 
 void bt_audio_adjust_volume(int32_t delta) {
-    int32_t new_vol = (int32_t)s_current_volume + delta;
+    int32_t new_vol = (int32_t)s_current_volume + (delta * 4);
     if (new_vol < 0) new_vol = 0;
     if (new_vol > 127) new_vol = 127;
     bt_audio_set_volume((uint8_t)new_vol);
