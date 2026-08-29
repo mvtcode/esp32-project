@@ -26,6 +26,7 @@ private:
     static const char *password;
     static const char *scriptUrl;
     static QueueHandle_t uploadQueue;
+    static SemaphoreHandle_t sdMutex;
     static UploadStatus current_status;
     static uint32_t last_status_change_time;
     static bool is_wifi_connected;

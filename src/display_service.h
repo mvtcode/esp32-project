@@ -8,6 +8,7 @@
 #include "face_detector.h"
 #include "upload_types.h"
 #include "weather_service.h"
+#include "market_service.h"
 
 enum DisplayMode {
     DISPLAY_MODE_CAMERA = 0,
@@ -44,8 +45,8 @@ public:
     // Render Camera View
     static void render(const CameraFrame &frame, const FaceDetectionResult &aiResult, float displayFps, UploadStatus uploadStatus = UPLOAD_IDLE, bool wifiConnected = false, bool uploadEnabled = true);
 
-    // Render Standby Clock & Weather View with Zero Flicker
-    static void renderStandbyClock(bool wifiConnected, const WeatherInfo &weather, float aiFps);
+    // Render Standby Clock, Weather & Market View with Zero Flicker
+    static void renderStandbyClock(bool wifiConnected, const WeatherInfo &weather, const MarketInfo &market, float aiFps = 0.0f);
 };
 
 #endif // DISPLAY_SERVICE_H

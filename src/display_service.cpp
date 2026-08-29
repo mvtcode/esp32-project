@@ -204,7 +204,7 @@ void DisplayService::render(const CameraFrame &frame, const FaceDetectionResult 
     lcd.endWrite();
 }
 
-void DisplayService::renderStandbyClock(bool wifiConnected, const WeatherInfo &weather, float aiFps) {
+void DisplayService::renderStandbyClock(bool wifiConnected, const WeatherInfo &weather, const MarketInfo &market, float aiFps) {
     if (!screen_on) return;
 
     time_t nowSec = time(nullptr);
@@ -229,21 +229,21 @@ void DisplayService::renderStandbyClock(bool wifiConnected, const WeatherInfo &w
     clockCanvas.fillRect(0, 0, 320, 22, 0x0010);
     clockCanvas.drawFastHLine(0, 22, 320, 0x2124);
 
-    // Chế độ đồng hồ: Thời tiết ở bên trái
+    // Header Bar: Thời tiết & Địa điểm
     clockCanvas.setFont(&Verdana_Vietnamese10pt);
     clockCanvas.setTextSize(1);
+
+    char topStr[96] = "";
     if (weather.is_valid) {
         clockCanvas.setTextColor(TFT_CYAN, 0x0010);
-        char topWStr[80];
-        // Hà Nội: có mây, 27.2°C | 96%
-        snprintf(topWStr, sizeof(topWStr), "%s: %s, %.1f°C | %d%%", 
+        snprintf(topStr, sizeof(topStr), "%s: %s, %.1f°C | %d%%", 
                  weather.city_name.c_str(), weather.condition_text.c_str(), 
                  weather.temperature, weather.humidity);
-        clockCanvas.drawString(utf8ToCustom(topWStr), 8, 4);
     } else {
         clockCanvas.setTextColor(TFT_SILVER, 0x0010);
-        clockCanvas.drawString(utf8ToCustom("Đang cập nhật thời tiết..."), 8, 4);
+        snprintf(topStr, sizeof(topStr), "Đang cập nhật thời tiết...");
     }
+    clockCanvas.drawString(utf8ToCustom(topStr), 8, 4);
 
     // WiFi 5 vạch ở góc bên phải
     int clockRssi = wifiConnected ? WiFi.RSSI() : -100;
@@ -312,70 +312,87 @@ void DisplayService::renderStandbyClock(bool wifiConnected, const WeatherInfo &w
     clockCanvas.setTextColor(TFT_SILVER, 0x10A2);
     clockCanvas.drawCenterString(utf8ToCustom("[BOOT: Xem Camera]"), lcard_cx, lcard_y + 172);
 
-    // ================= KHỐI PHẢI: LỊCH THÁNG (CALENDAR WIDGET) (x: 162 -> 316) =================
+    // ================= KHỐI PHẢI: BẢNG GIÁ VÀNG & XĂNG DẦU (MARKET DASHBOARD) (x: 162 -> 316) =================
     int cal_x = 162;
     int cal_y = 28;
     int cal_w = 154;
     int cal_h = 206;
+    int cal_cx = cal_x + cal_w / 2;
 
     clockCanvas.fillRoundRect(cal_x, cal_y, cal_w, cal_h, 8, 0x10A2);
     clockCanvas.drawRoundRect(cal_x, cal_y, cal_w, cal_h, 8, 0x2965);
 
-    // Tiêu đề Tháng / Năm
-    clockCanvas.fillRect(cal_x + 2, cal_y + 2, cal_w - 4, 22, 0x2167);
-    clockCanvas.setFont(&Verdana_Vietnamese10pt);
-    clockCanvas.setTextColor(TFT_WHITE, 0x2167);
-    char calHeader[32];
-    snprintf(calHeader, sizeof(calHeader), "THÁNG %02d / %04d", curMonth + 1, curYear);
-    clockCanvas.drawCenterString(utf8ToCustom(calHeader), cal_x + cal_w / 2, cal_y + 4);
+    if (market.is_valid) {
+        // 1. PHẦN 1: GIÁ VÀNG (Tr/Lượng) - CĂN GIỮA
+        clockCanvas.setFont(&Verdana_Vietnamese10pt);
+        clockCanvas.setTextColor(0xFFE0, 0x10A2); // Vàng kim
+        clockCanvas.drawCenterString(utf8ToCustom("★ GIÁ VÀNG (Tr/lượng) ★"), cal_cx, cal_y + 10);
 
-    // Header các thứ: T2 T3 T4 T5 T6 T7 CN
-    const char *headers[] = {"T2", "T3", "T4", "T5", "T6", "T7", "CN"};
-    int col_w = 20;
-    int start_gx = cal_x + 8;
-    int start_gy = cal_y + 30;
+        // Row 1: SJC
+        clockCanvas.setTextColor(0xDEDB, 0x10A2);
+        clockCanvas.drawString(utf8ToCustom("SJC:"), cal_x + 8, cal_y + 32);
+        clockCanvas.setTextColor(0xFFE0, 0x10A2);
+        char sjcBuf[32];
+        snprintf(sjcBuf, sizeof(sjcBuf), "%s - %s", market.sjc_buy.c_str(), market.sjc_sell.c_str());
+        clockCanvas.drawString(utf8ToCustom(sjcBuf), cal_x + 42, cal_y + 32);
 
-    clockCanvas.setFont(&fonts::Font0);
-    clockCanvas.setTextSize(1);
-    for (int i = 0; i < 7; ++i) {
-        clockCanvas.setTextColor((i >= 5) ? 0xFDE0 : 0x9CD3, 0x10A2); // T7, CN màu vàng
-        clockCanvas.drawString(headers[i], start_gx + i * col_w, start_gy);
-    }
+        // Row 2: Nhẫn 9999
+        clockCanvas.setTextColor(0xDEDB, 0x10A2);
+        clockCanvas.drawString(utf8ToCustom("Nhẫn:"), cal_x + 8, cal_y + 52);
+        clockCanvas.setTextColor(0xFFE0, 0x10A2);
+        char ringBuf[32];
+        snprintf(ringBuf, sizeof(ringBuf), "%s - %s", market.ring_buy.c_str(), market.ring_sell.c_str());
+        clockCanvas.drawString(utf8ToCustom(ringBuf), cal_x + 42, cal_y + 52);
 
-    clockCanvas.drawFastHLine(cal_x + 6, start_gy + 11, cal_w - 12, 0x2965);
+        // Ghi chú: (Giá mua - Giá bán)
+        clockCanvas.setFont(&Verdana_Vietnamese10pt);
+        clockCanvas.setTextColor(0x7BEF, 0x10A2);
+        clockCanvas.drawCenterString(utf8ToCustom("(Giá mua - Giá bán)"), cal_cx, cal_y + 72);
 
-    // Tính toán ngày trong tháng
-    int daysInMonth = getDaysInMonth(curMonth, curYear);
-    int firstDayW = getFirstDayOfWeekMon(curDay, curWday); // 0=T2 ... 6=CN
+        // Đường kẻ phân cách
+        clockCanvas.drawFastHLine(cal_x + 6, cal_y + 88, cal_w - 12, 0x2965);
 
-    int row = 0;
-    int col = firstDayW;
-    int grid_y_base = start_gy + 16;
-    int row_h = 22;
+        // 2. PHẦN 2: XĂNG DẦU (đ/Lít) - CĂN GIỮA
+        clockCanvas.setFont(&Verdana_Vietnamese10pt);
+        clockCanvas.setTextColor(0x7FFF, 0x10A2); // Xanh mint
+        clockCanvas.drawCenterString(utf8ToCustom("★ XĂNG DẦU (đ/Lít) ★"), cal_cx, cal_y + 96);
 
-    for (int d = 1; d <= daysInMonth; ++d) {
-        int cell_x = start_gx + col * col_w;
-        int cell_y = grid_y_base + row * row_h;
+        // Row 1: RON 95
+        clockCanvas.setTextColor(0xDEDB, 0x10A2);
+        clockCanvas.drawString(utf8ToCustom("RON 95:"), cal_x + 8, cal_y + 118);
+        clockCanvas.setTextColor(0x7FFF, 0x10A2);
+        char ronBuf[24];
+        snprintf(ronBuf, sizeof(ronBuf), "%s đ", market.ron95_price.c_str());
+        clockCanvas.drawString(utf8ToCustom(ronBuf), cal_x + 70, cal_y + 118);
 
-        // Nếu là ngày hôm nay: vẽ ô highlight màu xanh ngọc
-        if (d == curDay) {
-            clockCanvas.fillRoundRect(cell_x - 2, cell_y - 2, 17, 16, 3, 0x05B4); // Emerald green
-            clockCanvas.setTextColor(TFT_WHITE, 0x05B4);
-        } else if (col >= 5) {
-            clockCanvas.setTextColor(0xFDE0, 0x10A2); // Thứ 7 & CN màu vàng nhạt
-        } else {
-            clockCanvas.setTextColor(0xDEDB, 0x10A2); // Ngày thường màu xám trắng
-        }
+        // Row 2: E5 RON 92
+        clockCanvas.setTextColor(0xDEDB, 0x10A2);
+        clockCanvas.drawString(utf8ToCustom("E5 R92:"), cal_x + 8, cal_y + 138);
+        clockCanvas.setTextColor(TFT_WHITE, 0x10A2);
+        char e5Buf[24];
+        snprintf(e5Buf, sizeof(e5Buf), "%s đ", market.e5_price.c_str());
+        clockCanvas.drawString(utf8ToCustom(e5Buf), cal_x + 70, cal_y + 138);
 
-        char dStr[8];
-        snprintf(dStr, sizeof(dStr), "%d", d);
-        clockCanvas.drawString(dStr, cell_x + (d < 10 ? 3 : 0), cell_y + 2);
+        // Row 3: Dầu Diesel
+        clockCanvas.setTextColor(0xDEDB, 0x10A2);
+        clockCanvas.drawString(utf8ToCustom("Diesel:"), cal_x + 8, cal_y + 158);
+        clockCanvas.setTextColor(0xFDE0, 0x10A2);
+        char doBuf[24];
+        snprintf(doBuf, sizeof(doBuf), "%s đ", market.diesel_price.c_str());
+        clockCanvas.drawString(utf8ToCustom(doBuf), cal_x + 70, cal_y + 158);
 
-        col++;
-        if (col >= 7) {
-            col = 0;
-            row++;
-        }
+        // Đường phân cách mỏng & Nguồn dữ liệu Tiếng Việt
+        clockCanvas.drawFastHLine(cal_x + 6, cal_y + 178, cal_w - 12, 0x2124);
+        clockCanvas.setFont(&Verdana_Vietnamese10pt);
+        clockCanvas.setTextColor(0x6BCF, 0x10A2);
+        clockCanvas.drawCenterString(utf8ToCustom("Nguồn: VNExpress"), cal_cx, cal_y + 184);
+    } else {
+        clockCanvas.setFont(&Verdana_Vietnamese10pt);
+        clockCanvas.setTextColor(TFT_SILVER, 0x10A2);
+        clockCanvas.drawCenterString(utf8ToCustom("Đang kết nối"), cal_cx, cal_y + 70);
+        clockCanvas.drawCenterString(utf8ToCustom("VNExpress..."), cal_cx, cal_y + 95);
+        clockCanvas.setTextColor(0x7BEF, 0x10A2);
+        clockCanvas.drawCenterString(utf8ToCustom("Cập nhật khi có WiFi"), cal_cx, cal_y + 130);
     }
 
     // 6. Toast Notification nếu có

@@ -426,8 +426,24 @@
         </div>
 
         <div class="item">
-          <label for="weatherCity">Tên Thành Phố (Thời tiết Open-Meteo):</label>
-          <input type="text" id="weatherCity" placeholder="Hà Nội, Hải Phòng, TP.HCM, Đà Nẵng..." value="Hà Nội" />
+          <label for="weatherCity">Tỉnh / Thành Phố (Thời tiết Open-Meteo):</label>
+          <select id="weatherCity" onchange="onCitySelectChange()"></select>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 15px">
+          <div style="flex: 1">
+            <label style="font-size: 0.78rem; color: var(--text-muted);">Vĩ độ (Lat)</label>
+            <input type="text" id="cityLat" readonly style="background: #0f172a; color: #38bdf8; font-size: 0.85rem;" />
+          </div>
+          <div style="flex: 1">
+            <label style="font-size: 0.78rem; color: var(--text-muted);">Kinh độ (Long)</label>
+            <input type="text" id="cityLon" readonly style="background: #0f172a; color: #38bdf8; font-size: 0.85rem;" />
+          </div>
+        </div>
+
+        <div class="item" id="customCityBox" style="display: none;">
+          <label for="customCityInput">Nhập tên thành phố tùy chỉnh:</label>
+          <input type="text" id="customCityInput" placeholder="Ví dụ: Hải Dương, Vũng Tàu..." />
         </div>
 
         <div class="item">
@@ -489,7 +505,84 @@
     <script>
       let wifiNetworks = [];
 
+      const cities = [
+        { name: "Hà Nội", lat: 21.0285, lon: 105.8542 },
+        { name: "Vĩnh Hưng - HN", lat: 20.9861, lon: 105.8767 },
+        { name: "Hải Phòng", lat: 20.8449, lon: 106.6881 },
+        { name: "Thủy Nguyên", lat: 20.9505, lon: 106.6535 },
+        { name: "An Sơn - TN", lat: 20.9928, lon: 106.5601 },
+        { name: "An Hồng - HP", lat: 20.8494, lon: 106.6335 },
+        { name: "Đà Nẵng", lat: 16.0544, lon: 108.2022 },
+        { name: "TP. Hồ Chí Minh", lat: 10.7626, lon: 106.6601 },
+        { name: "Cần Thơ", lat: 10.0333, lon: 105.7833 },
+        { name: "Điện Biên", lat: 21.3833, lon: 103.0167 },
+        { name: "Hải Dương", lat: 20.9373, lon: 106.3146 },
+        { name: "Hạ Long - Quảng Ninh", lat: 20.9505, lon: 107.0734 },
+        { name: "Bắc Ninh", lat: 21.1861, lon: 106.0763 },
+        { name: "Nam Định", lat: 20.4344, lon: 106.1773 },
+        { name: "Thái Bình", lat: 20.4464, lon: 106.3365 },
+        { name: "Ninh Bình", lat: 20.2506, lon: 105.9745 },
+        { name: "Thanh Hóa", lat: 19.8067, lon: 105.7852 },
+        { name: "Vinh - Nghệ An", lat: 18.6734, lon: 105.6813 },
+        { name: "Huế", lat: 16.4637, lon: 107.5909 },
+        { name: "Nha Trang - Khánh Hòa", lat: 12.2388, lon: 109.1967 },
+        { name: "Đà Lạt - Lâm Đồng", lat: 11.9404, lon: 108.4583 },
+        { name: "Quy Nhơn - Bình Định", lat: 13.7820, lon: 109.2197 },
+        { name: "Buôn Ma Thuột - Đắk Lắk", lat: 12.6667, lon: 108.0383 },
+        { name: "Phan Thiết - Bình Thuận", lat: 10.9289, lon: 108.1021 },
+        { name: "Vũng Tàu", lat: 10.3460, lon: 107.0843 },
+        { name: "Biên Hòa - Đồng Nai", lat: 10.9574, lon: 106.8427 },
+        { name: "Thủ Dầu Một - Bình Dương", lat: 10.9805, lon: 106.6519 },
+        { name: "Tùy chỉnh khác...", lat: 0, lon: 0 }
+      ];
+
+      function initCityDropdown() {
+        const sel = document.getElementById("weatherCity");
+        sel.innerHTML = "";
+        cities.forEach((c) => {
+          let opt = document.createElement("option");
+          opt.value = c.name;
+          opt.textContent = c.name;
+          sel.appendChild(opt);
+        });
+        updateCoordsDisplay();
+      }
+
+      function onCitySelectChange() {
+        const sel = document.getElementById("weatherCity");
+        const customBox = document.getElementById("customCityBox");
+        const latInp = document.getElementById("cityLat");
+        const lonInp = document.getElementById("cityLon");
+
+        if (sel.value === "Tùy chỉnh khác...") {
+          customBox.style.display = "block";
+          latInp.readOnly = false;
+          lonInp.readOnly = false;
+          latInp.style.background = "#1e293b";
+          lonInp.style.background = "#1e293b";
+          if (!latInp.value || latInp.value === "---") latInp.value = "21.0285";
+          if (!lonInp.value || lonInp.value === "---") lonInp.value = "105.8542";
+        } else {
+          customBox.style.display = "none";
+          latInp.readOnly = true;
+          lonInp.readOnly = true;
+          latInp.style.background = "#0f172a";
+          lonInp.style.background = "#0f172a";
+          updateCoordsDisplay();
+        }
+      }
+
+      function updateCoordsDisplay() {
+        const sel = document.getElementById("weatherCity");
+        const found = cities.find(c => c.name === sel.value);
+        if (found && found.lat !== 0) {
+          document.getElementById("cityLat").value = found.lat.toFixed(4);
+          document.getElementById("cityLon").value = found.lon.toFixed(4);
+        }
+      }
+
       window.onload = function () {
+        initCityDropdown();
         loadCurrentConfig();
       };
 
@@ -511,7 +604,24 @@
             if (data.cooldown) document.getElementById("cooldown").value = data.cooldown;
             if (data.resMode !== undefined) document.getElementById("resMode").value = data.resMode;
             if (data.ledEnabled !== undefined) document.getElementById("ledEnabled").checked = data.ledEnabled;
-            if (data.weatherCity) document.getElementById("weatherCity").value = data.weatherCity;
+            if (data.weatherCity) {
+              const sel = document.getElementById("weatherCity");
+              const exists = Array.from(sel.options).some(opt => opt.value === data.weatherCity);
+              if (exists) {
+                sel.value = data.weatherCity;
+                onCitySelectChange();
+              } else {
+                sel.value = "Tùy chỉnh khác...";
+                onCitySelectChange();
+                document.getElementById("customCityInput").value = data.weatherCity;
+              }
+              if (data.lat !== undefined && data.lat !== 0) {
+                document.getElementById("cityLat").value = parseFloat(data.lat).toFixed(4);
+              }
+              if (data.lon !== undefined && data.lon !== 0) {
+                document.getElementById("cityLon").value = parseFloat(data.lon).toFixed(4);
+              }
+            }
             if (data.standbyTimeout !== undefined) document.getElementById("standbyTimeout").value = data.standbyTimeout;
           })
           .catch(() => {});
@@ -600,7 +710,21 @@
         const cooldown = parseInt(document.getElementById("cooldown").value) || 5;
         const resMode = parseInt(document.getElementById("resMode").value) || 0;
         const ledEnabled = document.getElementById("ledEnabled").checked;
-        const weatherCity = document.getElementById("weatherCity").value.trim() || "Hà Nội";
+        
+        let weatherCity = document.getElementById("weatherCity").value;
+        let lat = parseFloat(document.getElementById("cityLat").value) || 21.0285;
+        let lon = parseFloat(document.getElementById("cityLon").value) || 105.8542;
+
+        if (weatherCity === "Tùy chỉnh khác...") {
+          weatherCity = document.getElementById("customCityInput").value.trim() || "Hà Nội";
+        } else {
+          const found = cities.find(c => c.name === weatherCity);
+          if (found && found.lat !== 0) {
+            lat = found.lat;
+            lon = found.lon;
+          }
+        }
+        
         const standbyTimeout = parseInt(document.getElementById("standbyTimeout").value) || 15;
         const msg = document.getElementById("msg");
 
@@ -626,6 +750,8 @@
             resMode: resMode,
             ledEnabled: ledEnabled,
             weatherCity: weatherCity,
+            lat: lat,
+            lon: lon,
             standbyTimeout: standbyTimeout
           })
         })

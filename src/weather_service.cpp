@@ -110,15 +110,19 @@ void WeatherService::update(bool wifiConnected) {
         is_fetching = true;
         
         // Tạo task nhẹ để fetch không làm gián đoạn pipeline render
-        xTaskCreatePinnedToCore(
+        BaseType_t res = xTaskCreatePinnedToCore(
             fetchWeatherTask,
             "WeatherFetchTask",
-            8 * 1024, // Fix #1: 4KB quá nhỏ cho HTTPClient + String, tăng lên 8KB
+            8 * 1024,
             NULL,
             1,
             NULL,
             0
         );
+        if (res != pdPASS) {
+            Serial.println("[WeatherService] Task creation failed, resetting fetch flag");
+            is_fetching = false;
+        }
     }
 }
 

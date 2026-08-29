@@ -4,6 +4,7 @@ const char *GoogleDriveService::ssid = "";
 const char *GoogleDriveService::password = "";
 const char *GoogleDriveService::scriptUrl = "";
 QueueHandle_t GoogleDriveService::uploadQueue = NULL;
+SemaphoreHandle_t GoogleDriveService::sdMutex = NULL;
 UploadStatus GoogleDriveService::current_status = UPLOAD_IDLE;
 uint32_t GoogleDriveService::last_status_change_time = 0;
 bool GoogleDriveService::is_wifi_connected = false;
@@ -50,23 +51,26 @@ String GoogleDriveService::generateTimestampFilename() {
 void GoogleDriveService::cleanupOrphanTmpFiles() {
     if (!is_sd_mounted) return;
 
-    File root = SD_MMC.open("/faces");
-    if (!root || !root.isDirectory()) return;
+    if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        File root = SD_MMC.open("/faces");
+        if (root && root.isDirectory()) {
+            File file = root.openNextFile();
+            while (file) {
+                String name = String(file.name());
+                file.close();
 
-    File file = root.openNextFile();
-    while (file) {
-        String name = String(file.name());
-        file.close();
-
-        // Xóa tất cả các file .tmp bị ghi dở do mất điện hoặc reset ở lần chạy trước
-        if (name.endsWith(".tmp")) {
-            String fullPath = "/faces/" + name;
-            SD_MMC.remove(fullPath.c_str());
-            Serial.printf("[FaultTolerance] Cleaned up corrupted/incomplete file: %s\n", fullPath.c_str());
+                // Xóa tất cả các file .tmp bị ghi dở do mất điện hoặc reset ở lần chạy trước
+                if (name.endsWith(".tmp")) {
+                    String fullPath = "/faces/" + name;
+                    SD_MMC.remove(fullPath.c_str());
+                    Serial.printf("[FaultTolerance] Cleaned up corrupted/incomplete file: %s\n", fullPath.c_str());
+                }
+                file = root.openNextFile();
+            }
+            root.close();
         }
-        file = root.openNextFile();
+        xSemaphoreGive(sdMutex);
     }
-    root.close();
 }
 
 bool GoogleDriveService::isValidJPEG(const uint8_t *data, size_t len) {
@@ -77,6 +81,11 @@ bool GoogleDriveService::isValidJPEG(const uint8_t *data, size_t len) {
 
 bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const String &filename) {
     if (!is_sd_mounted || data == nullptr || len == 0) return false;
+
+    if (sdMutex == NULL || xSemaphoreTake(sdMutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        Serial.println("[FaultTolerance] Could not acquire sdMutex for writing");
+        return false;
+    }
 
     // 1. Kiểm tra dung lượng thẻ nhớ còn trống (Nếu < 10MB -> xóa file cũ)
     uint64_t totalBytes = SD_MMC.totalBytes();
@@ -108,6 +117,7 @@ bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const S
     File f = SD_MMC.open(tmpPath.c_str(), FILE_WRITE);
     if (!f) {
         Serial.printf("[FaultTolerance] Error opening temp file: %s\n", tmpPath.c_str());
+        xSemaphoreGive(sdMutex);
         return false;
     }
 
@@ -118,6 +128,7 @@ bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const S
     if (written != len) {
         Serial.printf("[FaultTolerance] Write incomplete (%u/%u bytes), removing temp file\n", written, len);
         SD_MMC.remove(tmpPath.c_str());
+        xSemaphoreGive(sdMutex);
         return false;
     }
 
@@ -126,14 +137,17 @@ bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const S
         SD_MMC.remove(finalPath.c_str());
     }
 
+    bool success = false;
     if (SD_MMC.rename(tmpPath.c_str(), finalPath.c_str())) {
         Serial.printf("[FaultTolerance] Atomically saved file to SD: %s\n", finalPath.c_str());
-        return true;
+        success = true;
     } else {
         Serial.printf("[FaultTolerance] Rename failed from %s to %s\n", tmpPath.c_str(), finalPath.c_str());
         SD_MMC.remove(tmpPath.c_str());
-        return false;
     }
+
+    xSemaphoreGive(sdMutex);
+    return success;
 }
 
 bool GoogleDriveService::uploadSingleFile(const uint8_t *data, size_t len, const char *filename) {
@@ -162,8 +176,14 @@ bool GoogleDriveService::uploadSingleFile(const uint8_t *data, size_t len, const
     mbedtls_base64_encode((unsigned char *)base64_buf, base64_len + 1, &written, data, len);
     base64_buf[written] = '\0';
 
-    // 2. Chuẩn bị JSON Payload
-    String jsonPayload = "{\"image\":\"" + String(base64_buf) + "\",\"filename\":\"" + String(filename) + "\"}";
+    // 2. Chuẩn bị JSON Payload (Dùng reserve tránh phân mảnh Heap)
+    String jsonPayload;
+    jsonPayload.reserve(base64_len + 128);
+    jsonPayload += "{\"image\":\"";
+    jsonPayload += base64_buf;
+    jsonPayload += "\",\"filename\":\"";
+    jsonPayload += filename;
+    jsonPayload += "\"}";
     free(base64_buf);
     base64_buf = nullptr;
 
@@ -231,53 +251,65 @@ void GoogleDriveService::uploadTaskWorker(void *param) {
 
         // 1. Quét và tải các file lưu trong cache SD Card /faces/
         if (is_sd_mounted && is_wifi_connected && upload_enabled) {
-            File root = SD_MMC.open("/faces");
-            if (root && root.isDirectory()) {
-                File file = root.openNextFile();
-                while (file) {
-                    if (!file.isDirectory() && String(file.name()).endsWith(".jpg")) {
-                        size_t fileSize = file.size();
-                        String fileNameStr = String(file.name());
-                        String fullPath = "/faces/" + fileNameStr;
+            if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+                File root = SD_MMC.open("/faces");
+                if (root && root.isDirectory()) {
+                    File file = root.openNextFile();
+                    while (file) {
+                        if (!file.isDirectory() && String(file.name()).endsWith(".jpg")) {
+                            size_t fileSize = file.size();
+                            String fileNameStr = String(file.name());
+                            String fullPath = "/faces/" + fileNameStr;
 
-                        if (fileSize > 0) {
-                            uint8_t *fileBuf = (uint8_t *)ps_malloc(fileSize);
-                            if (!fileBuf) fileBuf = (uint8_t *)malloc(fileSize);
+                            if (fileSize > 0) {
+                                uint8_t *fileBuf = (uint8_t *)ps_malloc(fileSize);
+                                if (!fileBuf) fileBuf = (uint8_t *)malloc(fileSize);
 
-                            if (fileBuf) {
-                                file.read(fileBuf, fileSize);
-                                file.close();
+                                if (fileBuf) {
+                                    file.read(fileBuf, fileSize);
+                                    file.close();
+                                    // Mở lock trước khi upload HTTP để không chặn Core 1 ghi ảnh
+                                    xSemaphoreGive(sdMutex);
 
-                                current_status = UPLOAD_IN_PROGRESS;
-                                last_status_change_time = millis();
+                                    current_status = UPLOAD_IN_PROGRESS;
+                                    last_status_change_time = millis();
 
-                                bool ok = uploadSingleFile(fileBuf, fileSize, fileNameStr.c_str());
-                                free(fileBuf);
+                                    bool ok = uploadSingleFile(fileBuf, fileSize, fileNameStr.c_str());
+                                    free(fileBuf);
 
-                                if (ok) {
-                                    current_status = UPLOAD_SUCCESS;
-                                    // Xóa an toàn chỉ khi upload thành công
-                                    SD_MMC.remove(fullPath.c_str());
-                                    Serial.printf("[FaultTolerance] Uploaded & safely removed: %s\n", fullPath.c_str());
+                                    // Lấy lại lock để xóa file hoặc cập nhật SD
+                                    if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+                                        if (ok) {
+                                            current_status = UPLOAD_SUCCESS;
+                                            SD_MMC.remove(fullPath.c_str());
+                                            Serial.printf("[FaultTolerance] Uploaded & safely removed: %s\n", fullPath.c_str());
+                                        } else {
+                                            current_status = UPLOAD_FAILED;
+                                            Serial.printf("[FaultTolerance] Retaining file for next retry: %s\n", fullPath.c_str());
+                                        }
+                                        xSemaphoreGive(sdMutex);
+                                    }
+                                    last_status_change_time = millis();
+                                    vTaskDelay(pdMS_TO_TICKS(1000));
+                                    break;
                                 } else {
-                                    current_status = UPLOAD_FAILED;
-                                    // Giữ nguyên file trên SD để thử lại lần sau
-                                    Serial.printf("[FaultTolerance] Retaining file for next retry: %s\n", fullPath.c_str());
+                                    file.close();
                                 }
-                                last_status_change_time = millis();
-                                vTaskDelay(pdMS_TO_TICKS(1000));
-                                break;
+                            } else {
+                                // File 0 byte bị lỗi do mất điện -> Xóa ngay
+                                file.close();
+                                SD_MMC.remove(fullPath.c_str());
+                                Serial.printf("[FaultTolerance] Removed empty 0-byte file: %s\n", fullPath.c_str());
                             }
                         } else {
-                            // File 0 byte bị lỗi do mất điện -> Xóa ngay
                             file.close();
-                            SD_MMC.remove(fullPath.c_str());
-                            Serial.printf("[FaultTolerance] Removed empty 0-byte file: %s\n", fullPath.c_str());
                         }
+                        file = root.openNextFile();
                     }
-                    file = root.openNextFile();
+                    root.close();
+                } else {
+                    xSemaphoreGive(sdMutex);
                 }
-                root.close();
             }
         }
 
@@ -304,6 +336,10 @@ bool GoogleDriveService::init(const char *wifi_ssid, const char *wifi_password, 
     password = wifi_password;
     scriptUrl = google_script_url;
     upload_cooldown_ms = max(3u, cooldown_sec) * 1000;
+
+    if (sdMutex == NULL) {
+        sdMutex = xSemaphoreCreateMutex();
+    }
 
     // 1. Thử khởi tạo SD Card (SD_MMC 1-bit mode)
     if (SD_MMC.begin("/sdcard", true)) {
@@ -390,18 +426,20 @@ void GoogleDriveService::processFaceTrigger(const CameraFrame &vgaFrame, const F
             last_center_x = cx;
             last_center_y = cy;
 
-            int vga_x1 = best_face.x1 * 2;
-            int vga_y1 = best_face.y1 * 2;
-            int vga_w  = best_face.width() * 2;
-            int vga_h  = best_face.height() * 2;
+            // Tính tỷ lệ scale theo độ rộng thực tế của vgaFrame (VGA: 640x480 -> scale 2, QVGA: 320x240 -> scale 1)
+            int scale = (vgaFrame.width > 320) ? 2 : 1;
+            int frame_x1 = best_face.x1 * scale;
+            int frame_y1 = best_face.y1 * scale;
+            int frame_w  = best_face.width() * scale;
+            int frame_h  = best_face.height() * scale;
 
-            int pad_w = vga_w * 0.25f;
-            int pad_h = vga_h * 0.25f;
+            int pad_w = frame_w * 0.25f;
+            int pad_h = frame_h * 0.25f;
 
-            int crop_x1 = max(0, vga_x1 - pad_w);
-            int crop_y1 = max(0, vga_y1 - pad_h);
-            int crop_x2 = min(vgaFrame.width - 1, vga_x1 + vga_w + pad_w);
-            int crop_y2 = min(vgaFrame.height - 1, vga_y1 + vga_h + pad_h);
+            int crop_x1 = max(0, frame_x1 - pad_w);
+            int crop_y1 = max(0, frame_y1 - pad_h);
+            int crop_x2 = min(vgaFrame.width - 1, frame_x1 + frame_w + pad_w);
+            int crop_y2 = min(vgaFrame.height - 1, frame_y1 + frame_h + pad_h);
 
             int crop_w = (crop_x2 - crop_x1) & ~1;
             int crop_h = (crop_y2 - crop_y1) & ~1;

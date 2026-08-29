@@ -27,7 +27,7 @@ private:
 
 public:
     static void init(const char *cityName = "Hà Nội", float lat = 21.0285f, float lon = 105.8542f);
-    static void setLocation(const char *cityName, float lat, float lon);
+    static void setLocation(const char *cityName, float lat = 21.0285f, float lon = 105.8542f);
     static void update(bool wifiConnected);
     static WeatherInfo getWeather(); // Thread-safe copy với mutex
     static const char *getWeatherIcon(int code);

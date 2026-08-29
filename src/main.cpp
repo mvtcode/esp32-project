@@ -8,6 +8,7 @@
 #include "display_service.h"
 #include "led_service.h"
 #include "weather_service.h"
+#include "market_service.h"
 
 // Chân nút nhấn BOOT trên ESP32-S3
 #define BOOT_BUTTON_PIN 0
@@ -160,7 +161,8 @@ void setup() {
         return;
     }
 
-    WeatherService::init(appConfig.weather_city.c_str());
+    WeatherService::init(appConfig.weather_city.c_str(), appConfig.weather_lat, appConfig.weather_lon);
+    MarketService::init();
 
     GoogleDriveService::setUploadEnabled(appConfig.upload_enabled);
     GoogleDriveService::init(
@@ -229,8 +231,9 @@ void loop() {
     // Cache isConnected() 1 lần/frame thay vì gọi 3 lần (Fix #9)
     bool wifi_ok = GoogleDriveService::isConnected();
 
-    // Cập nhật dịch vụ Thời tiết
+    // Cập nhật dịch vụ Thời tiết & Thị trường (Giá vàng & Xăng dầu)
     WeatherService::update(wifi_ok);
+    MarketService::update(wifi_ok);
 
     // Quản lý trạng thái tự động chuyển đổi Standby Clock & Calendar
     if (!aiResult.faces.empty()) {
@@ -262,6 +265,7 @@ void loop() {
         DisplayService::renderStandbyClock(
             wifi_ok,
             WeatherService::getWeather(),
+            MarketService::getMarket(),
             aiResult.detect_fps
         );
     }

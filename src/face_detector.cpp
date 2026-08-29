@@ -97,7 +97,7 @@ void FaceDetectorService::feedFrame(const CameraFrame &frame) {
 
 FaceDetectionResult FaceDetectorService::getLatestResult() {
     FaceDetectionResult res;
-    if (xSemaphoreTake(xMutex, 0) == pdTRUE) {
+    if (xMutex != NULL && xSemaphoreTake(xMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
         res = current_result;
         xSemaphoreGive(xMutex);
     }

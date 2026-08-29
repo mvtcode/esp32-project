@@ -17,6 +17,8 @@ struct AppConfig {
     bool upload_enabled = false;
     bool led_enabled = true; // Mặc định BẬT chỉ báo LED
     String weather_city = "Hà Nội";
+    float weather_lat = 21.0285f;
+    float weather_lon = 105.8542f;
     int standby_timeout = 15; // Mặc định 15s tự vào Standby Clock
 };
 

@@ -29,6 +29,8 @@ AppConfig PortalService::loadConfig() {
     cfg.upload_enabled = prefs.getBool("upload_en", false);
     cfg.led_enabled = prefs.getBool("led_en", true);
     cfg.weather_city = prefs.getString("w_city", "Hà Nội");
+    cfg.weather_lat = prefs.getFloat("w_lat", 21.0285f);
+    cfg.weather_lon = prefs.getFloat("w_lon", 105.8542f);
     cfg.standby_timeout = prefs.getInt("sb_time", 15);
 
     prefs.end();
@@ -45,6 +47,8 @@ void PortalService::saveConfig(const AppConfig &cfg) {
     prefs.putBool("upload_en", cfg.upload_enabled);
     prefs.putBool("led_en", cfg.led_enabled);
     prefs.putString("w_city", cfg.weather_city);
+    prefs.putFloat("w_lat", cfg.weather_lat);
+    prefs.putFloat("w_lon", cfg.weather_lon);
     prefs.putInt("sb_time", cfg.standby_timeout);
     prefs.end();
     Serial.println("[PortalService] Config saved to NVS successfully");
@@ -112,7 +116,7 @@ void PortalService::handleNotFound() {
 void PortalService::handleScan() {
     if (!is_scanning) {
         is_scanning = true;
-        xTaskCreatePinnedToCore(
+        BaseType_t res = xTaskCreatePinnedToCore(
             scanTaskWorker,
             "WiFiScanTask",
             4096,
@@ -121,6 +125,10 @@ void PortalService::handleScan() {
             NULL,
             0
         );
+        if (res != pdPASS) {
+            Serial.println("[PortalService] WiFi Scan task creation failed");
+            is_scanning = false;
+        }
     }
     server.send(200, "application/json", "{\"status\":\"started\",\"message\":\"Scan started\"}");
 }
@@ -160,6 +168,8 @@ void PortalService::handleGetConfig() {
     json += "\"resMode\":" + String(cfg.res_mode) + ",";
     json += "\"ledEnabled\":" + String(cfg.led_enabled ? "true" : "false") + ",";
     json += "\"weatherCity\":\"" + cfg.weather_city + "\",";
+    json += "\"lat\":" + String(cfg.weather_lat, 4) + ",";
+    json += "\"lon\":" + String(cfg.weather_lon, 4) + ",";
     json += "\"standbyTimeout\":" + String(cfg.standby_timeout);
     json += "}";
     server.send(200, "application/json", json);
@@ -210,8 +220,24 @@ void PortalService::handleSaveConfig() {
         idx = body.indexOf("\"weatherCity\":\"");
         if (idx >= 0) {
             int end = body.indexOf("\"", idx + 15);
-            if (end > idx) cfg.weather_city = body.substring(idx + 15, end);
+            if (end > idx) {
+                cfg.weather_city = body.substring(idx + 15, end);
+            }
         }
+
+        idx = body.indexOf("\"lat\":");
+        if (idx >= 0) {
+            float latVal = body.substring(idx + 6).toFloat();
+            if (latVal != 0.0f) cfg.weather_lat = latVal;
+        }
+
+        idx = body.indexOf("\"lon\":");
+        if (idx >= 0) {
+            float lonVal = body.substring(idx + 6).toFloat();
+            if (lonVal != 0.0f) cfg.weather_lon = lonVal;
+        }
+
+        WeatherService::setLocation(cfg.weather_city.c_str(), cfg.weather_lat, cfg.weather_lon);
 
         idx = body.indexOf("\"standbyTimeout\":");
         if (idx >= 0) {
