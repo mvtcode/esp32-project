@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32-S3 Smart Camera & Clock Portal</title>
+    <style>
+      :root {
+        --primary: #2563eb;
+        --primary-dark: #1d4ed8;
+        --secondary: #0ea5e9;
+        --bg: #0f172a;
+        --card-bg: #1e293b;
+        --card-border: #334155;
+        --text: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: #475569;
+        --success: #10b981;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 16px;
+        padding-bottom: 60px;
+        margin: 0;
+      }
+
+      .card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        padding: 22px;
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        width: 100%;
+        max-width: 480px;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 16px;
+      }
+
+      .header h2 {
+        margin: 0 0 4px 0;
+        color: #38bdf8;
+        font-size: 1.35rem;
+      }
+
+      .subtitle {
+        color: var(--text-muted);
+        font-size: 0.82rem;
+      }
+
+      /* Tabs Navigation */
+      .nav-tabs {
+        display: flex;
+        background: #0f172a;
+        padding: 4px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        border: 1px solid var(--card-border);
+        gap: 4px;
+      }
+
+      .tab-btn {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        padding: 10px 4px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+      }
+
+      .tab-btn.active {
+        background: var(--primary);
+        color: #ffffff;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+      }
+
+      .tab-pane {
+        display: none;
+      }
+
+      .tab-pane.active {
+        display: block;
+        animation: fadeIn 0.2s ease;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(3px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .section-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #cbd5e1;
+        margin-top: 14px;
+        margin-bottom: 12px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--card-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .item {
+        margin-bottom: 14px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      input[type="text"],
+      input[type="password"],
+      input[type="number"],
+      select {
+        width: 100%;
+        height: 42px;
+        line-height: 40px;
+        padding: 0 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background-color: #0f172a;
+        color: #fff;
+        font-size: 0.95rem;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+
+      select {
+        cursor: pointer;
+        appearance: none;
+        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        background-size: 16px;
+        padding-right: 36px;
+      }
+
+      input:focus,
+      select:focus {
+        border-color: var(--secondary);
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
+        outline: none;
+      }
+
+      input:disabled {
+        background: #1e293b;
+        color: #64748b;
+        cursor: not-allowed;
+      }
+
+      /* Toggle Switch */
+      .toggle-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+      }
+
+      .toggle-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .toggle-desc {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+      }
+
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 48px;
+        height: 26px;
+        flex-shrink: 0;
+      }
+
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #475569;
+        transition: 0.25s;
+        border-radius: 26px;
+      }
+
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.25s;
+        border-radius: 50%;
+      }
+
+      input:checked + .slider {
+        background-color: var(--primary);
+      }
+
+      input:checked + .slider:before {
+        transform: translateX(22px);
+      }
+
+      /* Buttons */
+      .btn {
+        width: 100%;
+        padding: 12px;
+        background: var(--primary);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s, transform 0.1s;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .btn:hover {
+        background: var(--primary-dark);
+      }
+
+      .btn:active {
+        transform: scale(0.98);
+      }
+
+      .btn-scan {
+        background: #0284c7;
+        padding: 6px 12px;
+        font-size: 0.82rem;
+        width: auto;
+        margin: 0;
+      }
+      .btn-scan:hover {
+        background: #0369a1;
+      }
+
+      .wifi-list {
+        max-height: 180px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 12px;
+        background: #0f172a;
+      }
+
+      .wifi-item {
+        padding: 9px 12px;
+        border-bottom: 1px solid #1e293b;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        font-size: 0.88rem;
+        transition: background 0.15s;
+      }
+
+      .wifi-item:hover {
+        background: #1e293b;
+      }
+
+      .wifi-item.selected {
+        background: #1e3a8a;
+        color: #93c5fd;
+        font-weight: 600;
+      }
+
+      .msg {
+        display: none;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        margin-top: 14px;
+        text-align: center;
+      }
+
+      .msg.info {
+        background: rgba(14, 165, 233, 0.15);
+        color: #38bdf8;
+        border: 1px solid #0284c7;
+        display: block;
+      }
+
+      .msg.success {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid #059669;
+        display: block;
+      }
+
+      .msg.error {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+        border: 1px solid #dc2626;
+        display: block;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 0.8s ease-in-out infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      footer {
+        margin-top: 24px;
+        text-align: center;
+        font-size: 0.8rem;
+        color: #64748b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="header">
+        <h2>📷 ESP32-S3 Smart Camera & Clock</h2>
+        <div class="subtitle">Đồng Hồ, Lịch Vạn Niên & Thời Tiết Thông Minh</div>
+      </div>
+
+      <!-- TABS NAVIGATION -->
+      <div class="nav-tabs">
+        <button class="tab-btn active" onclick="switchTab('wifiTab')">📶 WiFi & Cloud</button>
+        <button class="tab-btn" onclick="switchTab('clockTab')">⏰ Đồng Hồ & Thời Tiết</button>
+        <button class="tab-btn" onclick="switchTab('settingsTab')">⚙️ Cài Đặt</button>
+      </div>
+
+      <!-- ================= TAB 1: CẤU HÌNH WIFI & CLOUD ================= -->
+      <div id="wifiTab" class="tab-pane active">
+        <div class="section-title">
+          <span>📶 Mạng WiFi</span>
+          <button class="btn btn-scan" id="scanBtn" onclick="startScan()">
+            <span id="scanText">🔍 Quét WiFi</span>
+          </button>
+        </div>
+
+        <div id="wifiListContainer" class="hidden">
+          <div class="wifi-list" id="wifiList"></div>
+        </div>
+
+        <div class="item">
+          <label for="ssid">Tên WiFi (SSID):</label>
+          <input type="text" id="ssid" placeholder="Chọn từ danh sách hoặc tự nhập" />
+        </div>
+
+        <div class="item">
+          <label for="password">Mật khẩu WiFi:</label>
+          <input type="password" id="password" placeholder="Nhập mật khẩu WiFi" />
+        </div>
+
+        <div class="section-title">
+          <span>☁️ Google Drive Cloud Upload</span>
+        </div>
+
+        <div class="item">
+          <label for="scriptUrl">Google Apps Script Web App URL:</label>
+          <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec" />
+        </div>
+
+        <div class="item">
+          <label for="cooldown">Tần suất Upload (Cooldown):</label>
+          <select id="cooldown">
+            <option value="5">5 giây (Nhanh - Mặc định)</option>
+            <option value="10">10 giây</option>
+            <option value="15">15 giây</option>
+            <option value="30">30 giây (Tiết kiệm)</option>
+          </select>
+        </div>
+
+        <button class="btn" onclick="saveData()">💾 Lưu Cấu Hình WiFi & Cloud</button>
+      </div>
+
+      <!-- ================= TAB 2: ĐỒNG HỒ & THỜI TIẾT ================= -->
+      <div id="clockTab" class="tab-pane">
+        <div class="section-title">
+          <span>⏰ Đồng Hồ & Widget Thời Tiết</span>
+        </div>
+
+        <div class="item">
+          <label for="weatherCity">Tên Thành Phố (Thời tiết Open-Meteo):</label>
+          <input type="text" id="weatherCity" placeholder="Hà Nội, Hải Phòng, TP.HCM, Đà Nẵng..." value="Hà Nội" />
+        </div>
+
+        <div class="item">
+          <label for="standbyTimeout">Thời gian tự động vào Standby Clock & Lịch:</label>
+          <select id="standbyTimeout">
+            <option value="10">10 giây</option>
+            <option value="15" selected>15 giây (Mặc định)</option>
+            <option value="30">30 giây</option>
+            <option value="60">60 giây (1 phút)</option>
+            <option value="0">Tắt tự động (Chuyển thủ công bằng nút BOOT)</option>
+          </select>
+        </div>
+
+        <div style="background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.82rem; color: #94a3b8; line-height: 1.5; margin-top: 14px;">
+          💡 <b>Hướng dẫn nút BOOT (GPIO 0):</b><br/>
+          • <b>Nhấn nhả 1 lần:</b> Bật/Tắt chế độ Upload Google Drive.<br/>
+          • <b>Nhấn giữ 1 giây:</b> Chuyển đổi qua lại giữa Màn hình Camera AI ↔ Đồng Hồ & Lịch Tháng.<br/>
+          • <b>Nhấn giữ 3 giây:</b> Factory Reset (Xóa cấu hình về mặc định).
+        </div>
+
+        <button class="btn" onclick="saveData()">💾 Lưu Cài Đặt Đồng Hồ</button>
+      </div>
+
+      <!-- ================= TAB 3: HỆ THỐNG & PHẦN CỨNG ================= -->
+      <div id="settingsTab" class="tab-pane">
+        <div class="section-title">
+          <span>⚙️ Phần Cứng & Màn Hình</span>
+        </div>
+
+        <div class="item">
+          <label for="resMode">Độ phân giải Camera Output:</label>
+          <select id="resMode">
+            <option value="0">VGA 640x480 (Chi tiết cao - Khuyến nghị)</option>
+            <option value="1">QVGA 320x240 (Chuẩn màn hình TFT ST7789)</option>
+          </select>
+        </div>
+
+        <div class="item toggle-item">
+          <div class="toggle-info">
+            <label for="ledEnabled" style="margin:0; cursor:pointer;">Đèn LED Chỉ Báo (GPIO 48)</label>
+            <div class="toggle-desc">Bật/Tắt hiệu ứng đèn LED RGB trạng thái</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="ledEnabled" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <button class="btn" onclick="saveData()">💾 Lưu Toàn Bộ Cài Đặt</button>
+      </div>
+
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <footer>
+      Hệ thống AI Edge Camera ESP32-S3 | Phát triển bởi Mạc Tân
+    </footer>
+
+    <script>
+      let wifiNetworks = [];
+
+      window.onload = function () {
+        loadCurrentConfig();
+      };
+
+      function switchTab(tabId) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+        
+        event.currentTarget.classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+      }
+
+      function loadCurrentConfig() {
+        fetch("/api/config")
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.ssid) document.getElementById("ssid").value = data.ssid;
+            if (data.password) document.getElementById("password").value = data.password;
+            if (data.scriptUrl) document.getElementById("scriptUrl").value = data.scriptUrl;
+            if (data.cooldown) document.getElementById("cooldown").value = data.cooldown;
+            if (data.resMode !== undefined) document.getElementById("resMode").value = data.resMode;
+            if (data.ledEnabled !== undefined) document.getElementById("ledEnabled").checked = data.ledEnabled;
+            if (data.weatherCity) document.getElementById("weatherCity").value = data.weatherCity;
+            if (data.standbyTimeout !== undefined) document.getElementById("standbyTimeout").value = data.standbyTimeout;
+          })
+          .catch(() => {});
+      }
+
+      function startScan() {
+        const scanBtn = document.getElementById("scanBtn");
+        const scanText = document.getElementById("scanText");
+        scanBtn.disabled = true;
+        scanText.innerHTML = '<span class="spinner"></span> Đang quét...';
+
+        fetch("/api/wifi/scan")
+          .then(() => setTimeout(pollScanResults, 1200))
+          .catch(() => {
+            scanBtn.disabled = false;
+            scanText.innerHTML = "🔍 Quét WiFi";
+          });
+      }
+
+      function pollScanResults() {
+        const scanBtn = document.getElementById("scanBtn");
+        const scanText = document.getElementById("scanText");
+
+        fetch("/api/wifi/results")
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.status === "scanning") {
+              setTimeout(pollScanResults, 1000);
+            } else {
+              scanBtn.disabled = false;
+              scanText.innerHTML = "🔍 Quét WiFi";
+              wifiNetworks = data.networks || [];
+              displayWiFiList(wifiNetworks);
+            }
+          })
+          .catch(() => {
+            scanBtn.disabled = false;
+            scanText.innerHTML = "🔍 Quét WiFi";
+          });
+      }
+
+      function displayWiFiList(networks) {
+        const wifiList = document.getElementById("wifiList");
+        const wifiListContainer = document.getElementById("wifiListContainer");
+        wifiList.innerHTML = "";
+
+        if (networks.length === 0) {
+          wifiList.innerHTML = '<div style="padding:10px; text-align:center; color:#64748b;">Không tìm thấy WiFi nào</div>';
+          wifiListContainer.classList.remove("hidden");
+          return;
+        }
+
+        networks.forEach((net, idx) => {
+          const div = document.createElement("div");
+          div.className = "wifi-item";
+          div.onclick = () => {
+            document.getElementById("ssid").value = net.ssid;
+            document.querySelectorAll(".wifi-item").forEach((el, i) => {
+              el.classList.toggle("selected", i === idx);
+            });
+            const pw = document.getElementById("password");
+            if (net.encryption === "OPEN") {
+              pw.disabled = true;
+              pw.value = "";
+            } else {
+              pw.disabled = false;
+              pw.focus();
+            }
+          };
+          div.innerHTML = `
+            <div>
+              <div style="font-weight:500;">${net.ssid}</div>
+              <div style="font-size:0.75rem; color:#94a3b8;">Tín hiệu: ${net.rssi} dBm</div>
+            </div>
+            <div>${net.encryption === "OPEN" ? "🔓" : "🔒"}</div>
+          `;
+          wifiList.appendChild(div);
+        });
+        wifiListContainer.classList.remove("hidden");
+      }
+
+      function saveData() {
+        const ssid = document.getElementById("ssid").value.trim();
+        const password = document.getElementById("password").value;
+        const scriptUrl = document.getElementById("scriptUrl").value.trim();
+        const cooldown = parseInt(document.getElementById("cooldown").value) || 5;
+        const resMode = parseInt(document.getElementById("resMode").value) || 0;
+        const ledEnabled = document.getElementById("ledEnabled").checked;
+        const weatherCity = document.getElementById("weatherCity").value.trim() || "Hà Nội";
+        const standbyTimeout = parseInt(document.getElementById("standbyTimeout").value) || 15;
+        const msg = document.getElementById("msg");
+
+        if (!ssid) {
+          msg.className = "msg error";
+          msg.innerHTML = "Vui lòng nhập hoặc chọn tên WiFi!";
+          msg.style.display = "block";
+          return;
+        }
+
+        msg.className = "msg info";
+        msg.innerHTML = '<span class="spinner"></span> Đang lưu cấu hình và khởi động lại ESP32...';
+        msg.style.display = "block";
+
+        fetch("/api/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ssid: ssid,
+            password: password,
+            scriptUrl: scriptUrl,
+            cooldown: cooldown,
+            resMode: resMode,
+            ledEnabled: ledEnabled,
+            weatherCity: weatherCity,
+            standbyTimeout: standbyTimeout
+          })
+        })
+          .then((res) => {
+            if (res.ok) {
+              msg.className = "msg success";
+              msg.innerHTML = "✅ Đã lưu cấu hình thành công! ESP32-S3 đang khởi động lại...";
+            } else {
+              msg.className = "msg error";
+              msg.innerHTML = "Lỗi khi lưu cấu hình!";
+            }
+          })
+          .catch(() => {
+            msg.className = "msg success";
+            msg.innerHTML = "✅ Đã gửi lệnh lưu! Thiết bị đang áp dụng...";
+          });
+      }
+    </script>
+  </body>
+</html>
