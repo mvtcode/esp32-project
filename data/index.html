@@ -236,6 +236,81 @@
         transform: translateX(22px);
       }
 
+      /* Modern Range Slider */
+      .volume-badge {
+        background: rgba(14, 165, 233, 0.15);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        min-width: 44px;
+        text-align: center;
+      }
+
+      .range-container {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #0f172a;
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+
+      .range-icon {
+        font-size: 1rem;
+        user-select: none;
+      }
+
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 6px;
+        background: #334155;
+        border-radius: 6px;
+        outline: none;
+        padding: 0;
+        margin: 0;
+        border: none;
+        cursor: pointer;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #38bdf8;
+        cursor: pointer;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+        transition: transform 0.15s, background-color 0.15s;
+      }
+
+      input[type="range"]::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+        background: #7dd3fc;
+      }
+
+      input[type="range"]::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #38bdf8;
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+        transition: transform 0.15s, background-color 0.15s;
+      }
+
+      input[type="range"]::-moz-range-thumb:hover {
+        transform: scale(1.2);
+        background: #7dd3fc;
+      }
+
       /* Buttons */
       .btn {
         width: 100%;
@@ -449,8 +524,9 @@
         <div class="item">
           <label for="standbyTimeout">Thời gian tự động vào Standby Clock & Lịch:</label>
           <select id="standbyTimeout">
-            <option value="10">10 giây</option>
-            <option value="15" selected>15 giây (Mặc định)</option>
+            <option value="5">5 giây</option>
+            <option value="10" selected>10 giây (Mặc định)</option>
+            <option value="15">15 giây</option>
             <option value="30">30 giây</option>
             <option value="60">60 giây (1 phút)</option>
             <option value="0">Tắt tự động (Chuyển thủ công bằng nút BOOT)</option>
@@ -458,10 +534,10 @@
         </div>
 
         <div style="background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.82rem; color: #94a3b8; line-height: 1.5; margin-top: 14px;">
-          💡 <b>Hướng dẫn nút BOOT (GPIO 0):</b><br/>
-          • <b>Nhấn nhả 1 lần:</b> Bật/Tắt chế độ Upload Google Drive.<br/>
-          • <b>Nhấn giữ 1 giây:</b> Chuyển đổi qua lại giữa Màn hình Camera AI ↔ Đồng Hồ & Lịch Tháng.<br/>
-          • <b>Nhấn giữ 3 giây:</b> Factory Reset (Xóa cấu hình về mặc định).
+          💡 <b>Hướng dẫn thao tác nút BOOT (GPIO 0):</b><br/>
+          • <b>Bấm 1 lần:</b> Bật / Tắt chế độ Upload Google Drive.<br/>
+          • <b>Bấm 2 lần nhanh (Double Click):</b> Chuyển đổi Camera AI ↔ Đồng Hồ & Lịch Tháng.<br/>
+          • <b>Bấm 5 lần liên tiếp:</b> Factory Reset (Xóa cấu hình NVS để cài lại WiFi).
         </div>
 
         <button class="btn" onclick="saveData()">💾 Lưu Cài Đặt Đồng Hồ</button>
@@ -490,6 +566,29 @@
             <input type="checkbox" id="ledEnabled" checked />
             <span class="slider"></span>
           </label>
+        </div>
+
+        <div class="item toggle-item">
+          <div class="toggle-info">
+            <label for="audioEnabled" style="margin:0; cursor:pointer;">🔊 Âm Thanh Loa I2S (MAX98357A)</label>
+            <div class="toggle-desc">Thông báo phát hiện khuôn mặt, WiFi, boot, nút bấm</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="audioEnabled" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="item">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label for="audioVolume" style="margin: 0; font-weight: 500;">Âm lượng Loa (Volume):</label>
+            <span id="volumeBadge" class="volume-badge">40%</span>
+          </div>
+          <div class="range-container">
+            <span class="range-icon">🔈</span>
+            <input type="range" id="audioVolume" min="0" max="100" step="5" value="40" oninput="updateVolumeDisplay(this.value)" />
+            <span class="range-icon">🔊</span>
+          </div>
         </div>
 
         <button class="btn" onclick="saveData()">💾 Lưu Toàn Bộ Cài Đặt</button>
@@ -594,6 +693,11 @@
         document.getElementById(tabId).classList.add('active');
       }
 
+      function updateVolumeDisplay(val) {
+        const badge = document.getElementById("volumeBadge");
+        if (badge) badge.innerText = val + "%";
+      }
+
       function loadCurrentConfig() {
         fetch("/api/config")
           .then((res) => res.json())
@@ -604,6 +708,11 @@
             if (data.cooldown) document.getElementById("cooldown").value = data.cooldown;
             if (data.resMode !== undefined) document.getElementById("resMode").value = data.resMode;
             if (data.ledEnabled !== undefined) document.getElementById("ledEnabled").checked = data.ledEnabled;
+            if (data.audioEnabled !== undefined) document.getElementById("audioEnabled").checked = data.audioEnabled;
+            if (data.audioVolume !== undefined) {
+              document.getElementById("audioVolume").value = data.audioVolume;
+              updateVolumeDisplay(data.audioVolume);
+            }
             if (data.weatherCity) {
               const sel = document.getElementById("weatherCity");
               const exists = Array.from(sel.options).some(opt => opt.value === data.weatherCity);
@@ -710,6 +819,8 @@
         const cooldown = parseInt(document.getElementById("cooldown").value) || 5;
         const resMode = parseInt(document.getElementById("resMode").value) || 0;
         const ledEnabled = document.getElementById("ledEnabled").checked;
+        const audioEnabled = document.getElementById("audioEnabled").checked;
+        const audioVolume = parseInt(document.getElementById("audioVolume").value) || 40;
         
         let weatherCity = document.getElementById("weatherCity").value;
         let lat = parseFloat(document.getElementById("cityLat").value) || 21.0285;
@@ -725,7 +836,7 @@
           }
         }
         
-        const standbyTimeout = parseInt(document.getElementById("standbyTimeout").value) || 15;
+        const standbyTimeout = parseInt(document.getElementById("standbyTimeout").value) || 10;
         const msg = document.getElementById("msg");
 
         if (!ssid) {
@@ -749,6 +860,8 @@
             cooldown: cooldown,
             resMode: resMode,
             ledEnabled: ledEnabled,
+            audioEnabled: audioEnabled,
+            audioVolume: audioVolume,
             weatherCity: weatherCity,
             lat: lat,
             lon: lon,

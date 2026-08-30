@@ -16,6 +16,8 @@ struct AppConfig {
     int res_mode = 0;        // 0: VGA 640x480, 1: QVGA 320x240
     bool upload_enabled = false;
     bool led_enabled = true; // Mặc định BẬT chỉ báo LED
+    bool audio_enabled = true; // Mặc định BẬT âm thanh I2S
+    int audio_volume = 40;    // Mặc định âm lượng 40%
     String weather_city = "Hà Nội";
     float weather_lat = 21.0285f;
     float weather_lon = 105.8542f;

@@ -7,8 +7,11 @@
 #include "google_drive_service.h"
 #include "display_service.h"
 #include "led_service.h"
+#include "audio_service.h"
 #include "weather_service.h"
 #include "market_service.h"
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 // Chân nút nhấn BOOT trên ESP32-S3
 #define BOOT_BUTTON_PIN 0
@@ -29,75 +32,105 @@ static float display_fps = 0.0f;
 static uint32_t last_face_seen_time = 0;
 
 // =========================================================================
-// STATE MACHINE XỬ LÝ NÚT NHẤN BOOT
-// - Nhấn nhả 1 lần : Bật / Tắt Google Drive Upload
-// - Nhấn giữ 1s    : Chuyển đổi qua lại Camera AI <-> Đồng hồ, Lịch & Thời tiết (Clock & Calendar)
-// - Nhấn giữ 3s    : Factory Reset App (Xóa NVS)
+// ULTRA-RESPONSIVE BUTTON ENGINE (Core 0, 10ms sampling)
+// Miễn nhiễm 100% với DTR/UART boot hold, phản hồi tức thì 0ms trễ
+// - Bấm nhả (30ms - 900ms) : Bật / Tắt Google Drive Upload
+// - Giữ 1.2 giây           : Chuyển đổi Camera AI <-> Đồng hồ & Lịch
+// - Giữ 5 giây             : Factory Reset App (Xóa NVS)
 // =========================================================================
-static uint32_t btn_down_time = 0;
-static bool btn_is_held = false;
-static bool long_press_1s_triggered = false;
-static bool long_press_3s_triggered = false;
+static void buttonTaskWorker(void *param) {
+    bool is_pressed = false;
+    uint32_t press_start = 0;
+    bool hold_1s_fired = false;
+    bool hold_5s_fired = false;
+    
+    // Nếu lúc vừa khởi động nút bị kéo LOW (do cáp nạp UART DTR), khóa nút cho tới khi nhả ra
+    bool stuck_at_boot = (digitalRead(BOOT_BUTTON_PIN) == LOW);
 
-void handleBootButton() {
-    int btn_raw = digitalRead(BOOT_BUTTON_PIN);
-    uint32_t now = millis();
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        uint32_t now = millis();
+        int pin = digitalRead(BOOT_BUTTON_PIN);
 
-    // Nút được nhấn xuống (Active LOW)
-    if (btn_raw == LOW) {
-        if (!btn_is_held) {
-            btn_is_held = true;
-            btn_down_time = now;
-            long_press_1s_triggered = false;
-            long_press_3s_triggered = false;
-        } else {
-            uint32_t hold_time = now - btn_down_time;
-
-            // Xử lý giữ 3 giây -> Factory Reset App
-            if (hold_time >= 3000 && !long_press_3s_triggered) {
-                long_press_3s_triggered = true;
-                Serial.println("[Button BOOT] Hold 3s -> FACTORY RESET APP!");
-                DisplayService::showToast("Factory Reset...", TFT_RED, TFT_WHITE, 3000);
-
-                prefs.begin("app_cfg", false);
-                prefs.clear();
-                prefs.end();
-
-                delay(1500);
-                ESP.restart();
+        // 1. Kiểm tra xả khóa boot
+        if (stuck_at_boot) {
+            if (pin == HIGH) {
+                stuck_at_boot = false;
+                Serial.println("[Button] Button released -> Active & Ready!");
             }
-            // Xử lý giữ 1 giây -> Chuyển đổi Camera AI <-> Standby Clock & Calendar Widget
-            else if (hold_time >= 1000 && !long_press_1s_triggered && !long_press_3s_triggered) {
-                long_press_1s_triggered = true;
-                DisplayService::toggleMode();
-                if (DisplayService::getMode() == DISPLAY_MODE_STANDBY_CLOCK) {
-                    DisplayService::showToast("Mode: Clock & Calendar", TFT_NAVY, TFT_WHITE, 1500);
-                } else {
-                    DisplayService::showToast("Mode: Camera AI", TFT_DARKGREEN, TFT_WHITE, 1500);
+            continue;
+        }
+
+        // 2. Nút được nhấn xuống (Active LOW)
+        if (pin == LOW) {
+            if (!is_pressed) {
+                is_pressed = true;
+                press_start = now;
+                hold_1s_fired = false;
+                hold_5s_fired = false;
+            } else {
+                uint32_t hold_time = now - press_start;
+
+                // Giữ 5 giây -> Factory Reset
+                if (hold_time >= 5000 && !hold_5s_fired) {
+                    hold_5s_fired = true;
+                    Serial.println("[Button] Hold 5s -> FACTORY RESET APP!");
+                    AudioService::play(SOUND_UPLOAD_FAILED);
+                    DisplayService::showToast("Factory Reset...", TFT_RED, TFT_WHITE, 3000);
+
+                    prefs.begin("app_cfg", false);
+                    prefs.clear();
+                    prefs.end();
+
+                    delay(1500);
+                    ESP.restart();
                 }
-                Serial.printf("[Button BOOT] Hold 1s -> Switched to Mode: %d\n", (int)DisplayService::getMode());
+                // Giữ 1.2 giây -> Chuyển đổi màn hình Camera AI <-> Đồng hồ
+                else if (hold_time >= 1200 && !hold_1s_fired && !hold_5s_fired) {
+                    hold_1s_fired = true;
+                    AudioService::play(SOUND_BUTTON_CLICK);
+                    if (!PortalService::isPortalActive()) {
+                        DisplayService::toggleMode();
+                        Serial.printf("[Button] Hold 1.2s -> Switched Mode: %d\n", (int)DisplayService::getMode());
+                        if (DisplayService::getMode() == DISPLAY_MODE_STANDBY_CLOCK) {
+                            DisplayService::showToast("Mode: Clock & Calendar", TFT_NAVY, TFT_WHITE, 1500);
+                        } else {
+                            DisplayService::showToast("Mode: Camera AI", TFT_DARKGREEN, TFT_WHITE, 1500);
+                        }
+                    } else {
+                        DisplayService::showToast("Portal Active", TFT_CYAN, TFT_BLACK, 1500);
+                    }
+                }
             }
         }
-    } else {
-        // Nút được nhả ra
-        if (btn_is_held) {
-            btn_is_held = false;
-            uint32_t press_duration = now - btn_down_time;
+        // 3. Nút được nhả ra (Active HIGH)
+        else {
+            if (is_pressed) {
+                uint32_t press_duration = now - press_start;
+                is_pressed = false;
 
-            // Nhấn nhả bình thường (không giữ lâu): TOGGLE BẬT/TẮT UPLOAD NGAY LẬP TỨC!
-            if (!long_press_1s_triggered && !long_press_3s_triggered && press_duration >= 20) {
-                bool new_state = !GoogleDriveService::isUploadEnabled();
-                GoogleDriveService::setUploadEnabled(new_state);
-                appConfig.upload_enabled = new_state;
-                PortalService::saveConfig(appConfig);
+                // Nhấn nhả nhanh (30ms - 900ms): BẬT / TẮT UPLOAD NGAY LẬP TỨC
+                if (!hold_1s_fired && !hold_5s_fired && press_duration >= 30 && press_duration < 1000) {
+                    if (!PortalService::isPortalActive()) {
+                        bool new_state = !GoogleDriveService::isUploadEnabled();
+                        GoogleDriveService::setUploadEnabled(new_state);
+                        appConfig.upload_enabled = new_state;
+                        PortalService::saveConfig(appConfig);
 
-                Serial.printf("[Button BOOT] Single Press -> Upload: %s (press %ums)\n",
-                    new_state ? "ON" : "OFF", press_duration);
+                        Serial.printf("[Button] Click (%ums) -> Upload: %s\n", press_duration, new_state ? "ON" : "OFF");
 
-                if (new_state) {
-                    DisplayService::showToast("Upload: ON", TFT_DARKGREEN, TFT_WHITE, 2000);
-                } else {
-                    DisplayService::showToast("Upload: OFF", TFT_MAROON, TFT_WHITE, 2000);
+                        if (new_state) {
+                            AudioService::play(SOUND_UPLOAD_SUCCESS);
+                            DisplayService::showToast("Upload: ON", TFT_DARKGREEN, TFT_WHITE, 2000);
+                        } else {
+                            AudioService::play(SOUND_UPLOAD_FAILED);
+                            DisplayService::showToast("Upload: OFF", TFT_MAROON, TFT_WHITE, 2000);
+                        }
+                    } else {
+                        // Trong Portal Mode: phát âm thanh Magic Chime xác nhận nút bấm hoạt động 100%
+                        AudioService::play(SOUND_PORTAL_ACTIVE);
+                        Serial.println("[Button] Click in Portal Mode -> Test Chime Played");
+                    }
                 }
             }
         }
@@ -105,6 +138,9 @@ void handleBootButton() {
 }
 
 void setup() {
+    // Vô hiệu hóa reset do sụt áp nguồn tức thời khi loa công suất lớn phát âm thanh
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
     Serial.begin(115200);
     Serial.setDebugOutput(true);
     Serial.println("\n=== ESP32-S3 Smart Camera & Clock Calendar Pipeline ===");
@@ -118,26 +154,34 @@ void setup() {
     // 2. Khởi tạo Khối Đèn LED Chỉ Báo Trạng Thái (GPIO 48)
     LedService::init();
 
-    // 3. Tải cấu hình từ NVS
+    // 3. Khởi tạo Khối Âm thanh I2S MAX98357A
+    AudioService::init();
+
+    // Khởi chạy Button Task độc lập trên Core 0 (sau khi Audio/Display đã sẵn sàng)
+    xTaskCreatePinnedToCore(buttonTaskWorker, "ButtonTask", 3072, NULL, 1, NULL, 0);
+
+    // 4. Tải cấu hình từ NVS
     appConfig = PortalService::loadConfig();
     LedService::setEnabled(appConfig.led_enabled);
+    AudioService::setEnabled(appConfig.audio_enabled);
+    AudioService::setVolume(appConfig.audio_volume);
+    Serial.printf("[Setup] Loaded Config -> SSID: '%s', Audio: %s (%d%%)\n",
+        appConfig.wifi_ssid.c_str(), appConfig.audio_enabled ? "ON" : "OFF", appConfig.audio_volume);
 
-    // 4. Kiểm tra chế độ khởi động (AP Portal hay WiFi STA)
-    if (appConfig.wifi_ssid.isEmpty() || digitalRead(BOOT_BUTTON_PIN) == LOW) {
-        Serial.println("[Setup] Starting Captive Portal AP Mode (ESP32S3-CAM-AP)...");
+    // 5. Kiểm tra chế độ khởi động (AP Portal hay WiFi STA)
+    if (appConfig.wifi_ssid.isEmpty()) {
+        Serial.println("[Setup] WiFi SSID is empty -> Starting Captive Portal AP Mode (ESP32S3-CAM-AP)...");
+        AudioService::play(SOUND_PORTAL_ACTIVE);
         PortalService::startCaptivePortal();
         
-        // Hiển thị màn hình hướng dẫn cấu hình rõ ràng trên TFT
-        DisplayService::showMessage(20, 30, "=== CAU HINH WIFI ===", TFT_CYAN);
-        DisplayService::showMessage(20, 65, "WiFi: ESP32S3-CAM-AP", TFT_GREEN);
-        DisplayService::showMessage(20, 100, "IP: 192.168.4.1", TFT_YELLOW);
-        DisplayService::showMessage(20, 145, "Mo trinh duyet tren", TFT_WHITE);
-        DisplayService::showMessage(20, 175, "dien thoai de cai dat!", TFT_WHITE);
+        // Hiển thị màn hình hướng dẫn cấu hình Tiếng Việt có dấu trực quan trên TFT ST7789
+        DisplayService::showPortalScreen("ESP32S3-CAM-AP", "192.168.4.1");
         return;
     }
 
     // ================= CHẾ ĐỘ NORMAL (STA WIFI) =================
     Serial.println("[Setup] Starting Normal Mode with WiFi STA...");
+    AudioService::play(SOUND_STARTUP);
 
     // Khởi tạo WiFi STA đồng bộ trên luồng chính trước để TCP/IP stack (LWIP) sẵn sàng
     WiFi.mode(WIFI_STA);
@@ -180,9 +224,6 @@ void setup() {
 void loop() {
     // 1. Xử lý Web Server và DNS requests
     PortalService::loop();
-
-    // 2. Xử lý nút nhấn BOOT
-    handleBootButton();
 
     // Nếu đang ở chế độ AP Captive Portal:
     if (PortalService::isPortalActive()) {
@@ -242,6 +283,7 @@ void loop() {
             DisplayService::setMode(DISPLAY_MODE_CAMERA);
         }
         LedService::triggerFaceDetected();
+        AudioService::triggerFaceDetected();
     } else {
         if (appConfig.standby_timeout > 0 && DisplayService::getMode() == DISPLAY_MODE_CAMERA && (now - last_face_seen_time >= (uint32_t)appConfig.standby_timeout * 1000)) {
             DisplayService::setMode(DISPLAY_MODE_STANDBY_CLOCK);

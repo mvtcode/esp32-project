@@ -111,6 +111,54 @@ void DisplayService::showMessage(int x, int y, const char *msg, uint16_t color) 
     lcd.print(msg);
 }
 
+void DisplayService::showPortalScreen(const char *ssid, const char *ip) {
+    if (!screen_on) return;
+
+    clockCanvas.fillScreen(0x0000); // Nền đen sâu
+
+    // 1. Thẻ tiêu đề Header
+    clockCanvas.fillRoundRect(8, 10, 304, 38, 8, 0x10A2);
+    clockCanvas.drawRoundRect(8, 10, 304, 38, 8, 0x2965);
+    clockCanvas.setFont(&Verdana_Vietnamese12pt);
+    clockCanvas.setTextSize(1);
+    clockCanvas.setTextColor(TFT_CYAN, 0x10A2);
+    clockCanvas.drawCenterString(utf8ToCustom("CÀI ĐẶT KẾT NỐI WIFI"), 160, 18);
+
+    // 2. Thẻ nội dung chính
+    clockCanvas.fillRoundRect(8, 54, 304, 176, 8, 0x10A2);
+    clockCanvas.drawRoundRect(8, 54, 304, 176, 8, 0x2965);
+
+    // Dòng 1: WiFi AP
+    clockCanvas.setFont(&Verdana_Vietnamese10pt);
+    clockCanvas.setTextColor(TFT_SILVER, 0x10A2);
+    clockCanvas.drawString(utf8ToCustom("1. Kết nối WiFi từ ESP32:"), 18, 66);
+
+    clockCanvas.setFont(&Verdana_Vietnamese12pt);
+    clockCanvas.setTextColor(0x07E0, 0x10A2); // Xanh lá
+    char ssidBuf[64];
+    snprintf(ssidBuf, sizeof(ssidBuf), "> %s", ssid);
+    clockCanvas.drawString(utf8ToCustom(ssidBuf), 24, 88);
+
+    // Dòng 2: Địa chỉ IP
+    clockCanvas.setFont(&Verdana_Vietnamese10pt);
+    clockCanvas.setTextColor(TFT_SILVER, 0x10A2);
+    clockCanvas.drawString(utf8ToCustom("2. Mở trình duyệt vào địa chỉ IP:"), 18, 118);
+
+    clockCanvas.setFont(&Verdana_Vietnamese12pt);
+    clockCanvas.setTextColor(0xFFE0, 0x10A2); // Vàng
+    char ipBuf[64];
+    snprintf(ipBuf, sizeof(ipBuf), "> http://%s", ip);
+    clockCanvas.drawString(utf8ToCustom(ipBuf), 24, 140);
+
+    // Dòng 3: Hướng dẫn
+    clockCanvas.setFont(&Verdana_Vietnamese10pt);
+    clockCanvas.setTextColor(0x7FFF, 0x10A2); // Cyan nhạt
+    clockCanvas.drawString(utf8ToCustom("3. Nhập tên WiFi & Mật khẩu"), 18, 172);
+    clockCanvas.drawString(utf8ToCustom("   để thiết bị bắt đầu hoạt động"), 18, 194);
+
+    clockCanvas.pushSprite(0, 0);
+}
+
 void DisplayService::showToast(const char *msg, uint16_t bgColor, uint16_t textColor, uint32_t durationMs) {
     strncpy(toast_msg, msg, sizeof(toast_msg) - 1);
     toast_msg[sizeof(toast_msg) - 1] = '\0';

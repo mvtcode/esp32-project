@@ -1,4 +1,5 @@
 #include "google_drive_service.h"
+#include "audio_service.h"
 
 const char *GoogleDriveService::ssid = "";
 const char *GoogleDriveService::password = "";
@@ -231,6 +232,7 @@ void GoogleDriveService::uploadTaskWorker(void *param) {
     if (WiFi.status() == WL_CONNECTED) {
         is_wifi_connected = true;
         Serial.println("\n[GoogleDrive] WiFi Connected! IP: " + WiFi.localIP().toString());
+        AudioService::play(SOUND_WIFI_CONNECTED);
         // Đồng bộ thời gian từ Internet NTP ngay khi có mạng
         syncNTPTime();
     } else {
@@ -281,10 +283,12 @@ void GoogleDriveService::uploadTaskWorker(void *param) {
                                     if (sdMutex != NULL && xSemaphoreTake(sdMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
                                         if (ok) {
                                             current_status = UPLOAD_SUCCESS;
+                                            AudioService::play(SOUND_UPLOAD_SUCCESS);
                                             SD_MMC.remove(fullPath.c_str());
                                             Serial.printf("[FaultTolerance] Uploaded & safely removed: %s\n", fullPath.c_str());
                                         } else {
                                             current_status = UPLOAD_FAILED;
+                                            AudioService::play(SOUND_UPLOAD_FAILED);
                                             Serial.printf("[FaultTolerance] Retaining file for next retry: %s\n", fullPath.c_str());
                                         }
                                         xSemaphoreGive(sdMutex);
@@ -322,6 +326,7 @@ void GoogleDriveService::uploadTaskWorker(void *param) {
 
                     bool ok = uploadSingleFile(job.jpg_buf, job.jpg_len, job.filename);
                     current_status = ok ? UPLOAD_SUCCESS : UPLOAD_FAILED;
+                    AudioService::play(ok ? SOUND_UPLOAD_SUCCESS : SOUND_UPLOAD_FAILED);
                     last_status_change_time = millis();
                 }
                 free(job.jpg_buf);

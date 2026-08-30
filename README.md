@@ -57,6 +57,29 @@ Hệ thống Camera AI nhận diện khuôn mặt thời gian thực kết hợp
   - ⚪ **Trắng / Bạc chớp nhẹ (Cyan Flash)**: Vừa nhận diện được khuôn mặt.
   - ⚫ **Tắt (Off)**: Hệ thống hoạt động bình thường, WiFi đã kết nối sẵn sàng (tiết kiệm điện & chống chói).
 
+### 3. Âm thanh I2S Loa MAX98357A & Micro INMP441
+
+| Thiết bị | Chân thiết bị | Chân ESP32-S3 | Chức năng |
+| :--- | :--- | :--- | :--- |
+| 🔊 **Loa MAX98357A** | **BCLK** | `GPIO 14` | I2S Bit Clock (Output) |
+| | **LRC / WS** | `GPIO 3` | I2S Word Select / L-R Clock (Output) |
+| | **DIN** | `GPIO 42` | I2S Serial Data Out (Output) |
+| | **GAIN** | `GND` / Trống | Độ lợi khuếch đại (Mặc định 9dB/12dB) |
+| | **VIN** | `5V` (hoặc `3.3V`) | Nguồn cấp (5V cho âm to & chuẩn nhất) |
+| | **GND** | `GND` | Nối đất |
+| 🎙️ **Micro INMP441** | **WS** | `GPIO 1` | I2S Word Select (Output) |
+| | **SCK** | `GPIO 2` | I2S Clock (Output) |
+| | **SD** | `GPIO 46` | I2S Serial Data In (Input Only) |
+| | **L/R** | `GND` | Kênh Trái (Left Channel) |
+
+**Các hiệu ứng âm thanh hệ thống (Audio Effects):**
+- 🚀 **Khởi động (Startup)**: Arpeggio 4 nốt tươi sáng (C5 -> E5 -> G5 -> C6).
+- 👤 **Nhận diện khuôn mặt (Face Detected)**: Âm "Ding-dong / Ting" ấm áp (kèm bộ đệm Cooldown 3s chống lặp khó chịu).
+- 🌐 **WiFi Connected**: Giai điệu Chime 2 nốt báo đã có mạng Internet.
+- ☁️ **Upload Success / Failed**: Âm Ting nhẹ khi ảnh lên Drive thành công hoặc âm cảnh báo trầm khi lỗi mạng.
+- 🔘 **Nút nhấn BOOT**: Tiếng Click 25ms phản hồi thính giác tức thì.
+- ⚙️ **Captive Portal**: Âm 3 nốt chào mừng vào chế độ cấu hình AP `ESP32S3-CAM-AP`.
+
 ---
 
 ## 🧠 Mô hình AI & Cơ chế nhận diện khuôn mặt (Face Detection)

@@ -28,6 +28,8 @@ AppConfig PortalService::loadConfig() {
     cfg.res_mode = prefs.getInt("res_mode", 0);
     cfg.upload_enabled = prefs.getBool("upload_en", false);
     cfg.led_enabled = prefs.getBool("led_en", true);
+    cfg.audio_enabled = prefs.getBool("audio_en", true);
+    cfg.audio_volume = prefs.getInt("audio_vol", 40);
     cfg.weather_city = prefs.getString("w_city", "Hà Nội");
     cfg.weather_lat = prefs.getFloat("w_lat", 21.0285f);
     cfg.weather_lon = prefs.getFloat("w_lon", 105.8542f);
@@ -46,6 +48,8 @@ void PortalService::saveConfig(const AppConfig &cfg) {
     prefs.putInt("res_mode", cfg.res_mode);
     prefs.putBool("upload_en", cfg.upload_enabled);
     prefs.putBool("led_en", cfg.led_enabled);
+    prefs.putBool("audio_en", cfg.audio_enabled);
+    prefs.putInt("audio_vol", cfg.audio_volume);
     prefs.putString("w_city", cfg.weather_city);
     prefs.putFloat("w_lat", cfg.weather_lat);
     prefs.putFloat("w_lon", cfg.weather_lon);
@@ -167,6 +171,8 @@ void PortalService::handleGetConfig() {
     json += "\"cooldown\":" + String(cfg.upload_cooldown) + ",";
     json += "\"resMode\":" + String(cfg.res_mode) + ",";
     json += "\"ledEnabled\":" + String(cfg.led_enabled ? "true" : "false") + ",";
+    json += "\"audioEnabled\":" + String(cfg.audio_enabled ? "true" : "false") + ",";
+    json += "\"audioVolume\":" + String(cfg.audio_volume) + ",";
     json += "\"weatherCity\":\"" + cfg.weather_city + "\",";
     json += "\"lat\":" + String(cfg.weather_lat, 4) + ",";
     json += "\"lon\":" + String(cfg.weather_lon, 4) + ",";
@@ -215,6 +221,18 @@ void PortalService::handleSaveConfig() {
         if (idx >= 0) {
             String val = body.substring(idx + 13, idx + 18);
             cfg.led_enabled = val.startsWith("true");
+        }
+
+        idx = body.indexOf("\"audioEnabled\":");
+        if (idx >= 0) {
+            String val = body.substring(idx + 15, idx + 20);
+            cfg.audio_enabled = val.startsWith("true");
+        }
+
+        idx = body.indexOf("\"audioVolume\":");
+        if (idx >= 0) {
+            int vVal = body.substring(idx + 14).toInt();
+            if (vVal >= 0 && vVal <= 100) cfg.audio_volume = vVal;
         }
 
         idx = body.indexOf("\"weatherCity\":\"");

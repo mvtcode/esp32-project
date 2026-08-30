@@ -40,6 +40,7 @@ public:
     static void toggleMode() { setMode(current_mode == DISPLAY_MODE_CAMERA ? DISPLAY_MODE_STANDBY_CLOCK : DISPLAY_MODE_CAMERA); }
 
     static void showMessage(int x, int y, const char *msg, uint16_t color = TFT_WHITE);
+    static void showPortalScreen(const char *ssid = "ESP32S3-CAM-AP", const char *ip = "192.168.4.1");
     static void showToast(const char *msg, uint16_t bgColor = TFT_DARKGREEN, uint16_t textColor = TFT_WHITE, uint32_t durationMs = 2000);
 
     // Render Camera View
