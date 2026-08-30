@@ -74,10 +74,118 @@ public:
 
     virtual bool open(const char *filename) override {
         close();
+        if (!filename || strlen(filename) == 0) return false;
+
+        // 1. Thử mở file với đường dẫn gốc
         m_file = SD.open(filename, "r");
-        m_bytes_since_sample = 0;
-        m_cur_pos = 0;
-        return (bool)m_file;
+        if (!m_file) m_file = SD.open(filename, FILE_READ);
+
+        // 2. Thử bỏ dấu '/' đầu nếu có
+        if (!m_file && filename[0] == '/') {
+            m_file = SD.open(&filename[1], "r");
+            if (!m_file) m_file = SD.open(&filename[1], FILE_READ);
+        }
+
+        // 3. Thử thêm dấu '/' đầu nếu chưa có
+        if (!m_file && filename[0] != '/') {
+            char p[128];
+            snprintf(p, sizeof(p), "/%s", filename);
+            m_file = SD.open(p, "r");
+            if (!m_file) m_file = SD.open(p, FILE_READ);
+        }
+
+        if (m_file) {
+            uint32_t fsize = m_file.size();
+            if (fsize < 4096) {
+                LOG_W("MP3", "REJECTED: '%s' file size too small (%u bytes).", filename, fsize);
+                m_file.close();
+                return false;
+            }
+
+            // 1. Kiểm tra Magic Bytes chống file FAKE (M4A, MP4, FLAC, OGG, RIFF đổi đuôi thành .mp3)
+            uint8_t magicBuf[16];
+            if (m_file.read(magicBuf, sizeof(magicBuf)) < 16) {
+                m_file.close();
+                return false;
+            }
+
+            // Kiểm tra MP4 / M4A container ('ftyp' tại offset 4..7)
+            if (magicBuf[4] == 'f' && magicBuf[5] == 't' && magicBuf[6] == 'y' && magicBuf[7] == 'p') {
+                LOG_W("MP3", "REJECTED: '%s' is an MP4/M4A file (fake .mp3 extension).", filename);
+                m_file.close();
+                return false;
+            }
+            // Kiểm tra FLAC container ('fLaC')
+            if (magicBuf[0] == 'f' && magicBuf[1] == 'L' && magicBuf[2] == 'a' && magicBuf[3] == 'C') {
+                LOG_W("MP3", "REJECTED: '%s' is a FLAC file (fake .mp3 extension).", filename);
+                m_file.close();
+                return false;
+            }
+            // Kiểm tra OGG container ('OggS')
+            if (magicBuf[0] == 'O' && magicBuf[1] == 'g' && magicBuf[2] == 'g' && magicBuf[3] == 'S') {
+                LOG_W("MP3", "REJECTED: '%s' is an OGG file (fake .mp3 extension).", filename);
+                m_file.close();
+                return false;
+            }
+
+            uint32_t startOffset = 0;
+
+            // 2. Bỏ qua ID3v2 metadata nếu có
+            if (magicBuf[0] == 'I' && magicBuf[1] == 'D' && magicBuf[2] == '3') {
+                uint32_t id3Size = ((uint32_t)(magicBuf[6] & 0x7F) << 21) |
+                                   ((uint32_t)(magicBuf[7] & 0x7F) << 14) |
+                                   ((uint32_t)(magicBuf[8] & 0x7F) << 7)  |
+                                   ((uint32_t)(magicBuf[9] & 0x7F));
+                startOffset = 10 + id3Size;
+                if (startOffset >= fsize) {
+                    LOG_W("MP3", "REJECTED: '%s' invalid ID3 size (%u >= %u).", filename, startOffset, fsize);
+                    m_file.close();
+                    return false;
+                }
+            }
+
+            // 3. Quét tìm MP3 Frame Sync (0xFFE0 / 0xFFF0)
+            const char *dot = strrchr(filename, '.');
+            if (dot && strcasecmp(dot, ".mp3") == 0) {
+                m_file.seek(startOffset);
+                uint8_t scanBuf[512];
+                size_t bytesRead = m_file.read(scanBuf, sizeof(scanBuf));
+                bool foundSync = false;
+                uint32_t syncOffset = startOffset;
+
+                if (bytesRead >= 4) {
+                    for (size_t i = 0; i < bytesRead - 3; i++) {
+                        if (scanBuf[i] == 0xFF && (scanBuf[i+1] & 0xE0) == 0xE0) {
+                            uint8_t layer = (scanBuf[i+1] >> 1) & 0x03;
+                            uint8_t bitrateIdx = (scanBuf[i+2] >> 4) & 0x0F;
+                            uint8_t sampleIdx = (scanBuf[i+2] >> 2) & 0x03;
+
+                            if (layer != 0 && bitrateIdx != 0 && bitrateIdx != 15 && sampleIdx != 3) {
+                                foundSync = true;
+                                syncOffset = startOffset + i;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!foundSync) {
+                    LOG_W("MP3", "REJECTED: '%s' contains no valid MP3 sync frames.", filename);
+                    m_file.close();
+                    return false;
+                }
+
+                m_file.seek(syncOffset);
+            } else {
+                m_file.seek(startOffset);
+            }
+
+            m_cur_pos = m_file.position();
+            m_bytes_since_sample = 0;
+            return true;
+        }
+
+        return false;
     }
 
     virtual uint32_t read(void *data, uint32_t len) override {
@@ -332,7 +440,7 @@ static uint32_t compute_track_duration(AudioFileSource *src, uint32_t file_size,
     }
 
     // Try detecting MP3 bitrate from first frame header
-    uint8_t buf[1024];
+    uint8_t buf[512];
     uint32_t orig_pos = src->getPos();
     src->seek(0, SeekSet);
     uint32_t bytes_read = src->read(buf, sizeof(buf));
@@ -623,10 +731,10 @@ void mp3_player_start() {
         s_audio_out = new AudioOutputVisualizerDAC();
     }
 
-    // 2. Create MP3 decoding task on Core 0 (Optimized Stack 4KB, Priority 2)
+    // 2. Create MP3 decoding task on Core 0 (Stack 8KB, Priority 2)
     if (!s_mp3_task_handle) {
         xTaskCreatePinnedToCore(
-            mp3_player_task, "mp3_player_task", 4096, nullptr, 2, &s_mp3_task_handle, 0
+            mp3_player_task, "mp3_player_task", 8192, nullptr, 2, &s_mp3_task_handle, 0
         );
     }
 

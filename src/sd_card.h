@@ -36,6 +36,11 @@ bool sd_card_init();
 void sd_card_deinit();
 
 /**
+ * @brief Free dynamically allocated playlist items.
+ */
+void sd_card_free_playlist();
+
+/**
  * @brief Check if SD card is mounted and ready.
  */
 bool sd_card_is_mounted();
@@ -61,6 +66,15 @@ const PlaylistItem* sd_card_get_track(int index);
  * diacritics, removes non-printable chars, and truncates if necessary.
  */
 void sd_sanitize_title(const char *raw_name, char *out_title, size_t max_len);
+
+/**
+ * @brief Validate audio file integrity & protect against fake MP3/WAV files
+ * (e.g. M4A/MP4, FLAC, OGG, corrupted headers, or missing MP3 sync frames).
+ * @param file Open File handle to check.
+ * @param path File path or filename for extension context.
+ * @return true if valid audio file, false if fake or corrupt.
+ */
+bool sd_card_validate_file(File &file, const char *path);
 
 /**
  * @brief Access to global SPIClass instance for SD.

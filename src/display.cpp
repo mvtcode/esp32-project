@@ -501,7 +501,7 @@ void display_set_audio_mode(AudioMode mode, bool is_connected, bool is_playing) 
     // Detect rising edge of Bluetooth connection
     if (mode == AUDIO_MODE_BT && s_audio_mode == AUDIO_MODE_BT && !s_bt_connected && is_connected) {
         s_conn_splash_ts = millis();
-        Serial.println("[Display] Bluetooth Connected Splash Triggered!");
+        LOG_I("Display", "Bluetooth Connected Splash Triggered!");
     }
     s_audio_mode = mode;
     s_bt_connected = is_connected;

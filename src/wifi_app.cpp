@@ -7,8 +7,8 @@
 #include <Preferences.h>
 #include <HTTPClient.h>
 #include <time.h>
-#include <esp_wifi.h>
 #include "display.h"
+#include "log.h"
 
 static WebServer      s_server(80);
 static DNSServer      s_dns_server;
@@ -562,7 +562,7 @@ static void weather_task(void *pv) {
                      "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,relative_humidity_2m",
                      s_config_lat, s_config_lon);
 
-            Serial.printf("[Weather Task] Fetching from Open-Meteo (Lat: %.4f, Lon: %.4f)...\n", s_config_lat, s_config_lon);
+            LOG_I("Weather", "Fetching from Open-Meteo (Lat: %.4f, Lon: %.4f)...", s_config_lat, s_config_lon);
             WiFiClient client;
             HTTPClient http;
             http.begin(client, url);
@@ -576,10 +576,10 @@ static void weather_task(void *pv) {
                     s_cached_weather.temp_c = doc["current"]["temperature_2m"];
                     s_cached_weather.humidity = doc["current"]["relative_humidity_2m"];
                     s_cached_weather.valid = true;
-                    Serial.printf("[Weather Task] Updated: %.1f C, %d%% Hum\n", s_cached_weather.temp_c, s_cached_weather.humidity);
+                    LOG_I("Weather", "Updated: %.1f C, %d%% Hum", s_cached_weather.temp_c, s_cached_weather.humidity);
                 }
             } else if (code != 200) {
-                Serial.printf("[Weather Task] HTTP failed: %d\n", code);
+                LOG_W("Weather", "HTTP failed: %d", code);
             }
             http.end();  // Always close connection to free socket
         }
@@ -607,8 +607,8 @@ static void load_stored_config() {
     s_prefs.end();
 
     display_set_brightness(s_config_brightness);
-    Serial.printf("[Config] Loaded: SSID='%s', Lat=%.4f, Lon=%.4f, Brightness=%d%%\n",
-                  s_config_ssid, s_config_lat, s_config_lon, s_config_brightness);
+    LOG_I("Config", "Loaded: SSID='%s', Lat=%.4f, Lon=%.4f, Brightness=%d%%",
+          s_config_ssid, s_config_lat, s_config_lon, s_config_brightness);
 }
 
 static void save_stored_config(const char *ssid, const char *pwd, float lat, float lon, uint8_t brightness) {
@@ -627,8 +627,8 @@ static void save_stored_config(const char *ssid, const char *pwd, float lat, flo
     s_config_brightness = brightness;
 
     display_set_brightness(brightness);
-    Serial.printf("[Config] Saved: SSID='%s', Lat=%.4f, Lon=%.4f, Brightness=%d%%\n",
-                  ssid, lat, lon, brightness);
+    LOG_I("Config", "Saved: SSID='%s', Lat=%.4f, Lon=%.4f, Brightness=%d%%",
+          ssid, lat, lon, brightness);
 }
 
 static void setup_web_endpoints() {
@@ -648,16 +648,16 @@ static void setup_web_endpoints() {
     s_server.on("/status", HTTP_GET, []() {
         bool conn = (WiFi.status() == WL_CONNECTED);
         String ip = conn ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
-        String ssid = conn ? WiFi.SSID() : AP_SSID_NAME;
-        String json = "{\"connected\":" + String(conn ? "true" : "false") +
-                      ",\"ssid\":\"" + ssid +
-                      "\",\"ip\":\"" + ip + "\"}";
+        const char *ssid = conn ? WiFi.SSID().c_str() : AP_SSID_NAME;
+        char json[128];
+        snprintf(json, sizeof(json), "{\"connected\":%s,\"ssid\":\"%s\",\"ip\":\"%s\"}",
+                 conn ? "true" : "false", ssid, ip.c_str());
         s_server.send(200, "application/json", json);
     });
 
     // 3. Trigger WiFi scan (compatible with Clock branch API)
     s_server.on("/api/wifi/scan", HTTP_GET, []() {
-        Serial.println("[WiFi API] Starting WiFi Scan...");
+        LOG_I("WiFi API", "Starting WiFi Scan...");
         s_scan_in_progress = true;
         s_scan_complete = false;
         WiFi.scanNetworks(true); // Asynchronous scan
@@ -696,15 +696,18 @@ static void setup_web_endpoints() {
     // Legacy direct /scan endpoint
     s_server.on("/scan", HTTP_GET, []() {
         int n = WiFi.scanNetworks();
-        String json = "[";
-        for (int i = 0; i < n; ++i) {
-            if (i > 0) json += ",";
-            json += "{\"ssid\":\"" + WiFi.SSID(i) +
-                    "\",\"rssi\":" + String(WiFi.RSSI(i)) +
-                    ",\"secure\":" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false") + "}";
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        for (int i = 0; i < n && i < 20; ++i) {
+            JsonObject obj = arr.add<JsonObject>();
+            obj["ssid"] = WiFi.SSID(i);
+            obj["rssi"] = WiFi.RSSI(i);
+            obj["secure"] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
         }
-        json += "]";
+        String json;
+        serializeJson(doc, json);
         s_server.send(200, "application/json", json);
+        WiFi.scanDelete();
     });
 
     // 5. Save credentials API (Clock branch compatible POST /api/save)
@@ -765,16 +768,16 @@ static void setup_web_endpoints() {
 void wifi_app_init() {
     load_stored_config();
 
-    Serial.println("[WiFi] Starting non-blocking WiFi connect...");
+    LOG_I("WiFi", "Starting non-blocking WiFi connect...");
     WiFi.mode(WIFI_STA);
 
     if (strlen(s_config_ssid) > 0) {
-        Serial.printf("[WiFi] Connecting to saved SSID: %s\n", s_config_ssid);
+        LOG_I("WiFi", "Connecting to saved SSID: %s", s_config_ssid);
         WiFi.begin(s_config_ssid, s_config_pwd);
         s_wifi_state = WIFI_STATE_CONNECTING;
         s_connect_start_ts = millis();
     } else {
-        Serial.println("[WiFi] No saved credentials found. Launching AP Captive Portal...");
+        LOG_I("WiFi", "No saved credentials found. Launching AP Captive Portal...");
         wifi_app_start_ap_portal();
     }
     s_wifi_connected = false;
@@ -790,7 +793,7 @@ void wifi_app_init() {
 }
 
 void wifi_app_start_ap_portal() {
-    Serial.println("[WiFi] Launching AP Captive Portal...");
+    LOG_I("WiFi", "Launching AP Captive Portal...");
     WiFi.disconnect();
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(AP_SSID_NAME);
@@ -806,15 +809,16 @@ void wifi_app_start_ap_portal() {
     }
     s_server.begin();
     s_wifi_state = WIFI_STATE_AP_MODE;
-    Serial.printf("[WiFi] AP Captive Portal active at: %s (IP: %s)\n", AP_SSID_NAME, WiFi.softAPIP().toString().c_str());
+    LOG_I("WiFi", "AP Captive Portal active at: %s (IP: %s)", AP_SSID_NAME, WiFi.softAPIP().toString().c_str());
     display_toast("AP: " AP_SSID_NAME);
 }
 
 void wifi_app_stop() {
     s_dns_server.stop();
+    s_weather_task_exit = true; // Signal weather background task to exit cleanly
 
     if (s_wifi_state != WIFI_STATE_IDLE || WiFi.getMode() != WIFI_OFF) {
-        Serial.println("[WiFi] Stopping WiFi subsystem with verified state polling...");
+        LOG_I("WiFi", "Stopping WiFi subsystem with verified state polling...");
         s_server.close();
         s_server.stop();
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -829,8 +833,8 @@ void wifi_app_stop() {
 
         s_wifi_connected = false;
         s_wifi_state = WIFI_STATE_IDLE;
-        Serial.printf("[WiFi] WiFi fully STOPPED & VERIFIED (Mode: %d, FreeHeap=%u, MaxBlock=%u)\n",
-                      (int)WiFi.getMode(), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+        LOG_I("WiFi", "WiFi fully STOPPED & VERIFIED (Mode: %d, FreeHeap=%u, MaxBlock=%u)",
+              (int)WiFi.getMode(), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     }
 }
 
@@ -847,7 +851,7 @@ void wifi_app_loop(bool is_bt_streaming) {
             s_dns_server.stop();
             s_wifi_state = WIFI_STATE_CONNECTED;
             s_wifi_connected = true;
-            Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+            LOG_I("WiFi", "Connected! IP: %s", WiFi.localIP().toString().c_str());
 
             configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
 
@@ -857,7 +861,7 @@ void wifi_app_loop(bool is_bt_streaming) {
                 s_web_inited = true;
             }
             s_server.begin();
-            Serial.println("[HTTP] Web Server & ElegantOTA active on port 80");
+            LOG_I("HTTP", "Web Server & ElegantOTA active on port 80");
             display_toast("WIFI CONNECTED");
         } else if (now - s_connect_start_ts > 15000) {
             // Timeout 15s -> start AP mode non-blockingly
@@ -883,7 +887,7 @@ void wifi_app_loop(bool is_bt_streaming) {
         if (now - s_last_time_sync >= 3600000) {
             s_last_time_sync = now;
             configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
-            Serial.println("[NTP] 1-Hour Time Sync re-triggered");
+            LOG_I("NTP", "1-Hour Time Sync re-triggered");
         }
     } else if (s_wifi_state == WIFI_STATE_AP_MODE) {
         s_dns_server.processNextRequest();
@@ -892,7 +896,7 @@ void wifi_app_loop(bool is_bt_streaming) {
             s_dns_server.stop();
             s_wifi_state = WIFI_STATE_CONNECTED;
             s_wifi_connected = true;
-            Serial.printf("[WiFi] AP Mode -> Transitioned to Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+            LOG_I("WiFi", "AP Mode -> Transitioned to Connected! IP: %s", WiFi.localIP().toString().c_str());
             display_toast("WIFI CONNECTED");
         }
         s_server.handleClient();
@@ -901,7 +905,7 @@ void wifi_app_loop(bool is_bt_streaming) {
 }
 
 void wifi_app_reset_settings() {
-    Serial.println("[WiFi] Resetting WiFi settings...");
+    LOG_I("WiFi", "Resetting WiFi settings...");
     s_prefs.begin("esp32config", false);
     s_prefs.clear();
     s_prefs.end();

@@ -1,51 +1,79 @@
-# ESP32 Multi-Mode Sound Visualizer & Bluetooth Speaker Clock 🎵📻⏰
+# ESP32 All-in-One Multi-Mode Sound Visualizer, MP3 Player, Bluetooth Speaker & Retro Game Console 🎵📻⏰🕹️
 
-Dự án thiết bị đa năng tích hợp **3 Chế Độ Hoạt Động Độc Lập**: **Sound Visualizer Stereo (Microphone)**, **Loa Bluetooth Hi-Fi (A2DP Sink + DAC PCM5102A)** và **Đồng Hồ Thời Tiết & Âm Lịch Việt Nam (NTP & Open-Meteo)** trên vi điều khiển **ESP32 Dev Module** kết hợp màn hình **OLED 1.3" (SH1106 / SSD1306)**.
-
----
-
-## 🌟 Tính năng nổi bật
-
-### 1. 🔀 3 Chế độ hoạt động độc lập (100% Resource Isolation)
-Hệ thống quản lý tài nguyên thông minh, tự động tắt tiến trình và giải phóng phần cứng khi chuyển chế độ:
-- **🎤 Chế độ MICROPHONE (Sound Visualizer):**
-  - Tắt Bluetooth và WiFi $\to$ tiết kiệm năng lượng, chống nhiễu 2.4GHz RF.
-  - Thu âm Stereo 24-bit từ cặp micro MEMS **INMP441** qua giao tiếp I²S (16 kHz).
-  - Kiến trúc FreeRTOS đa nhân: Core 0 đọc buffer I²S, Core 1 xử lý AGC, FFT và hiển thị 65 hiệu ứng visualizer trực quan đỉnh cao.
-- **📱 Chế độ BLUETOOTH (Loa Bluetooth & Visualizer):**
-  - Tắt WiFi, giải phóng I²S Micro $\to$ dành 100% tài nguyên cho Bluetooth A2DP Sink.
-  - Nhận luồng âm thanh từ điện thoại / máy tính, giải mã SBC và xuất ra DAC **PCM5102A** qua I²S chất lượng cao, đồng thời hiển thị 65 hiệu ứng Visualizer theo luồng nhạc.
-  - **Đồng bộ âm lượng 2 chiều (AVRCP 1.4 Absolute Volume):** Xoay núm trên ESP32 làm thanh âm lượng điện thoại/máy tính trượt theo đồng thời, và ngược lại.
-  - **Phím điều khiển Play/Pause:** Nút BACK gửi lệnh Bluetooth AVRCP trực tiếp đến Spotify, YouTube, ZingMP3,...
-  - **Khóa núm xoay an toàn:** Module xoay EC11 chỉ kích hoạt ở chế độ Bluetooth, khóa hoàn toàn ở chế độ khác để tránh chạm nhầm.
-- **⏰ Chế độ CLOCK & WEATHER (Đồng hồ, Thời tiết & Âm Lịch):**
-  - Tắt Bluetooth, deinit Micro. Bật WiFi bất đồng bộ (Non-blocking, chuyển chế độ 0ms, không lag/đơ màn hình).
-  - **Đồng hồ số lớn (Hardware RTC):** Đếm thời gian bằng bộ đếm thạch anh phần cứng ESP32 với tốc độ 30 FPS mượt mà (không bị nghẽn mạng hay nhảy cóc giây).
-  - **Đồng bộ giờ NTP:** Tự động lấy giờ chuẩn quốc tế theo chu kỳ **1 giờ / lần** từ `pool.ntp.org`, `time.google.com`, `time.cloudflare.com`.
-  - **Dự báo thời tiết:** Tự động cập nhật nhiệt độ (°C) và độ ẩm (%) từ Open-Meteo API theo chu kỳ **10 phút / lần**.
-  - **Lịch Âm Việt Nam & Can Chi:** Tích hợp thuật toán thiên văn Hồ Ngọc Đức tính toán chính xác ngày, tháng âm lịch và tên năm Can Chi (ví dụ: `AL: 08/07 (Bính Ngọ)`).
-  - **Giao diện OLED tối ưu:** Header hiển thị Thứ & Ngày Dương Lịch cùng biểu tượng 5 vạch sóng WiFi (hiệu ứng quét sóng khi đang kết nối).
-  - **Web Config Portal & ElegantOTA:** Trang cấu hình WiFi và hỗ trợ nạp firmware từ xa qua mạng (OTA).
+Dự án thiết bị giải trí đa phương tiện và đồng hồ để bàn đa năng tích hợp **5 Chế Độ Hoạt Động Độc Lập**: **Sound Visualizer Stereo (Microphone)**, **Loa Bluetooth Hi-Fi (A2DP Sink + DAC PCM5102A)**, **Đồng Hồ Thời Tiết & Âm Lịch Việt Nam (NTP & Open-Meteo)**, **Máy Nghe Nhạc MP3 Thẻ Nhớ (MicroSD + DAC)** và **Máy Chơi Game Retro 8-in-1 (Retro Game Console)** trên vi điều khiển **ESP32 Dev Module** kết hợp màn hình **OLED 1.3" (SH1106 / SSD1306)**.
 
 ---
 
-### 2. 💾 Lưu trữ cấu hình tự động (NVS Flash Persistence)
-- Tự động ghi nhớ Chế độ hoạt động (MIC / BT / CLOCK), Hiệu ứng hiển thị, Trạng thái Auto-Cycle, Mức âm lượng và Địa chỉ MAC thiết bị Bluetooth đã ghép đôi.
-- Khi khởi động lại hoặc mất nguồn bật lại, thiết bị tự động phục hồi đúng chế độ và tự động kết nối lại thiết bị Bluetooth gần nhất.
+## 🌟 Tính năng nổi bật & 5 Chế độ hoạt động
+
+Hệ thống quản lý tài nguyên thông minh (100% Resource Isolation), tự động tắt tiến trình và giải phóng bộ nhớ phần cứng khi chuyển chế độ:
+
+### 1. 🎤 Chế độ MICROPHONE (Sound Visualizer Stereo)
+- **Thu âm Stereo 24-bit:** Thu nhận âm thanh thời gian thực từ cặp micro MEMS **INMP441** qua giao tiếp I²S (16 kHz).
+- **Kiến trúc FreeRTOS đa nhân:** Core 0 đọc buffer I²S DMA liên tục, Core 1 xử lý AGC tự động, biến đổi FFT và hiển thị **68 hiệu ứng visualizer** đỉnh cao.
+- **Tiết kiệm năng lượng & chống nhiễu:** Tắt hoàn toàn WiFi và Bluetooth khi ở chế độ Micro để khử nhiễu sóng 2.4GHz RF vào đường thu âm.
+
+### 2. 📱 Chế độ BLUETOOTH (Loa Bluetooth Hi-Fi & Visualizer)
+- **A2DP Sink & DAC PCM5102A:** Nhận luồng âm thanh không dây chất lượng cao từ điện thoại / máy tính, giải mã SBC và xuất ra DAC **PCM5102A** (I²S Stereo).
+- **Đồng bộ âm lượng 2 chiều (AVRCP 1.4 Absolute Volume):** Xoay núm EC11 trên ESP32 làm thanh âm lượng trên điện thoại trượt theo đồng thời, và ngược lại.
+- **Điều khiển phát nhạc:** Nút **BACK** gửi lệnh Bluetooth AVRCP Play/Pause trực tiếp đến Spotify, YouTube, Apple Music, ZingMP3,...
+- **Re-Pairing nhanh:** Nhấn giữ nút **BOOT** (3s) để xóa ghép đôi cũ và chuyển ngay sang chế độ chờ kết nối thiết bị mới.
+- **Visualizer theo nhạc:** 68 hiệu ứng sóng âm/phổ tần số nhảy múa đồng bộ theo luồng nhạc Bluetooth đang phát.
+
+### 3. ⏰ Chế độ CLOCK & WEATHER (Đồng hồ, Thời tiết & Âm Lịch Việt Nam)
+- **WiFi Non-blocking:** Chuyển sang chế độ đồng hồ tức thì mà không gây đơ lag màn hình.
+- **Đồng hồ số lớn (Hardware RTC):** Đếm thời gian bằng bộ đếm thạch anh phần cứng ESP32 với tốc độ 30 FPS mượt mà.
+- **Đồng bộ giờ NTP:** Tự động lấy giờ chuẩn quốc tế theo chu kỳ **1 giờ / lần** từ các máy chủ NTP (`pool.ntp.org`, `time.google.com`, `time.cloudflare.com`).
+- **Dự báo thời tiết:** Tự động cập nhật nhiệt độ (°C) và độ ẩm (%) từ Open-Meteo API theo chu kỳ **10 phút / lần**.
+- **Lịch Âm Việt Nam & Can Chi:** Tích hợp thuật toán thiên văn Hồ Ngọc Đức tính toán chính xác ngày, tháng âm lịch và tên năm Can Chi (ví dụ: `AL: 08/07 (Bính Ngọ)`).
+- **Web Config Portal & ElegantOTA:** Nhấn nút **BOOT** để phát WiFi AP `MVT-Audio-Setup` cấu hình mạng; hỗ trợ nạp firmware từ xa qua giao diện web ElegantOTA.
+
+### 4. 🎵 Chế độ MP3 PLAYER (Máy phát nhạc từ thẻ nhớ MicroSD)
+- **Phát nhạc MP3 chất lượng cao:** Đọc trực tiếp các file nhạc `.mp3` từ thẻ nhớ MicroSD qua giao tiếp SPI tốc độ cao và giải mã bằng thư viện `ESP8266Audio` xuất ra DAC PCM5102A.
+- **3 Màn hình giao diện linh hoạt:**
+  - **s1 - Player chính:** Hiển thị tên bài hát cuộn chữ (Marquee), thanh thời gian Progress Bar, thời lượng thực tế (`00:00 / 00:00`), số thứ tự bài (`01/20`), icon trạng thái phát (Play/Pause) và mức âm lượng.
+  - **s2 - Visualizer:** Màn hình toàn cảnh 68 hiệu ứng sóng âm/phổ tần số nhảy múa theo luồng nhạc MP3 đang phát.
+  - **s3 - Playlist Menu:** Menu danh sách bài hát cuộn mượt mà có thanh cuộn (Scrollbar) bên phải và icon nốt nhạc chỉ bài đang phát; chọn bài bằng núm xoay EC11.
+- **Ghi nhớ vị trí phát:** Tự động lưu chỉ số bài hát đang nghe vào NVS Flash để phát tiếp khi quay lại chế độ.
+
+### 5. 🕹️ Chế độ GAME CONSOLE (Máy chơi game Retro 8-in-1)
+- **Game Engine chuyên biệt:** Tốc độ khung hình mượt mà **35 - 40 FPS** trên màn hình OLED.
+- **Menu chọn game trực quan:** Danh sách trò chơi dạng thanh cuộn (Scrollbar), xoay núm EC11 để duyệt và bấm phím để bắt đầu chơi.
+- **Bộ sưu tập 8 trò chơi kinh điển:**
+  1. **Tetris (Xếp hình cổ điển):** Xoay khối gạch, thả gạch và xóa hàng ghi điểm.
+  2. **Sky Fighter (Chiến cơ không chiến):** Điều khiển phi thuyền né đạn, nhặt nâng cấp đạn và đối đầu Boss ngoài không gian.
+  3. **Highway Racer (Đua xe Outrun):** Lái xe tốc độ cao trên đường cao tốc né chướng ngại vật.
+  4. **Pong (Bóng bàn cổ điển):** Đỡ bóng phản xạ tốc độ cao.
+  5. **Brick Breaker (Phá gạch Arkanoid):** Điều khiển thanh trượt đỡ bóng phá vỡ các khối gạch.
+  6. **Snake (Rắn săn mồi):** Điều khiển rắn ăn mồi và tăng dần độ dài thân.
+  7. **Space Invaders (Bắn quái vật không gian):** Tiêu diệt hạm đội quái vật không gian đang đổ bộ.
+  8. **Flappy Bird (Chim bay vượt chướng ngại):** Nhấn phím giữ nhịp cho chim bay luồn qua các cột ống.
 
 ---
 
 ## 🎮 Hệ thống điều khiển & Phím bấm
 
-| Phím / Núm xoay | Chân GPIO | Thao tác | Chức năng |
-| :--- | :---: | :--- | :--- |
-| **PUSH** | **GPIO 4** | Nhấn nhanh | Chuyển đổi tuần hoàn 3 chế độ: `MIC` $\to$ `BLUETOOTH` $\to$ `CLOCK & WEATHER` $\to$ `MIC`. |
-| **PLUS** | **GPIO 14** | Nhấn nhanh | Đổi chế độ hiển thị OLED tiếp theo (trong 65 hiệu ứng Visualizer). |
-| | | Nhấn giữ (> 1s) | Bật / Tắt chế độ **Auto-Cycle** (tự động đổi hiệu ứng mỗi 20 giây). |
-| **BACK** | **GPIO 13** | Nhấn nhanh | **Play / Pause** bài hát trên điện thoại/máy tính qua lệnh Bluetooth AVRCP (chế độ BT). |
-| **BOOT** | **GPIO 0** | Nhấn nhanh | Reset cài đặt WiFi (khởi động lại vào chế độ AP cấu hình). |
-| | | Nhấn giữ (> 3s) | Xóa thiết bị Bluetooth đã nhớ và kích hoạt chế độ **Re-Pairing**. |
-| **ROTARY ENCODER** | **GPIO 32 / 33** | Xoay núm | Tăng / Giảm âm lượng và đồng bộ 2 chiều với điện thoại (chỉ hoạt động ở chế độ BT). |
+| Phím / Núm xoay | Chân GPIO | Chế độ | Thao tác | Chức năng |
+| :--- | :---: | :--- | :--- | :--- |
+| **PUSH** | **GPIO 4** | Mọi chế độ | Nhấn nhanh | Chuyển tuần hoàn 5 chế độ: `MIC` $\to$ `BT` $\to$ `CLOCK` $\to$ `MP3` $\to$ `GAME` $\to$ `MIC`. |
+| **ROTARY ENCODER** | **GPIO 32 / 33** | **BT** | Xoay núm | Tăng / Giảm âm lượng (đồng bộ 2 chiều với điện thoại). |
+| | | **MP3 (s1/s2)** | Xoay núm | Tăng / Giảm âm lượng nhạc MP3. |
+| | | **MP3 (s3)** | Xoay núm | Cuộn lên / xuống danh sách bài hát trong Playlist. |
+| | | **GAME** | Xoay núm | Di chuyển phi thuyền / thanh trượt / tay lái / chọn game trong Menu. |
+| **BACK** | **GPIO 13** | **BT** | Nhấn nhanh | **Play / Pause** bài hát trên điện thoại qua Bluetooth AVRCP. |
+| | | **MP3 (s1/s2)** | Nhấn nhanh | **Play / Pause** bài hát MP3. |
+| | | **MP3 (s1/s2)** | Nhấn giữ (>= 600ms) | Lùi về bài hát trước (**Previous Track**). |
+| | | **MP3 (s3)** | Nhấn nhanh | Quay lại màn hình phát trước đó. |
+| | | **GAME** | Nhấn nhanh | Quay lại Menu Game / Thoát màn chơi. |
+| **PLUS** | **GPIO 14** | **MIC / BT / CLOCK** | Nhấn nhanh | Chuyển hiệu ứng hiển thị tiếp theo (trong 68 hiệu ứng Visualizer). |
+| | | **MIC / BT / CLOCK** | Nhấn giữ (> 1s) | Bật / Tắt chế độ **Auto-Cycle** (tự đổi hiệu ứng mỗi 20 giây). |
+| | | **MP3 (s1/s2)** | Nhấn nhanh (< 1s) | Mở danh sách **Playlist Menu (s3)**. |
+| | | **MP3 (s1/s2)** | Nhấn giữ (1s) | Chuyển sang bài tiếp theo (**Next Track**). |
+| | | **MP3 (s1/s2)** | Nhấn giữ (3s) | Chuyển đổi qua lại giữa màn hình **Player (s1)** và **Visualizer (s2)**. |
+| | | **MP3 (s3)** | Nhấn nhanh | Chọn và phát bài hát đang bôi đen trong Playlist. |
+| | | **GAME** | Nhấn / Giữ | Bắn đạn / Bật nhảy / Xoay khối gạch / Chọn game trong Menu. |
+| **BOOT** | **GPIO 0** | **BT** | Nhấn giữ (> 3s) | Xóa thiết bị nhớ và kích hoạt chế độ **BT Re-Pairing**. |
+| | | **CLOCK** | Nhấn nhanh / Giữ | Mở WiFi AP cấu hình mạng (`MVT-Audio-Setup`). |
 
 ---
 
@@ -59,7 +87,7 @@ Hệ thống quản lý tài nguyên thông minh, tự động tắt tiến trì
 | **SCL** | **GPIO 22** | I²C Clock |
 | **SDA** | **GPIO 21** | I²C Data |
 
-### 2. Hai Microphone INMP441 (I²S Stereo)
+### 2. Cặp Microphone MEMS INMP441 (I²S Stereo Input)
 | Chân INMP441 | ESP32 Pin | Ghi chú |
 | :--- | :---: | :--- |
 | **SCK** (cả 2 mic) | **GPIO 26** | I²S Bit Clock (BCLK) |
@@ -76,19 +104,29 @@ Hệ thống quản lý tài nguyên thông minh, tự động tắt tiến trì
 | **DIN** | **GPIO 23** | Data In |
 | **SCK** | **GND** | Nối đất để sử dụng Internal PLL của PCM5102A |
 
-### 4. Núm xoay mã hóa EC11 (Rotary Encoder) & Phím điều khiển
+### 4. Module đọc thẻ nhớ MicroSD (SPI Interface)
+| Chân MicroSD Module | ESP32 Pin | Ghi chú |
+| :--- | :---: | :--- |
+| **CS** | **GPIO 5** | Chip Select |
+| **SCK / CLK** | **GPIO 16** | SPI Clock |
+| **MOSI** | **GPIO 17** | Master Out Slave In |
+| **MISO** | **GPIO 34** | Master In Slave Out (Input only) |
+| **VCC** | **5V / 3.3V** | Tùy loại module thẻ nhớ |
+| **GND** | **GND** | Nối đất |
+
+### 5. Núm xoay mã hóa EC11 (Rotary Encoder) & Phím điều khiển
 | Linh kiện | ESP32 Pin | Ghi chú |
 | :--- | :---: | :--- |
 | **Encoder CLK (A)** | **GPIO 32** | Tín hiệu xung A (Internal Pullup) |
 | **Encoder DT (B)** | **GPIO 33** | Tín hiệu xung B (Internal Pullup) |
-| **Nút PUSH** | **GPIO 4** | Nút bấm chuyển Mode (Active LOW) |
-| **Nút PLUS** | **GPIO 14** | Nút bấm chuyển Effect / Auto-cycle (Active LOW) |
-| **Nút BACK** | **GPIO 13** | Nút bấm Play/Pause (Active LOW) |
+| **Nút PUSH (Núm xoay)** | **GPIO 4** | Nút chuyển Mode (Active LOW) |
+| **Nút PLUS (Confirm)** | **GPIO 14** | Nút chuyển Effect / Chọn bài / Thao tác Game (Active LOW) |
+| **Nút BACK** | **GPIO 13** | Nút Play/Pause / Lùi bài / Thoát Game (Active LOW) |
 | **Nút BOOT** | **GPIO 0** | Nút BOOT trên board ESP32 (Active LOW) |
 
 ---
 
-## 🖥️ 65 Chế độ hiển thị Visualizer
+## 🖥️ Danh sách 68 Chế độ Visualizer
 
 | Mode | Tên chế độ | Mô tả |
 | :---: | :--- | :--- |
@@ -109,13 +147,16 @@ Hệ thống quản lý tài nguyên thông minh, tự động tắt tiến trì
 | **41-50** | **3D SHAPES** | Kinetic Particle, Starfield Warp, Sphere 3D, Torus 3D, DNA Helix, Cubes 3D Explode, Galaxy 3D, Crystal 3D, Cylinder, Parametric Heart 3D. |
 | **51-60** | **CREATIVE & GAMES** | Text 3D Extruded, Solar System, Supernova, Thunderstorm, Cyber Cockpit, Space Invaders, Flappy Beat, Pac-Beat, Dino Runner, Xiaozhi AI Face. |
 | **61-64** | **ROBOT & MASCOT** | AI Robot Head, Plasma Ball, Zigzag LED EDM, Cyber Neko Cat. |
+| **65** | **BEAT METER** | Đo nhịp điệu BPM thời gian thực + 3 dải phổ năng lượng Bass/Mid/Treble + Vòng xung năng lượng. |
+| **66** | **OSCILLOSCOPE** | Máy hiện sóng hiện đại với Trigger đồng bộ dạng sóng kép + Lưới chia Graticule chuẩn kỹ thuật. |
+| **67** | **CHROMATIC TUNER**| Bộ dò cao độ nhạc cụ (Guitar/Ukulele/Vocal) tự động tính nốt nhạc & độ lệch Cents thời gian thực. |
 
 ---
 
 ## 🚀 Hướng dẫn biên dịch & Nạp code
 
 ### 1. Chuẩn bị môi trường
-- Cài đặt **Visual Studio Code** cùng extension **PlatformIO IDE**.
+- Cài đặt **Visual Studio Code** cùng tiện ích mở rộng **PlatformIO IDE**.
 - Hoặc sử dụng **PlatformIO Core (CLI)**.
 
 ### 2. Biên dịch và nạp firmware
@@ -135,11 +176,11 @@ pio device monitor
 ---
 
 ## 🌐 Cấu hình WiFi cho Chế độ Đồng Hồ (Clock & Weather)
-1. Khi chuyển sang chế độ **CLOCK & WEATHER** lần đầu (hoặc nhấn nút **BOOT** để reset WiFi):
-   - ESP32 sẽ phát WiFi AP: `MVT-Audio-Setup`.
-2. Dùng điện thoại kết nối vào WiFi `MVT-Audio-Setup`, trình duyệt sẽ tự động mở trang cấu hình (hoặc truy cập `192.168.4.1`).
-3. Chọn mạng WiFi nhà bạn và nhập mật khẩu $\to$ Bấm **Save**.
-4. ESP32 sẽ kết nối WiFi, tự động đồng bộ giờ NTP và cập nhật thời tiết Open-Meteo.
+1. Khi chuyển sang chế độ **CLOCK & WEATHER** lần đầu (hoặc nhấn nút **BOOT** ở chế độ Clock):
+   - ESP32 sẽ phát WiFi Access Point: `MVT-Audio-Setup`.
+2. Dùng điện thoại kết nối vào WiFi `MVT-Audio-Setup`, giao diện cấu hình sẽ tự động hiển thị (hoặc truy cập `192.168.4.1`).
+3. Chọn WiFi gia đình và nhập mật khẩu $\to$ Bấm **Save**.
+4. ESP32 sẽ kết nối WiFi, tự động đồng bộ giờ NTP chuẩn xác và cập nhật thời tiết Open-Meteo.
 
 ---
 

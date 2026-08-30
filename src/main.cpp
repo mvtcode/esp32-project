@@ -95,11 +95,13 @@ static void switch_audio_mode(AudioMode target_mode) {
 // setup() — Core 1
 // -----------------------------------------------------------------------
 void setup() {
+#ifdef ENABLE_SERIAL_LOG
     Serial.begin(115200);
     delay(200);
     Serial.println("=========================================");
     Serial.println("=== ESP32-WROOM Sound Visualizer V2 ===");
     Serial.println("=========================================");
+#endif
 
     // 1. NVS storage init
     nvs_storage_init();

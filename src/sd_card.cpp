@@ -210,8 +210,19 @@ bool sd_card_init() {
     return true;
 }
 
+void sd_card_free_playlist() {
+    for (int i = 0; i < MAX_PLAYLIST_TRACKS; i++) {
+        if (s_playlist[i]) {
+            free(s_playlist[i]);
+            s_playlist[i] = nullptr;
+        }
+    }
+    s_track_count = 0;
+}
+
 void sd_card_deinit() {
     if (!s_sd_mounted) return;
+    sd_card_free_playlist();
     SD.end();
     s_sd_mounted = false;
     LOG_I("SD", "MicroSD Card unmounted to free RAM.");
@@ -222,7 +233,7 @@ bool sd_card_is_mounted() {
 }
 
 // ---------------------------------------------------------------------------
-// Recursive Audio File Scanning
+// Recursive Audio File Scanning & Anti-Fake MP3 Validation
 // ---------------------------------------------------------------------------
 static bool is_supported_audio(const char *name) {
     if (!name || name[0] == '.') return false; // Ignore hidden files / Apple double ._*
@@ -233,6 +244,91 @@ static bool is_supported_audio(const char *name) {
     if (strcasecmp(dot, ".mp3") == 0 || strcasecmp(dot, ".wav") == 0) {
         return true;
     }
+    return false;
+}
+
+bool sd_card_validate_file(File &file, const char *path) {
+    if (!file) return false;
+    uint32_t fsize = file.size();
+    if (fsize < 4096) {
+        LOG_W("SD", "REJECTED: '%s' too small (%u bytes, min 4KB).", path, fsize);
+        return false;
+    }
+
+    file.seek(0);
+    uint8_t magicBuf[16];
+    size_t read_bytes = file.read(magicBuf, sizeof(magicBuf));
+    if (read_bytes < 16) {
+        LOG_W("SD", "REJECTED: '%s' unable to read 16-byte header.", path);
+        return false;
+    }
+
+    // 1. Kiểm tra Magic Bytes chống file FAKE (M4A, MP4, FLAC, OGG, RIFF đổi đuôi thành .mp3)
+    // Kiểm tra MP4 / M4A container ('ftyp' tại offset 4..7)
+    if (magicBuf[4] == 'f' && magicBuf[5] == 't' && magicBuf[6] == 'y' && magicBuf[7] == 'p') {
+        LOG_W("SD", "REJECTED: '%s' is an MP4/M4A file (fake .mp3 extension).", path);
+        return false;
+    }
+    // Kiểm tra FLAC container ('fLaC')
+    if (magicBuf[0] == 'f' && magicBuf[1] == 'L' && magicBuf[2] == 'a' && magicBuf[3] == 'C') {
+        LOG_W("SD", "REJECTED: '%s' is a FLAC file (fake .mp3 extension).", path);
+        return false;
+    }
+    // Kiểm tra OGG container ('OggS')
+    if (magicBuf[0] == 'O' && magicBuf[1] == 'g' && magicBuf[2] == 'g' && magicBuf[3] == 'S') {
+        LOG_W("SD", "REJECTED: '%s' is an OGG file (fake .mp3 extension).", path);
+        return false;
+    }
+
+    const char *dot = strrchr(path, '.');
+    if (!dot) return false;
+
+    if (strcasecmp(dot, ".wav") == 0) {
+        if (magicBuf[0] == 'R' && magicBuf[1] == 'I' && magicBuf[2] == 'F' && magicBuf[3] == 'F' &&
+            magicBuf[8] == 'W' && magicBuf[9] == 'A' && magicBuf[10] == 'V' && magicBuf[11] == 'E') {
+            return true;
+        }
+        LOG_W("SD", "REJECTED: '%s' is not a valid RIFF/WAVE audio file.", path);
+        return false;
+    }
+
+    if (strcasecmp(dot, ".mp3") == 0) {
+        uint32_t startOffset = 0;
+
+        // 2. Bỏ qua ID3v2 metadata nếu có
+        if (magicBuf[0] == 'I' && magicBuf[1] == 'D' && magicBuf[2] == '3') {
+            uint32_t id3Size = ((uint32_t)(magicBuf[6] & 0x7F) << 21) |
+                               ((uint32_t)(magicBuf[7] & 0x7F) << 14) |
+                               ((uint32_t)(magicBuf[8] & 0x7F) << 7)  |
+                               ((uint32_t)(magicBuf[9] & 0x7F));
+            startOffset = 10 + id3Size;
+            if (startOffset >= fsize) {
+                LOG_W("SD", "REJECTED: '%s' has invalid ID3 size (%u >= %u).", path, startOffset, fsize);
+                return false;
+            }
+        }
+
+        // 3. Quét tìm MP3 Frame Sync (0xFFE0 / 0xFFF0)
+        file.seek(startOffset);
+        uint8_t scanBuf[512];
+        size_t bytesRead = file.read(scanBuf, sizeof(scanBuf));
+        if (bytesRead >= 4) {
+            for (size_t i = 0; i < bytesRead - 3; i++) {
+                if (scanBuf[i] == 0xFF && (scanBuf[i+1] & 0xE0) == 0xE0) {
+                    uint8_t layer = (scanBuf[i+1] >> 1) & 0x03;
+                    uint8_t bitrateIdx = (scanBuf[i+2] >> 4) & 0x0F;
+                    uint8_t sampleIdx = (scanBuf[i+2] >> 2) & 0x03;
+
+                    if (layer != 0 && bitrateIdx != 0 && bitrateIdx != 15 && sampleIdx != 3) {
+                        return true;
+                    }
+                }
+            }
+        }
+        LOG_W("SD", "REJECTED: '%s' contains no valid MP3 sync frames.", path);
+        return false;
+    }
+
     return false;
 }
 
@@ -256,25 +352,27 @@ static void scan_directory_recursive(File dir, int depth) {
                 scan_directory_recursive(file, depth + 1);
             } else {
                 if (is_supported_audio(basename)) {
-                    if (s_track_count < MAX_PLAYLIST_TRACKS) {
-                        if (s_playlist[s_track_count] == nullptr) {
-                            s_playlist[s_track_count] = (PlaylistItem*)malloc(sizeof(PlaylistItem));
-                        }
-                        PlaylistItem *item = s_playlist[s_track_count];
-                        if (item) {
-                            // Ensure full path has leading slash
-                            if (full_path[0] == '/') {
-                                strncpy(item->path, full_path, sizeof(item->path) - 1);
-                            } else {
-                                snprintf(item->path, sizeof(item->path), "/%s", full_path);
+                    if (sd_card_validate_file(file, basename)) {
+                        if (s_track_count < MAX_PLAYLIST_TRACKS) {
+                            if (s_playlist[s_track_count] == nullptr) {
+                                s_playlist[s_track_count] = (PlaylistItem*)malloc(sizeof(PlaylistItem));
                             }
-                            item->path[sizeof(item->path) - 1] = '\0';
+                            PlaylistItem *item = s_playlist[s_track_count];
+                            if (item) {
+                                // Ensure full path has leading slash
+                                if (full_path[0] == '/') {
+                                    strncpy(item->path, full_path, sizeof(item->path) - 1);
+                                } else {
+                                    snprintf(item->path, sizeof(item->path), "/%s", full_path);
+                                }
+                                item->path[sizeof(item->path) - 1] = '\0';
 
-                            // Generate clean display title
-                            sd_sanitize_title(basename, item->title, sizeof(item->title));
+                                // Generate clean display title
+                                sd_sanitize_title(basename, item->title, sizeof(item->title));
 
-                            LOG_I("SD", "[%d] %s -> '%s'", s_track_count + 1, item->path, item->title);
-                            s_track_count++;
+                                LOG_I("SD", "[%d] %s -> '%s'", s_track_count + 1, item->path, item->title);
+                                s_track_count++;
+                            }
                         }
                     }
                 }

@@ -50,7 +50,7 @@ static void bt_i2s_data_callback(const uint8_t *data, uint32_t len) {
     // 2. Pure Lossless CD-Quality Audio Output to I2S DAC (PCM5102A on I2S_NUM_0)
     if (s_current_volume >= 127) {
         size_t written = 0;
-        i2s_write(I2S_NUM_0, data, len, &written, portMAX_DELAY);
+        i2s_write(I2S_NUM_0, data, len, &written, pdMS_TO_TICKS(100));
         return;
     }
 
@@ -64,7 +64,7 @@ static void bt_i2s_data_callback(const uint8_t *data, uint32_t len) {
     }
 
     size_t bytes_written = 0;
-    i2s_write(I2S_NUM_0, s_scaled_pcm, total_samples * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+    i2s_write(I2S_NUM_0, s_scaled_pcm, total_samples * sizeof(int16_t), &bytes_written, pdMS_TO_TICKS(100));
 }
 
 // ---------------------------------------------------------------------------
@@ -352,7 +352,7 @@ uint8_t bt_audio_get_volume() {
 
 void bt_audio_play_pause() {
     if (!s_is_connected) {
-        Serial.println("[AVRCP] No device connected to send Play/Pause");
+        LOG_W("AVRCP", "No device connected to send Play/Pause");
         display_toast("BT NOT CONNECTED");
         return;
     }
