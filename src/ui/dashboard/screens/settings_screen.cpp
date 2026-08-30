@@ -8,6 +8,7 @@
 #include "../../../services/weather_service.h"
 #include "../../../services/market_service.h"
 #include "../../../services/time_service.h"
+#include "log.h"
 #include <stdio.h>
 
 SettingsScreen::SettingsScreen(lv_obj_t* parent) :
@@ -957,7 +958,7 @@ void SettingsScreen::wifi_connect_submit_cb(lv_event_t* e) {
     SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
     const char* pass = lv_textarea_get_text(self->taPassword);
     
-    Serial.printf("[UI] User submit connect to SSID: %s\n", self->selectedSsid);
+    LOG_I("UI", "User submit connect to SSID: %s", self->selectedSsid);
     WifiService::connect(String(self->selectedSsid), String(pass ? pass : ""));
     self->hideWifiPasswordModal();
 }
@@ -969,7 +970,7 @@ void SettingsScreen::wifi_modal_cancel_cb(lv_event_t* e) {
 
 void SettingsScreen::refresh_sd_click_cb(lv_event_t* e) {
     SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
-    Serial.println("[UI] Refresh SD Card status requested.");
+    LOG_I("UI", "Refresh SD Card status requested.");
     StorageService::init();
     if (self) {
         self->destroyCurrentPane();
@@ -979,7 +980,7 @@ void SettingsScreen::refresh_sd_click_cb(lv_event_t* e) {
 
 void SettingsScreen::format_sd_click_cb(lv_event_t* e) {
     SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
-    Serial.println("[UI] User requested SD Card Format.");
+    LOG_I("UI", "User requested SD Card Format.");
     if (self->lblSdActionMsg) {
         lv_label_set_text(self->lblSdActionMsg, LV_SYMBOL_TRASH " Đang format thẻ nhớ SD...");
     }
@@ -1002,7 +1003,7 @@ void SettingsScreen::city_changed_cb(lv_event_t* e) {
     const CityLocation& c = ConfigManager::getCurrentCity();
     WeatherService::setLocation(c.name, c.latitude, c.longitude);
     WeatherService::update(WifiService::isConnected(), true);
-    Serial.printf("[Config] Selected city: %s (%.4f, %.4f)\n", c.name, c.latitude, c.longitude);
+    LOG_I("Config", "Selected city: %s (%.4f, %.4f)", c.name, c.latitude, c.longitude);
 }
 
 void SettingsScreen::sync_interval_changed_cb(lv_event_t* e) {
@@ -1014,12 +1015,12 @@ void SettingsScreen::sync_interval_changed_cb(lv_event_t* e) {
     else if (idx == 2) minutes = 60;
     else if (idx == 3) minutes = 120;
     ConfigManager::setSyncIntervalMinutes(minutes);
-    Serial.printf("[Config] Selected sync interval: %d minutes\n", minutes);
+    LOG_I("Config", "Selected sync interval: %d minutes", minutes);
 }
 
 void SettingsScreen::sync_now_click_cb(lv_event_t* e) {
     SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
-    Serial.println("[UI] Sync Now requested by user");
+    LOG_I("UI", "Sync Now requested by user");
     if (self && self->lblSyncStatus) {
         lv_label_set_text(self->lblSyncStatus, LV_SYMBOL_REFRESH " Đang đồng bộ dữ liệu...");
     }
@@ -1050,14 +1051,14 @@ void SettingsScreen::sleep_timeout_changed_cb(lv_event_t* e) {
     else if (idx == 3) sec = 300;
     else if (idx == 4) sec = 0;
     ConfigManager::setSleepTimeoutSeconds(sec);
-    Serial.printf("[Config] Selected sleep timeout: %d seconds\n", sec);
+    LOG_I("Config", "Selected sleep timeout: %d seconds", sec);
 }
 
 void SettingsScreen::dev_mode_toggle_cb(lv_event_t* e) {
     lv_obj_t* sw = lv_event_get_target(e);
     bool enabled = lv_obj_has_state(sw, LV_STATE_CHECKED);
     ConfigManager::setDevModeEnabled(enabled);
-    Serial.printf("[Config] Dev Mode toggled: %d\n", enabled);
+    LOG_I("Config", "Dev Mode toggled: %d", enabled);
 }
 
 void SettingsScreen::volume_changed_cb(lv_event_t* e) {
@@ -1072,13 +1073,13 @@ void SettingsScreen::volume_changed_cb(lv_event_t* e) {
 }
 
 void SettingsScreen::restart_click_cb(lv_event_t* e) {
-    Serial.println("[System] Restarting ESP32 by user request...");
+    LOG_I("System", "Restarting ESP32 by user request...");
     delay(500);
     ESP.restart();
 }
 
 void SettingsScreen::factory_reset_click_cb(lv_event_t* e) {
-    Serial.println("[System] Factory resetting config...");
+    LOG_I("System", "Factory resetting config...");
     ConfigManager::resetToDefaults();
     delay(500);
     ESP.restart();

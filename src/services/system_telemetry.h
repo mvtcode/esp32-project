@@ -7,6 +7,7 @@ class SystemTelemetry {
 public:
     static void init();
     static void recordFrame(); // Gọi sau mỗi lần lv_timer_handler() hoặc flush
+    static void recordActiveTime(int64_t durationUs); // Ghi nhận thời gian CPU xử lý thực tế
     static void update();      // Cập nhật tính toán mỗi 500ms - 1s
 
     static float getFPS();
@@ -19,10 +20,9 @@ public:
 
 private:
     static unsigned long frameCount;
-    static unsigned long lastFpsCalcTime;
+    static int64_t lastCalcTimeUs;
+    static int64_t totalActiveTimeUs;
     static float currentFps;
-
-    static unsigned long lastIdleTime;
     static uint8_t cpuUsage;
 };
 

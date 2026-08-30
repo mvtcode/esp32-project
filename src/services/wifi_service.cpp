@@ -1,5 +1,6 @@
 #include "wifi_service.h"
 #include "config_manager.h"
+#include "log.h"
 
 WifiState WifiService::currentState = WIFI_STATE_DISCONNECTED;
 std::vector<WifiScanItem> WifiService::scanList;
@@ -26,7 +27,7 @@ void WifiService::init() {
     if (ConfigManager::hasWifiCredentials()) {
         String savedSSID = ConfigManager::getWifiSSID();
         String savedPass = ConfigManager::getWifiPassword();
-        Serial.printf("[WiFi] Found saved credentials for: %s, connecting...\n", savedSSID.c_str());
+        LOG_I("WiFi", "Found saved credentials for: %s, connecting...", savedSSID.c_str());
         connect(savedSSID, savedPass);
     }
 }
@@ -34,53 +35,56 @@ void WifiService::init() {
 #include <algorithm>
 
 void WifiService::scanTask(void* param) {
-    Serial.println("[WiFi] Starting fast async scan...");
-    // Active scan, không quét mạng ẩn, 80ms mỗi kênh -> Quét siêu nhanh ~1s
-    int n = WiFi.scanNetworks(false, false, false, 80);
-    
-    std::vector<WifiScanItem> tempResults;
-    if (n > 0) {
-        for (int i = 0; i < n; ++i) {
-            String s = WiFi.SSID(i);
-            if (s.length() > 0) {
-                bool found = false;
-                for (auto& item : tempResults) {
-                    if (item.ssid == s) {
-                        found = true;
-                        if (WiFi.RSSI(i) > item.rssi) {
-                            item.rssi = WiFi.RSSI(i);
-                            item.channel = WiFi.channel(i);
+    {
+        LOG_I("WiFi", "Starting fast async scan...");
+        // Active scan, không quét mạng ẩn, 80ms mỗi kênh -> Quét siêu nhanh ~1s
+        int n = WiFi.scanNetworks(false, false, false, 80);
+        
+        std::vector<WifiScanItem> tempResults;
+        if (n > 0) {
+            for (int i = 0; i < n; ++i) {
+                String s = WiFi.SSID(i);
+                if (s.length() > 0) {
+                    bool found = false;
+                    for (auto& item : tempResults) {
+                        if (item.ssid == s) {
+                            found = true;
+                            if (WiFi.RSSI(i) > item.rssi) {
+                                item.rssi = WiFi.RSSI(i);
+                                item.channel = WiFi.channel(i);
+                            }
+                            break;
                         }
-                        break;
+                    }
+                    if (!found) {
+                        WifiScanItem item;
+                        item.ssid = s;
+                        item.rssi = WiFi.RSSI(i);
+                        item.isEncrypted = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+                        item.channel = WiFi.channel(i);
+                        tempResults.push_back(item);
                     }
                 }
-                if (!found) {
-                    WifiScanItem item;
-                    item.ssid = s;
-                    item.rssi = WiFi.RSSI(i);
-                    item.isEncrypted = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
-                    item.channel = WiFi.channel(i);
-                    tempResults.push_back(item);
-                }
             }
+            // Sắp xếp mạng sóng khỏe nhất lên đầu
+            std::sort(tempResults.begin(), tempResults.end(), [](const WifiScanItem& a, const WifiScanItem& b) {
+                return a.rssi > b.rssi;
+            });
         }
-        // Sắp xếp mạng sóng khỏe nhất lên đầu
-        std::sort(tempResults.begin(), tempResults.end(), [](const WifiScanItem& a, const WifiScanItem& b) {
-            return a.rssi > b.rssi;
-        });
-    }
-    WiFi.scanDelete();
+        WiFi.scanDelete();
 
-    if (wifiMutex != NULL && xSemaphoreTake(wifiMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
-        scanList = tempResults;
-        isScanRunning = false;
-        if (currentState == WIFI_STATE_SCANNING) {
-            currentState = (WiFi.status() == WL_CONNECTED) ? WIFI_STATE_CONNECTED : WIFI_STATE_DISCONNECTED;
+        if (wifiMutex != NULL && xSemaphoreTake(wifiMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+            scanList = tempResults;
+            isScanRunning = false;
+            if (currentState == WIFI_STATE_SCANNING) {
+                currentState = (WiFi.status() == WL_CONNECTED) ? WIFI_STATE_CONNECTED : WIFI_STATE_DISCONNECTED;
+            }
+            xSemaphoreGive(wifiMutex);
         }
-        xSemaphoreGive(wifiMutex);
+
+        LOG_I("WiFi", "Fast scan finished, found %d unique networks.", (int)tempResults.size());
     }
 
-    Serial.printf("[WiFi] Fast scan finished, found %d unique networks.\n", (int)tempResults.size());
     vTaskDelete(NULL);
 }
 
@@ -119,39 +123,41 @@ std::vector<WifiScanItem> WifiService::getScanResults() {
 }
 
 void WifiService::connectTask(void* param) {
-    ConnectParams* p = (ConnectParams*)param;
-    String ssid = p->ssid;
-    String pass = p->pass;
-    delete p;
+    {
+        ConnectParams* p = (ConnectParams*)param;
+        String ssid = p->ssid;
+        String pass = p->pass;
+        delete p;
 
-    Serial.printf("[WiFi] Connecting to: %s\n", ssid.c_str());
+        LOG_I("WiFi", "Connecting to: %s", ssid.c_str());
 
-    WiFi.disconnect(true);
-    vTaskDelay(pdMS_TO_TICKS(200));
-    WiFi.begin(ssid.c_str(), pass.c_str());
+        WiFi.disconnect(true);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        WiFi.begin(ssid.c_str(), pass.c_str());
 
-    unsigned long startMs = millis();
-    bool success = false;
+        unsigned long startMs = millis();
+        bool success = false;
 
-    while (millis() - startMs < 12000) { // Timeout 12s
-        if (WiFi.status() == WL_CONNECTED) {
-            success = true;
-            break;
+        while (millis() - startMs < 12000) { // Timeout 12s
+            if (WiFi.status() == WL_CONNECTED) {
+                success = true;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(250));
         }
-        vTaskDelay(pdMS_TO_TICKS(250));
-    }
 
-    if (wifiMutex != NULL && xSemaphoreTake(wifiMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
-        if (success) {
-            currentState = WIFI_STATE_CONNECTED;
-            Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-            ConfigManager::setWifiCredentials(ssid, pass);
-        } else {
-            currentState = WIFI_STATE_CONNECT_FAILED;
-            Serial.println("[WiFi] Connection failed!");
+        if (wifiMutex != NULL && xSemaphoreTake(wifiMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+            if (success) {
+                currentState = WIFI_STATE_CONNECTED;
+                LOG_I("WiFi", "Connected! IP: %s", WiFi.localIP().toString().c_str());
+                ConfigManager::setWifiCredentials(ssid, pass);
+            } else {
+                currentState = WIFI_STATE_CONNECT_FAILED;
+                LOG_W("WiFi", "Connection failed!");
+            }
+            isConnecting = false;
+            xSemaphoreGive(wifiMutex);
         }
-        isConnecting = false;
-        xSemaphoreGive(wifiMutex);
     }
 
     vTaskDelete(NULL);

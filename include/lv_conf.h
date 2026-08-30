@@ -18,7 +18,8 @@
    MEMORY SETTINGS
  *=========================*/
 #define LV_MEM_CUSTOM 1
-#define LV_MEM_SIZE (16U * 1024U)
+#define LV_MEM_SIZE (32U * 1024U)   /* Tăng 16→32KB: tránh fragmentation khi render nhiều objects */
+
 #define LV_MEM_ADR 0
 #define LV_MEM_POOL_INCLUDE_FREE 0
 

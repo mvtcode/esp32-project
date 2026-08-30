@@ -1,6 +1,8 @@
 #include "dashboard_ui.h"
 #include "cyd_theme.h"
 #include "../../services/audio_player_service.h"
+#include "../../services/storage_service.h"
+#include "log.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -102,20 +104,43 @@ void DashboardUI::initTabs() {
 void DashboardUI::setTabActive(int index) {
     if (index == activeTabIndex) return;
 
-    // 1. Giải phóng đúng screen đang active (không xóa hết 4 cái)
-    Serial.printf("[UI] Tab switch %d -> %d | Heap: %u bytes\n",
-                  activeTabIndex, index, ESP.getFreeHeap());
+    LOG_I("UI", "Tab switch %d -> %d | Heap: %u bytes",
+          activeTabIndex, index, ESP.getFreeHeap());
 
+    // 1. DỌN DẸP & GIẢI PHÓNG TÀI NGUYÊN CỦA TAB CŨ
     switch (activeTabIndex) {
-        case 0: if (homeScreen)     { delete homeScreen;     homeScreen     = nullptr; } break;
-        case 1: if (calendarScreen) { delete calendarScreen; calendarScreen = nullptr; } break;
-        case 2: if (playerScreen)   { delete playerScreen;   playerScreen   = nullptr;
-                                      lastCheckedTrackIdx = -2; } break;
-        case 3: if (settingsScreen) { delete settingsScreen; settingsScreen = nullptr; } break;
+        case 0: 
+            if (homeScreen) { 
+                delete homeScreen; 
+                homeScreen = nullptr; 
+            } 
+            break;
+        case 1: 
+            if (calendarScreen) { 
+                delete calendarScreen; 
+                calendarScreen = nullptr; 
+            } 
+            break;
+        case 2: 
+            if (playerScreen) { 
+                delete playerScreen; 
+                playerScreen = nullptr; 
+                lastCheckedTrackIdx = -2;
+            } 
+            // Thoát khỏi Tab MP3 -> Dừng phát nhạc và giải phóng ngay bộ đệm SD/decoder cho tab khác
+            AudioPlayerService::stop();
+            LOG_I("UI", "Left Player Tab: Audio playback stopped & SD buffers released.");
+            break;
+        case 3: 
+            if (settingsScreen) { 
+                delete settingsScreen; 
+                settingsScreen = nullptr; 
+            } 
+            break;
         default: break;
     }
 
-    Serial.printf("[UI] Screen freed     | Heap: %u bytes\n", ESP.getFreeHeap());
+    LOG_D("UI", "Screen freed     | Heap: %u bytes", ESP.getFreeHeap());
 
     // 2. Cập nhật navigation indicators
     for (int i = 0; i < 4; i++) {
@@ -130,7 +155,7 @@ void DashboardUI::setTabActive(int index) {
 
     activeTabIndex = index;
 
-    // 3. Tạo screen mới theo yêu cầu và khởi phục dữ liệu cache
+    // 3. Tạo screen mới theo yêu cầu và khôi phục dữ liệu cache
     switch (activeTabIndex) {
         case 0: {
             homeScreen = new HomeScreen(activeViewArea);
@@ -150,23 +175,23 @@ void DashboardUI::setTabActive(int index) {
         }
         case 2: {
             if (!AudioPlayerService::isInitialized()) {
-                Serial.println("[DashboardUI] Lazy loading Audio Player Service...");
+                LOG_I("UI", "Lazy loading Audio Player Service...");
                 AudioPlayerService::init();
             }
 
-            playerScreen = new PlayerScreen(activeViewArea);
-            lastCheckedTrackIdx = -2; // Reset để syncCurrentTrackUI() chạy ngay khi vào tab
-
-            // If playlist is currently empty but SD card is ready, try scanning
-            if (AudioPlayerService::getTrackCount() == 0 && AudioPlayerService::isSdReady()) {
+            // CHỈ QUÉT THẺ NHỚ KHI NGƯỜI DÙNG THỰC SỰ VÀO TAB MP3 LẦN ĐẦU TIÊN
+            if (AudioPlayerService::getTrackCount() == 0 && StorageService::isMounted()) {
+                LOG_I("UI", "Scanning SD card for music files on-demand...");
                 AudioPlayerService::scanMusicFiles();
             }
 
-            // Populate UI playlist
+            playerScreen = new PlayerScreen(activeViewArea);
+            lastCheckedTrackIdx = -2;
+
+            // Populate UI playlist (Nạp toàn bộ danh sách bài hát trên thẻ nhớ)
             int count = AudioPlayerService::getTrackCount();
             if (count > 0) {
                 playerScreen->clearPlaylist();
-                if (count > MAX_AUDIO_TRACKS) count = MAX_AUDIO_TRACKS;
                 for (int i = 0; i < count; i++) {
                     const AudioTrack* t = AudioPlayerService::getTrack(i);
                     if (!t) continue;
@@ -188,9 +213,10 @@ void DashboardUI::setTabActive(int index) {
             if (!AudioPlayerService::isPlaying() && AudioPlayerService::getTrackCount() > 0) {
                 AudioPlayerService::play();
             }
+            playerCache.isPlaying = AudioPlayerService::isPlaying();
             playerScreen->syncCurrentTrackUI();
             playerScreen->updateVolume(playerCache.volume);
-            playerScreen->updatePlaybackMode(playerCache.shuffleActive, playerCache.repeatActive);
+            playerScreen->updatePlaybackMode(playerCache.shuffleActive, (int)AudioPlayerService::getRepeatMode());
             break;
         }
         case 3: {
@@ -202,7 +228,10 @@ void DashboardUI::setTabActive(int index) {
             break;
         }
     }
-    Serial.printf("[UI] Screen built      | Heap: %u bytes\n", ESP.getFreeHeap());
+    if (masterContainer) {
+        lv_obj_invalidate(masterContainer);
+    }
+    LOG_D("UI", "Screen built      | Heap: %u bytes", ESP.getFreeHeap());
 }
 
 
@@ -290,11 +319,12 @@ void DashboardUI::setPlayState(bool isPlaying) {
     if (playerScreen) playerScreen->setPlayState(isPlaying);
 }
 
-void DashboardUI::updatePlaybackMode(bool shuffleActive, bool repeatActive) {
+void DashboardUI::updatePlaybackMode(bool shuffleActive, int repeatMode) {
     playerCache.shuffleActive = shuffleActive;
-    playerCache.repeatActive = repeatActive;
-    if (playerScreen) playerScreen->updatePlaybackMode(shuffleActive, repeatActive);
+    playerCache.repeatMode = repeatMode;
+    if (playerScreen) playerScreen->updatePlaybackMode(shuffleActive, repeatMode);
 }
+
 
 void DashboardUI::updateVolume(int volume) {
     playerCache.volume = volume;
@@ -355,9 +385,10 @@ void DashboardUI::setDevHudVisible(bool visible) {
     if (devHud) devHud->setVisible(visible);
 }
 
-void DashboardUI::updateDevHud(float fps, uint32_t freeHeapKb, uint8_t cpuPercent, int32_t rssi, const char* ip) {
-    if (devHud) devHud->updateStats(fps, freeHeapKb, cpuPercent, rssi, ip);
+void DashboardUI::updateDevHud(float fps, uint32_t freeHeapKb, float memUsagePercent, uint8_t cpuPercent, int32_t rssi, const char* ip) {
+    if (devHud) devHud->updateStats(fps, freeHeapKb, memUsagePercent, cpuPercent, rssi, ip);
 }
+
 
 void DashboardUI::tick() {
     if (playerScreen) {

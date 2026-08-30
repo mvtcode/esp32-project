@@ -1,5 +1,6 @@
 #include "market_service.h"
 #include "config_manager.h"
+#include "log.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -57,115 +58,118 @@ void MarketService::init() {
 }
 
 void MarketService::fetchMarketTask(void *param) {
-    WiFiClientSecure client;
-    client.setInsecure(); // Bỏ qua kiểm tra SSL cert để tiết kiệm bộ nhớ
+    {
+        WiFiClientSecure client;
+        client.setInsecure(); // Bỏ qua kiểm tra SSL cert để tiết kiệm bộ nhớ
 
-    HTTPClient http;
-    http.setTimeout(8000);
-    http.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        HTTPClient http;
+        http.setTimeout(8000);
+        http.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
-    const char *url = "https://gw.vnexpress.net/th?types=gia_vang_v2,gia_xang_dau";
-    Serial.printf("[MarketService] Fetching VNExpress (HTTPS): %s\n", url);
+        const char *url = "https://gw.vnexpress.net/th?types=gia_vang_v2,gia_xang_dau";
+        LOG_D("Market", "Fetching VNExpress (HTTPS): %s", url);
 
-    if (http.begin(client, url)) {
-        int httpCode = http.GET();
-        if (httpCode == HTTP_CODE_OK) {
-            String payload = http.getString();
+        if (http.begin(client, url)) {
+            int httpCode = http.GET();
+            if (httpCode == HTTP_CODE_OK) {
+                String payload = http.getString();
 
-            MarketInfo info = current_market;
-            bool parsed = false;
+                MarketInfo info = current_market;
+                bool parsed = false;
 
-            // 1. Phân tích Giá Vàng SJC (lấy trực tiếp chuỗi từ VNExpress ví dụ "145,7")
-            int sjcIdx = payload.indexOf("\"sjc\":");
-            if (sjcIdx != -1) {
-                String bStr = extractJsonStr(payload, sjcIdx, "\"buy\":");
-                String sStr = extractJsonStr(payload, sjcIdx, "\"sell\":");
-                if (bStr.length() > 0) {
-                    info.sjc_buy_str = bStr;
-                    parsed = true;
+                // 1. Phân tích Giá Vàng SJC (lấy trực tiếp chuỗi từ VNExpress ví dụ "145,7")
+                int sjcIdx = payload.indexOf("\"sjc\":");
+                if (sjcIdx != -1) {
+                    String bStr = extractJsonStr(payload, sjcIdx, "\"buy\":");
+                    String sStr = extractJsonStr(payload, sjcIdx, "\"sell\":");
+                    if (bStr.length() > 0) {
+                        info.sjc_buy_str = bStr;
+                        parsed = true;
+                    }
+                    if (sStr.length() > 0) {
+                        info.sjc_sell_str = sStr;
+                        parsed = true;
+                    }
                 }
-                if (sStr.length() > 0) {
-                    info.sjc_sell_str = sStr;
-                    parsed = true;
+
+                // 2. Phân tích Giá Vàng Nhẫn 9999
+                int ringIdx = payload.indexOf("\"vangnhan9999\":");
+                if (ringIdx != -1) {
+                    String rbStr = extractJsonStr(payload, ringIdx, "\"buy\":");
+                    String rsStr = extractJsonStr(payload, ringIdx, "\"sell\":");
+                    if (rbStr.length() > 0) info.ring_buy_str = rbStr;
+                    if (rsStr.length() > 0) info.ring_sell_str = rsStr;
                 }
-            }
 
-            // 2. Phân tích Giá Vàng Nhẫn 9999
-            int ringIdx = payload.indexOf("\"vangnhan9999\":");
-            if (ringIdx != -1) {
-                String rbStr = extractJsonStr(payload, ringIdx, "\"buy\":");
-                String rsStr = extractJsonStr(payload, ringIdx, "\"sell\":");
-                if (rbStr.length() > 0) info.ring_buy_str = rbStr;
-                if (rsStr.length() > 0) info.ring_sell_str = rsStr;
-            }
-
-            // 3. Phân tích Giá Xăng RON 95 (price & diff)
-            int ron95Idx = payload.indexOf("\"ron_95\":");
-            if (ron95Idx != -1) {
-                int price = extractJsonInt(payload, ron95Idx, "\"price\":");
-                int diff = extractJsonInt(payload, ron95Idx, "\"diff\":");
-                if (price > 0) {
-                    info.ron95_price = price;
-                    info.ron95_delta = diff;
-                    parsed = true;
+                // 3. Phân tích Giá Xăng RON 95 (price & diff)
+                int ron95Idx = payload.indexOf("\"ron_95\":");
+                if (ron95Idx != -1) {
+                    int price = extractJsonInt(payload, ron95Idx, "\"price\":");
+                    int diff = extractJsonInt(payload, ron95Idx, "\"diff\":");
+                    if (price > 0) {
+                        info.ron95_price = price;
+                        info.ron95_delta = diff;
+                        parsed = true;
+                    }
                 }
-            }
 
-            // 4. Phân tích Giá Xăng E5 RON 92 (price & diff)
-            int e5Idx = payload.indexOf("\"e5_ron_92\":");
-            if (e5Idx != -1) {
-                int price = extractJsonInt(payload, e5Idx, "\"price\":");
-                int diff = extractJsonInt(payload, e5Idx, "\"diff\":");
-                if (price > 0) {
-                    info.ron92_price = price;
-                    info.e5_price = price;
-                    info.ron92_delta = diff;
-                    parsed = true;
+                // 4. Phân tích Giá Xăng E5 RON 92 (price & diff)
+                int e5Idx = payload.indexOf("\"e5_ron_92\":");
+                if (e5Idx != -1) {
+                    int price = extractJsonInt(payload, e5Idx, "\"price\":");
+                    int diff = extractJsonInt(payload, e5Idx, "\"diff\":");
+                    if (price > 0) {
+                        info.ron92_price = price;
+                        info.e5_price = price;
+                        info.ron92_delta = diff;
+                        parsed = true;
+                    }
                 }
-            }
 
-            // 5. Phân tích Giá Dầu Diesel (price & diff)
-            int dieselIdx = payload.indexOf("\"dau_diesel\":");
-            if (dieselIdx != -1) {
-                int price = extractJsonInt(payload, dieselIdx, "\"price\":");
-                int diff = extractJsonInt(payload, dieselIdx, "\"diff\":");
-                if (price > 0) {
-                    info.diesel_price = price;
-                    info.diesel_delta = diff;
-                    parsed = true;
+                // 5. Phân tích Giá Dầu Diesel (price & diff)
+                int dieselIdx = payload.indexOf("\"dau_diesel\":");
+                if (dieselIdx != -1) {
+                    int price = extractJsonInt(payload, dieselIdx, "\"price\":");
+                    int diff = extractJsonInt(payload, dieselIdx, "\"diff\":");
+                    if (price > 0) {
+                        info.diesel_price = price;
+                        info.diesel_delta = diff;
+                        parsed = true;
+                    }
                 }
-            }
 
-            // 6. Phân tích Giá Dầu Mazut (key: dau_madut)
-            int madutIdx = payload.indexOf("\"dau_madut\":");
-            if (madutIdx != -1) {
-                int price = extractJsonInt(payload, madutIdx, "\"price\":");
-                int diff = extractJsonInt(payload, madutIdx, "\"diff\":");
-                if (price > 0) {
-                    info.mazut_price = price;
-                    info.mazut_delta = diff;
-                    parsed = true;
+                // 6. Phân tích Giá Dầu Mazut (key: dau_madut)
+                int madutIdx = payload.indexOf("\"dau_madut\":");
+                if (madutIdx != -1) {
+                    int price = extractJsonInt(payload, madutIdx, "\"price\":");
+                    int diff = extractJsonInt(payload, madutIdx, "\"diff\":");
+                    if (price > 0) {
+                        info.mazut_price = price;
+                        info.mazut_delta = diff;
+                        parsed = true;
+                    }
                 }
-            }
 
-            if (parsed && marketMutex != NULL && xSemaphoreTake(marketMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-                info.is_valid = true;
-                info.last_update_time = millis();
-                current_market = info;
-                xSemaphoreGive(marketMutex);
-            }
+                if (parsed && marketMutex != NULL && xSemaphoreTake(marketMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+                    info.is_valid = true;
+                    info.last_update_time = millis();
+                    current_market = info;
+                    xSemaphoreGive(marketMutex);
+                }
 
-            Serial.printf("[MarketService] -> SJC: %s - %s | RON95: %d (%d) | E5: %d (%d) | Diesel: %d (%d) | Mazut: %d (%d)\n",
-                          info.sjc_buy_str.c_str(), info.sjc_sell_str.c_str(), 
-                          info.ron95_price, info.ron95_delta,
-                          info.ron92_price, info.ron92_delta,
-                          info.diesel_price, info.diesel_delta,
-                          info.mazut_price, info.mazut_delta);
-        } else {
-            Serial.printf("[MarketService] HTTP Error: %d\n", httpCode);
+                LOG_I("Market", "-> SJC: %s - %s | RON95: %d (%d) | E5: %d (%d) | Diesel: %d (%d) | Mazut: %d (%d)",
+                      info.sjc_buy_str.c_str(), info.sjc_sell_str.c_str(), 
+                      info.ron95_price, info.ron95_delta,
+                      info.ron92_price, info.ron92_delta,
+                      info.diesel_price, info.diesel_delta,
+                      info.mazut_price, info.mazut_delta);
+            } else {
+                LOG_W("Market", "HTTP Error: %d", httpCode);
+            }
+            http.end();
+            client.stop();
         }
-        http.end();
     }
 
     is_fetching = false;
@@ -186,14 +190,14 @@ void MarketService::update(bool wifiConnected, bool force) {
         BaseType_t res = xTaskCreatePinnedToCore(
             fetchMarketTask,
             "MarketFetchTask",
-            8 * 1024,
+            5 * 1024,
             NULL,
             1,
             NULL,
             0
         );
         if (res != pdPASS) {
-            Serial.println("[MarketService] Task creation failed");
+            LOG_E("Market", "Task creation failed");
             is_fetching = false;
         }
     }

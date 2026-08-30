@@ -1,4 +1,5 @@
 #include "time_service.h"
+#include "log.h"
 
 bool TimeService::synced = false;
 uint32_t TimeService::lastSyncAttempt = 0;
@@ -12,7 +13,7 @@ void TimeService::init() {
     configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com", "time.cloudflare.com");
     synced = false;
     lastSyncAttempt = 0;
-    Serial.println("[TimeService] NTP Client configured with GMT+7.");
+    LOG_I("Time", "NTP Client configured with GMT+7.");
 }
 
 void TimeService::update(bool wifiConnected) {
@@ -25,9 +26,9 @@ void TimeService::update(bool wifiConnected) {
         if (getLocalTime(&timeinfo, 200)) {
             if (timeinfo.tm_year > (2020 - 1900)) {
                 synced = true;
-                Serial.printf("[TimeService] NTP Sync SUCCESS: %02d:%02d:%02d %02d/%02d/%04d\n",
-                              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
-                              timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+                LOG_I("Time", "NTP Sync SUCCESS: %02d:%02d:%02d %02d/%02d/%04d",
+                      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+                      timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
             }
         }
     }

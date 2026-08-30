@@ -49,7 +49,7 @@ private:
     // Header title
     lv_obj_t* lblMonthYearTitle;
 
-    // 42 Grid Cells
+    // 42 Grid Cells (Single lightweight label per cell instead of 3 nested objects)
     struct CellData {
         int year;
         int month;
@@ -57,9 +57,8 @@ private:
         bool isCurrentMonth;
     } cellData[42];
 
-    lv_obj_t* cellsContainer[42];
-    lv_obj_t* cellSolarNumbers[42];
-    lv_obj_t* cellLunarNumbers[42];
+    lv_obj_t* cellLabels[42];
+
 
     // Right Side Detail Card
     lv_obj_t* lblDetailSolarDay;

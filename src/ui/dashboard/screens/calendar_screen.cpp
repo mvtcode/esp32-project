@@ -1,5 +1,6 @@
 #include "calendar_screen.h"
 #include "../cyd_theme.h"
+#include "log.h"
 #include <stdio.h>
 #include <time.h>
 
@@ -9,19 +10,19 @@ static void btn_nav_event_cb(lv_event_t* e) {
     if (!screen) return;
 
     if (target == screen->btnPrevMonth) {
-        Serial.println("[Calendar] Clicked: Prev Month");
+        LOG_D("Calendar", "Clicked: Prev Month");
         screen->onPrevMonth();
     } else if (target == screen->btnNextMonth) {
-        Serial.println("[Calendar] Clicked: Next Month");
+        LOG_D("Calendar", "Clicked: Next Month");
         screen->onNextMonth();
     } else if (target == screen->btnPrevYear) {
-        Serial.println("[Calendar] Clicked: Prev Year");
+        LOG_D("Calendar", "Clicked: Prev Year");
         screen->onPrevYear();
     } else if (target == screen->btnNextYear) {
-        Serial.println("[Calendar] Clicked: Next Year");
+        LOG_D("Calendar", "Clicked: Next Year");
         screen->onNextYear();
     } else if (target == screen->btnToday) {
-        Serial.println("[Calendar] Clicked: Today");
+        LOG_D("Calendar", "Clicked: Today");
         screen->onTodayClick();
     }
 }
@@ -30,7 +31,7 @@ static void cell_click_event_cb(lv_event_t* e) {
     CalendarScreen* screen = (CalendarScreen*)lv_event_get_user_data(e);
     int cellIndex = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_current_target(e));
     if (screen) {
-        Serial.printf("[Calendar] Clicked cell index: %d\n", cellIndex);
+        LOG_D("Calendar", "Clicked cell index: %d", cellIndex);
         screen->onCellClick(cellIndex);
     }
 }
@@ -181,41 +182,26 @@ void CalendarScreen::createCalendarPane(lv_obj_t* parent) {
     }
 
     // --- 3. 42 Days Matrix (7 cols x 6 rows) ---
+    // Sử dụng 1 lv_label duy nhất cho mỗi ô thay vì lồng 3 lv_obj
     for (int i = 0; i < 42; i++) {
         int row = i / 7;
         int col = i % 7;
         int xPos = col * 43;
         int yPos = 48 + row * 34;
 
-        cellsContainer[i] = lv_obj_create(card);
-        lv_obj_set_size(cellsContainer[i], 41, 32);
-        lv_obj_set_pos(cellsContainer[i], xPos, yPos);
-        lv_obj_set_style_radius(cellsContainer[i], 6, 0);
-        lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(cellsContainer[i], 0, 0);
-        lv_obj_set_style_pad_all(cellsContainer[i], 0, 0);
-        lv_obj_clear_flag(cellsContainer[i], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(cellsContainer[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_user_data(cellsContainer[i], (void*)(intptr_t)i);
-        lv_obj_add_event_cb(cellsContainer[i], cell_click_event_cb, LV_EVENT_CLICKED, this);
-
-        // Solar Number (top)
-        cellSolarNumbers[i] = lv_label_create(cellsContainer[i]);
-        lv_obj_set_width(cellSolarNumbers[i], 39);
-        lv_label_set_text(cellSolarNumbers[i], "--");
-        CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getTextPrimary());
-        lv_obj_set_style_text_align(cellSolarNumbers[i], LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_clear_flag(cellSolarNumbers[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_align(cellSolarNumbers[i], LV_ALIGN_TOP_MID, 0, 1);
-
-        // Lunar Number (bottom)
-        cellLunarNumbers[i] = lv_label_create(cellsContainer[i]);
-        lv_obj_set_width(cellLunarNumbers[i], 39);
-        lv_label_set_text(cellLunarNumbers[i], "--");
-        CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getTextMuted());
-        lv_obj_set_style_text_align(cellLunarNumbers[i], LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_clear_flag(cellLunarNumbers[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_align(cellLunarNumbers[i], LV_ALIGN_BOTTOM_MID, 0, -1);
+        cellLabels[i] = lv_label_create(card);
+        lv_obj_set_size(cellLabels[i], 41, 32);
+        lv_obj_set_pos(cellLabels[i], xPos, yPos);
+        lv_obj_set_style_radius(cellLabels[i], 6, 0);
+        lv_obj_set_style_pad_top(cellLabels[i], 2, 0);
+        lv_obj_set_style_pad_hor(cellLabels[i], 0, 0);
+        lv_obj_set_style_text_align(cellLabels[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_line_space(cellLabels[i], -1, 0);
+        CydTheme::applyTextFont(cellLabels[i], CydTheme::getFont12(), CydTheme::getTextPrimary());
+        lv_obj_clear_flag(cellLabels[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(cellLabels[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_user_data(cellLabels[i], (void*)(intptr_t)i);
+        lv_obj_add_event_cb(cellLabels[i], cell_click_event_cb, LV_EVENT_CLICKED, this);
     }
 }
 
@@ -454,57 +440,49 @@ void CalendarScreen::refreshCalendar() {
         // Calculate lunar date
         LunarDate ld = getDetailedLunarDate(cellYear, cellMonth, cellDay);
 
-        // Solar text
-        sprintf(buf, "%d", cellDay);
-        lv_label_set_text(cellSolarNumbers[i], buf);
-
-        // Lunar text (đầu tháng hoặc rằm thêm ký hiệu nhận diện)
+        // Solar + Lunar text kết hợp 2 dòng: dòng 1 dương lịch, dòng 2 âm lịch
+        char lunarStr[16];
         if (ld.day == 1) {
-            sprintf(buf, "1/%d", ld.month);
+            snprintf(lunarStr, sizeof(lunarStr), "1/%d", ld.month);
         } else if (ld.day == 15) {
-            sprintf(buf, "15*");
+            snprintf(lunarStr, sizeof(lunarStr), "15*");
         } else {
-            sprintf(buf, "%d", ld.day);
+            snprintf(lunarStr, sizeof(lunarStr), "%d", ld.day);
         }
-        lv_label_set_text(cellLunarNumbers[i], buf);
+
+        snprintf(buf, sizeof(buf), "%d\n%s", cellDay, lunarStr);
+        lv_label_set_text(cellLabels[i], buf);
 
         // Color & Styling
         bool isSelected = (isCurMonth && cellDay == selectedDay);
         bool isToday = (cellYear == realTodayYear && cellMonth == realTodayMonth && cellDay == realTodayDay);
 
         if (isSelected) {
-            lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_COVER, 0);
-            lv_obj_set_style_bg_color(cellsContainer[i], lv_color_make(24, 60, 120), 0);
-            lv_obj_set_style_border_color(cellsContainer[i], CydTheme::getAccentGlowColor(), 0);
-            lv_obj_set_style_border_width(cellsContainer[i], 1, 0);
-            CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), lv_color_white());
-            CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getGoldColor());
+            lv_obj_set_style_bg_opa(cellLabels[i], LV_OPA_COVER, 0);
+            lv_obj_set_style_bg_color(cellLabels[i], lv_color_make(24, 60, 120), 0);
+            lv_obj_set_style_border_color(cellLabels[i], CydTheme::getAccentGlowColor(), 0);
+            lv_obj_set_style_border_width(cellLabels[i], 1, 0);
+            lv_obj_set_style_text_color(cellLabels[i], lv_color_white(), 0);
         } else if (isToday) {
-            lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_20, 0);
-            lv_obj_set_style_bg_color(cellsContainer[i], CydTheme::getAccentGlowColor(), 0);
-            lv_obj_set_style_border_color(cellsContainer[i], CydTheme::getAccentGlowColor(), 0);
-            lv_obj_set_style_border_width(cellsContainer[i], 1, 0);
-            CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getAccentGlowColor());
-            CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getGoldColor());
+            lv_obj_set_style_bg_opa(cellLabels[i], LV_OPA_30, 0);
+            lv_obj_set_style_bg_color(cellLabels[i], CydTheme::getAccentGlowColor(), 0);
+            lv_obj_set_style_border_color(cellLabels[i], CydTheme::getAccentGlowColor(), 0);
+            lv_obj_set_style_border_width(cellLabels[i], 1, 0);
+            lv_obj_set_style_text_color(cellLabels[i], CydTheme::getAccentGlowColor(), 0);
         } else {
-            lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_TRANSP, 0);
-            lv_obj_set_style_border_width(cellsContainer[i], 0, 0);
+            lv_obj_set_style_bg_opa(cellLabels[i], LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(cellLabels[i], 0, 0);
 
             if (!isCurMonth) {
-                CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getTextMuted());
-                CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getTextMuted());
+                lv_obj_set_style_text_color(cellLabels[i], CydTheme::getTextMuted(), 0);
             } else {
                 int col = i % 7;
                 if (col == 6) { // CN
-                    CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getDangerColor());
+                    lv_obj_set_style_text_color(cellLabels[i], CydTheme::getDangerColor(), 0);
+                } else if (col == 5) { // T7
+                    lv_obj_set_style_text_color(cellLabels[i], CydTheme::getGoldColor(), 0);
                 } else {
-                    CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getTextPrimary());
-                }
-
-                if (ld.day == 1 || ld.day == 15) {
-                    CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getGoldColor());
-                } else {
-                    CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getTextSecondary());
+                    lv_obj_set_style_text_color(cellLabels[i], CydTheme::getTextPrimary(), 0);
                 }
             }
         }

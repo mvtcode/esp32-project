@@ -68,6 +68,10 @@ public:
     static void setDefaultVolume(uint8_t vol);
     static bool isTouchBeepEnabled();
     static void setTouchBeepEnabled(bool enabled);
+    static String getLastAudioTrackPath();
+    static void setLastAudioTrackPath(const String& path);
+    static int getLastAudioTrackIndex();
+    static void setLastAudioTrackIndex(int index);
 
     // Developer Mode Config
     static bool isDevModeEnabled();

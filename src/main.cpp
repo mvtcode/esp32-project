@@ -12,6 +12,7 @@
 #include "services/weather_service.h"
 #include "services/market_service.h"
 #include "services/audio_player_service.h"
+#include "log.h"
 
 // --- 1. Hardware Initialization ---
 TFT_eSPI tft = TFT_eSPI();
@@ -19,9 +20,10 @@ TFT_eSPI tft = TFT_eSPI();
 // --- 2. LVGL Configuration ---
 static const uint32_t screenWidth  = 480;
 static const uint32_t screenHeight = 320;
-static const uint32_t bufferLines  = 25; // 25 dòng (tối ưu hóa số lần flush mà không gây nghẽn RAM)
+static const uint32_t bufferLines  = 40; // Tăng 25→40 dòng: giảm SPI flush transactions từ ~13 xuống ~8/frame
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t buf[screenWidth * bufferLines]; 
+
 
 /* Display flushing */
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
@@ -92,9 +94,9 @@ void syncHomeScreenTelemetry() {
 void setup() {
     Serial.begin(115200);
     delay(100);
-    Serial.println("====================================");
-    Serial.println(" ESP32 CYD 3.5 Dashboard Starting ");
-    Serial.println("====================================");
+    LOG_I("Main", "====================================");
+    LOG_I("Main", " ESP32 CYD 3.5 Dashboard Starting ");
+    LOG_I("Main", "====================================");
 
     // 1. Initialize NVS Storage & Configuration
     ConfigManager::init();
@@ -102,16 +104,16 @@ void setup() {
     // 2. Initialize Backlight PWM (LEDC on GPIO 27)
     BacklightManager::init();
 
-    // 3. Initialize WiFi Service (auto-reconnects if saved)
-    WifiService::init();
-
-    // 4. Initialize SD Card Storage Service
-    StorageService::init();
-
-    // 4.1 Initialize Audio Player Service (Preallocates Helix DSP buffers on clean heap)
+    // 3. Initialize Audio Player Service FIRST (Preallocates Helix DSP buffers on pristine heap)
     AudioPlayerService::init();
 
-    // 5. Initialize Live Online Services (Phase 2)
+    // 4. Initialize WiFi Service (auto-reconnects if saved)
+    WifiService::init();
+
+    // 5. Initialize SD Card Storage Service (chỉ mount phần cứng, KHÔNG scan nhạc cho tới khi vào tab MP3)
+    StorageService::init();
+
+    // 6. Initialize Live Online Services (Phase 2)
     TimeService::init();
     WeatherService::init();
     MarketService::init();
@@ -148,9 +150,9 @@ void setup() {
     lv_indev_drv_register(&indev_drv);
 
     // 9. Initialize Dashboard UI
-    Serial.println("Initializing UI panels...");
+    LOG_I("Main", "Initializing UI panels...");
     ui = new DashboardUI();
-    Serial.println("UI Initialization complete!");
+    LOG_I("Main", "UI Initialization complete!");
 
     // Set initial values
     syncHomeScreenTelemetry();
@@ -169,8 +171,9 @@ void setup() {
         ui->updatePlaybackProgress(0, 0);
         ui->setPlayState(false);
         ui->updateVolume(50);
-        ui->updatePlaybackMode(false, true);
+        ui->updatePlaybackMode(false, (int)AudioPlayerService::getRepeatMode());
         ui->updateEQ("DAC OUT");
+
 
         // Set initial values on Settings Screen
         SettingsDeviceInfo info = {"CYD 3.5 Controller", "ESP32-3248S035", "v2.5.0", "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
@@ -189,18 +192,31 @@ void setup() {
 }
 
 void loop() {
+    int64_t loopStartUs = esp_timer_get_time();
+
     lv_timer_handler(); // Run core LVGL drawing ticks
     SystemTelemetry::recordFrame();
     
     // Background services loop
     WifiService::update();
     BacklightManager::update();
-    AudioPlayerService::update();
 
     bool wifiConnected = WifiService::isConnected();
     TimeService::update(wifiConnected);
-    WeatherService::update(wifiConnected);
-    MarketService::update(wifiConnected);
+
+    int currentTab = ui ? ui->getActiveTab() : 0;
+
+    // CHỈ chạy interval HTTP/HTTPS của Thời tiết & Giá vàng khi ĐANG Ở TAB HOME (Tab 0)
+    // Rời khỏi Tab Home -> Dừng ngay các tác vụ mạng ngầm để giải phóng 100% RAM và CPU
+    if (currentTab == 0) {
+        WeatherService::update(wifiConnected);
+        MarketService::update(wifiConnected);
+    }
+
+    // CHỈ xử lý auto-advance bài hát khi ĐANG Ở TAB PLAYER (Tab 2)
+    if (currentTab == 2) {
+        AudioPlayerService::update();
+    }
 
     unsigned long now = millis();
 
@@ -224,58 +240,76 @@ void loop() {
                 ui->updateDevHud(
                     SystemTelemetry::getFPS(),
                     SystemTelemetry::getFreeHeap() / 1024,
+                    SystemTelemetry::getHeapUsagePercent(),
                     SystemTelemetry::getCpuUsage(),
                     WifiService::getRSSI(),
                     WifiService::getIPAddress().c_str()
                 );
             }
 
-            // Real-time telemetry in Settings Screen
-            ui->updateSettingsTelemetry(
-                SystemTelemetry::getFreeHeap(),
-                SystemTelemetry::getUptimeFormatted().c_str(),
-                WifiService::getIPAddress().c_str(),
-                WifiService::getMacAddress().c_str()
-            );
-
-            // WiFi status in Settings Screen
-            ui->updateWifiSettings(
-                WifiService::getStateString(),
-                WifiService::getConnectedSSID().c_str(),
-                WifiService::getIPAddress().c_str(),
-                WifiService::getRSSI()
-            );
+            // Real-time telemetry in Settings Screen (chỉ cập nhật nếu đang ở Tab 3)
+            if (currentTab == 3) {
+                ui->updateSettingsTelemetry(
+                    SystemTelemetry::getFreeHeap(),
+                    SystemTelemetry::getUptimeFormatted().c_str(),
+                    WifiService::getIPAddress().c_str(),
+                    WifiService::getMacAddress().c_str()
+                );
+                ui->updateWifiSettings(
+                    WifiService::getStateString(),
+                    WifiService::getConnectedSSID().c_str(),
+                    WifiService::getIPAddress().c_str(),
+                    WifiService::getRSSI()
+                );
+            }
         }
     }
 
     // 1s tick: updates clock and live telemetry
     if (now - last1sTick >= 1000) {
         last1sTick = now;
-        syncHomeScreenTelemetry();
+        
+        // Cập nhật Home Telemetry khi ở Tab 0
+        if (currentTab == 0) {
+            syncHomeScreenTelemetry();
+        }
 
-        // Real-time Audio Player state sync
-        if (ui) {
+        // Real-time Audio Player state sync khi ở Tab 2
+        if (currentTab == 2 && ui) {
             bool isPlaying = AudioPlayerService::isPlaying();
             ui->setPlayState(isPlaying);
             
             AudioTrack cur = AudioPlayerService::getCurrentTrack();
             int elapsed = AudioPlayerService::getCurrentElapsedSec();
+            int curIdx = AudioPlayerService::getCurrentTrackIndex();
             int total = AudioPlayerService::getCurrentTotalSec();
             ui->updateTrackInfo(cur.title, cur.artist, "SD Music", cur.format);
             ui->updatePlaybackProgress(elapsed, total);
-            ui->updatePlaybackMode(AudioPlayerService::isShuffle(), AudioPlayerService::getRepeatMode() != REPEAT_MODE_OFF);
+
+            ui->updatePlaybackMode(AudioPlayerService::isShuffle(), (int)AudioPlayerService::getRepeatMode());
             ui->updateVolume(AudioPlayerService::getVolume());
+
+            // Lưu vết bài hát đang phát vào NVS an toàn tại loop() khi đổi bài
+            static int lastSavedTrackIdx = -1;
+            if (curIdx >= 0 && curIdx != lastSavedTrackIdx && isPlaying && cur.path[0] != '\0') {
+                lastSavedTrackIdx = curIdx;
+                ConfigManager::setLastAudioTrackPath(cur.path);
+                ConfigManager::setLastAudioTrackIndex(curIdx);
+            }
         }
     }
 
-    // 5s tick: Force-sync đảm bảo dữ liệu không bị stale (chỉ chạy nếu 1s tick chưa chạy trong cùng iteration)
+    // 5s tick: Force-sync đảm bảo dữ liệu không bị stale (chỉ khi đang ở Tab Home)
     if (now - last5sTick >= 5000) {
         last5sTick = now;
-        // Tránh gọi 2 lần nếu 1s tick cũng vừa kích hoạt trong cùng 1 loop()
-        if (now - last1sTick > 10) {
+        if (currentTab == 0 && (now - last1sTick > 10)) {
             syncHomeScreenTelemetry();
         }
     }
+
+    // Ghi nhận thời gian CPU Core 1 bận rộn thực tế (Microseconds)
+    int64_t activeDurationUs = esp_timer_get_time() - loopStartUs;
+    SystemTelemetry::recordActiveTime(activeDurationUs);
 
     delay(2);
 }

@@ -64,7 +64,7 @@ void DevHud::setVisible(bool isVis) {
     }
 }
 
-void DevHud::updateStats(float fps, uint32_t freeHeapKb, uint8_t cpuPercent, int32_t rssi, const char* ip) {
+void DevHud::updateStats(float fps, uint32_t freeHeapKb, float memUsagePercent, uint8_t cpuPercent, int32_t rssi, const char* ip) {
     if (!visible || !hudContainer) return;
 
     char buf[48];
@@ -73,9 +73,10 @@ void DevHud::updateStats(float fps, uint32_t freeHeapKb, uint8_t cpuPercent, int
     snprintf(buf, sizeof(buf), "FPS: %.0f", fps);
     lv_label_set_text(lblFps, buf);
 
-    // RAM
-    snprintf(buf, sizeof(buf), "RAM: %uK", freeHeapKb);
+    // RAM: Hiển thị RAM còn trống kèm % đã tiêu thụ (ví dụ: RAM: 29K (75%))
+    snprintf(buf, sizeof(buf), "RAM: %uK (%.0f%%)", freeHeapKb, memUsagePercent);
     lv_label_set_text(lblRam, buf);
+
 
     // CPU
     snprintf(buf, sizeof(buf), "CPU: %u%%", cpuPercent);

@@ -40,7 +40,7 @@ public:
     void updateTrackInfo(const char* title, const char* artist, const char* album, const char* qualityStr);
     void updatePlaybackProgress(int currentTimeSecs, int totalTimeSecs);
     void setPlayState(bool isPlaying);
-    void updatePlaybackMode(bool shuffleActive, bool repeatActive);
+    void updatePlaybackMode(bool shuffleActive, int repeatMode);
     void updateVolume(int volumePercent);
     void updateEQ(const char* eqMode);
     void clearPlaylist();
@@ -57,7 +57,8 @@ public:
 
     // Dev HUD toggling & update
     void setDevHudVisible(bool visible);
-    void updateDevHud(float fps, uint32_t freeHeapKb, uint8_t cpuPercent, int32_t rssi, const char* ip);
+    void updateDevHud(float fps, uint32_t freeHeapKb, float memUsagePercent, uint8_t cpuPercent, int32_t rssi, const char* ip);
+
 
     lv_obj_t* getRoot() { return masterContainer; }
 
@@ -83,9 +84,9 @@ private:
     lv_obj_t* tabLabels[4];
 
     int activeTabIndex;
-    int lastCheckedTrackIdx; // Theo dõi track index để sync UI, reset khi PlayerScreen mới
+    int lastCheckedTrackIdx;
 
-    // --- State Cache (For restoring screen telemetry upon tab recreation) ---
+    // Cache to restore screens state on demand
     struct HomeCache {
         char timeStr[16] = "-- : -- : --";
         char secStr[6] = "--";
@@ -127,9 +128,9 @@ private:
         int currentSec = 84;
         int totalSec = 275;
         bool isPlaying = true;
-        bool shuffleActive = true;
-        bool repeatActive = false;
-        int volume = 20;
+        bool shuffleActive = false;
+        int repeatMode = 1; // 0=Off, 1=All, 2=One
+        int volume = 50;
         char eqMode[16] = "POP";
         
         PlaylistItem playlist[6];
@@ -137,6 +138,7 @@ private:
     } playerCache;
 
     struct SettingsCache {
+
         SettingsDeviceInfo info = {"ESP32 Dashboard", "CYD 3.5 ST7796", "v2.5.0", "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
         uint32_t freeHeap = 160000;
         char uptimeStr[32] = "00:00:00";

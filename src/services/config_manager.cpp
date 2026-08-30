@@ -119,6 +119,30 @@ void ConfigManager::setTouchBeepEnabled(bool enabled) {
     prefs.putBool("touch_bp", enabled);
 }
 
+String ConfigManager::getLastAudioTrackPath() {
+    init();
+    return prefs.getString("last_track", "");
+}
+
+void ConfigManager::setLastAudioTrackPath(const String& path) {
+    init();
+    if (path.length() > 0) {
+        prefs.putString("last_track", path);
+    }
+}
+
+int ConfigManager::getLastAudioTrackIndex() {
+    init();
+    return prefs.getInt("last_idx", 0);
+}
+
+void ConfigManager::setLastAudioTrackIndex(int index) {
+    init();
+    if (index >= 0) {
+        prefs.putInt("last_idx", index);
+    }
+}
+
 bool ConfigManager::isDevModeEnabled() {
     init();
     return prefs.getBool("dev_mode", false);

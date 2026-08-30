@@ -21,13 +21,15 @@ enum AudioRepeatMode {
 };
 
 struct AudioTrack {
-    char path[96];
+    char path[192];
     char title[64];
     char artist[32];
     char format[12];
     uint32_t fileSize;
     int durationSec;
+    int bitrateKbps;
 };
+
 
 class AudioPlayerService {
 public:
@@ -43,6 +45,8 @@ public:
     static void stop();
     static void next();
     static void prev();
+    static bool seekToPercent(int percent);
+    static bool seekToSec(int targetSec);
     
     // Settings & Modes
     static void setVolume(uint8_t volumePercent); // 0 - 100
@@ -89,7 +93,8 @@ private:
     static uint32_t playStartMillis;
     static uint32_t pausedElapsedMillis;
     static uint32_t pauseStartMillis;
-    static bool trackJustFinished;
+    static uint32_t seekOffsetSec;
+    static volatile bool trackJustFinished;
 };
 
 #endif // AUDIO_PLAYER_SERVICE_H

@@ -11,7 +11,7 @@ public:
 
     void setVisible(bool visible);
     bool isVisible() const { return visible; }
-    void updateStats(float fps, uint32_t freeHeapKb, uint8_t cpuPercent, int32_t rssi, const char* ip);
+    void updateStats(float fps, uint32_t freeHeapKb, float memUsagePercent, uint8_t cpuPercent, int32_t rssi, const char* ip);
 
 private:
     lv_obj_t* hudContainer;

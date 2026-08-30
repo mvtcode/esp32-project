@@ -1,4 +1,5 @@
 #include "storage_service.h"
+#include "log.h"
 
 bool StorageService::mounted = false;
 SPIClass* StorageService::sdSPI = nullptr;
@@ -21,16 +22,19 @@ bool StorageService::init() {
 
     // Thử kết nối ở tốc độ 10MHz (chuẩn ổn định cho ESP32 SD SPI), nếu không được thì thử lại 4MHz
     if (!SD.begin(SD_CS_PIN, *sdSPI, 10000000, "/sd", 8)) {
+        digitalWrite(SD_CS_PIN, HIGH);
+        delay(100);
         if (!SD.begin(SD_CS_PIN, *sdSPI, 4000000, "/sd", 8)) {
-            Serial.println("[Storage] SD Card Mount Failed or Not Inserted.");
+            LOG_W("Storage", "SD Card Mount Failed or Not Inserted.");
             mounted = false;
             return false;
         }
     }
 
+
     uint8_t cardType = SD.cardType();
     if (cardType == CARD_NONE) {
-        Serial.println("[Storage] No SD card attached.");
+        LOG_W("Storage", "No SD card attached.");
         mounted = false;
         return false;
     }
@@ -40,13 +44,13 @@ bool StorageService::init() {
     uint64_t cardSize = SD.cardSize();
 
     mounted = true;
-    Serial.printf("[Storage] SD Card Mounted. Card Size: %llu MB | FATFS Total: %llu MB, Used: %llu MB\n", 
-                  (uint64_t)(cardSize / (1024 * 1024)),
-                  (uint64_t)(totalBytes / (1024 * 1024)),
-                  (uint64_t)(usedBytes / (1024 * 1024)));
+    LOG_I("Storage", "SD Card Mounted. Card Size: %llu MB | FATFS Total: %llu MB, Used: %llu MB", 
+          (uint64_t)(cardSize / (1024 * 1024)),
+          (uint64_t)(totalBytes / (1024 * 1024)),
+          (uint64_t)(usedBytes / (1024 * 1024)));
 
     if (totalBytes == 0) {
-        Serial.println("[Storage] WARNING: FATFS reported 0 total bytes! Card may be formatted as exFAT or NTFS. ESP32 requires FAT32 / FAT16 format.");
+        LOG_W("Storage", "WARNING: FATFS reported 0 total bytes! Card may be formatted as exFAT or NTFS. ESP32 requires FAT32 / FAT16 format.");
     }
     return true;
 }
@@ -103,7 +107,7 @@ StorageInfo StorageService::getInfo() {
 
 bool StorageService::formatCard() {
     if (!isMounted()) return false;
-    Serial.println("[Storage] Starting SD card clean...");
+    LOG_I("Storage", "Starting SD card clean...");
     
     File root = SD.open("/");
     if (!root) return false;
@@ -123,7 +127,7 @@ bool StorageService::formatCard() {
     }
     root.close();
 
-    Serial.println("[Storage] SD Card format complete.");
+    LOG_I("Storage", "SD Card format complete.");
     return true;
 }
 
