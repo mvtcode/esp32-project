@@ -4,6 +4,7 @@
 #include "Verdana_Vietnamese10pt.h"
 #include "Verdana_Vietnamese12pt.h"
 #include "lunar_calendar.h"
+#include "log.h"
 
 // Vẽ biểu tượng sóng WiFi 5 vạch
 template<typename T>
@@ -86,7 +87,7 @@ void DisplayService::init() {
     clockCanvas.createSprite(320, 240);
     clockCanvas.setAttribute(lgfx::v1::attribute_t::utf8_switch, false);
 
-    Serial.println("[DisplayService] ST7789 Display & PSRAM Double-Buffer Canvas Initialized");
+    LOG_I("DisplayService", "ST7789 Display & PSRAM Double-Buffer Canvas Initialized");
 }
 
 void DisplayService::setScreenOn(bool on) {
@@ -105,10 +106,10 @@ void DisplayService::setMode(DisplayMode mode) {
 
 void DisplayService::showMessage(int x, int y, const char *msg, uint16_t color) {
     if (!screen_on) return;
+    lcd.setFont(&Verdana_Vietnamese12pt);
+    lcd.setTextSize(1);
     lcd.setTextColor(color, TFT_BLACK);
-    lcd.setTextSize(2);
-    lcd.setCursor(x, y);
-    lcd.print(msg);
+    lcd.drawString(utf8ToCustom(msg), x, y);
 }
 
 void DisplayService::showToast(const char *msg, uint16_t bgColor, uint16_t textColor, uint32_t durationMs) {

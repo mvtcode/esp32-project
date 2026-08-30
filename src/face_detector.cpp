@@ -1,4 +1,5 @@
 #include "face_detector.h"
+#include "log.h"
 
 HumanFaceDetectMSR01 *FaceDetectorService::detector = nullptr;
 SemaphoreHandle_t FaceDetectorService::xMutex = NULL;
@@ -10,7 +11,7 @@ uint32_t FaceDetectorService::detect_count = 0;
 uint32_t FaceDetectorService::last_detect_time = 0;
 
 void FaceDetectorService::taskWorker(void *param) {
-    Serial.println("[FaceDetectorService] Lightweight Face Detection Worker started on Core 0");
+    LOG_I("FaceDetectorService", "Lightweight Face Detection Worker started on Core 0");
     
     // Khởi tạo Mô hình Phát hiện khuôn mặt MSR01 siêu nhẹ
     detector = new HumanFaceDetectMSR01(0.3F, 0.3F, 5, 0.25F);

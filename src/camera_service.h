@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "esp_camera.h"
 #include "camera_pins.h"
+#include "log.h"
 
 // Cấu trúc đại diện cho một frame hình ảnh từ Camera
 struct CameraFrame {
@@ -49,7 +50,7 @@ public:
 
         esp_err_t err = esp_camera_init(&config);
         if (err != ESP_OK) {
-            Serial.printf("[CameraService] Init failed: 0x%x\n", err);
+            LOG_E("CameraService", "Init failed: 0x%x", err);
             return false;
         }
 
@@ -68,7 +69,7 @@ public:
             }
         }
 
-        Serial.println("[CameraService] Camera OV3660 initialized at VGA (640x480)");
+        LOG_I("CameraService", "Camera OV3660 initialized at VGA (640x480)");
         return true;
     }
 

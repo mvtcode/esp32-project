@@ -1,5 +1,6 @@
 #include "portal_service.h"
 #include "weather_service.h"
+#include "log.h"
 
 WebServer PortalService::server(80);
 DNSServer PortalService::dnsServer;
@@ -9,11 +10,11 @@ bool PortalService::is_server_started = false;
 bool PortalService::is_scanning = false;
 
 void PortalService::scanTaskWorker(void *param) {
-    Serial.println("[PortalService] Scanning WiFi in background task...");
+    LOG_I("PortalService", "Scanning WiFi in background task...");
     WiFi.scanDelete();
     WiFi.scanNetworks(false, true);
     is_scanning = false;
-    Serial.printf("[PortalService] Scan completed! Found %d networks.\n", WiFi.scanComplete());
+    LOG_I("PortalService", "Scan completed! Found %d networks.", WiFi.scanComplete());
     vTaskDelete(NULL);
 }
 
@@ -51,7 +52,7 @@ void PortalService::saveConfig(const AppConfig &cfg) {
     prefs.putFloat("w_lon", cfg.weather_lon);
     prefs.putInt("sb_time", cfg.standby_timeout);
     prefs.end();
-    Serial.println("[PortalService] Config saved to NVS successfully");
+    LOG_I("PortalService", "Config saved to NVS successfully");
 }
 
 String PortalService::getContentType(const String &filename) {
@@ -89,7 +90,7 @@ bool PortalService::handleFileRead(String path) {
 
 void PortalService::handleRoot() {
     if (!handleFileRead("/index.html")) {
-        Serial.println("[PortalService] Error: /index.html not found in LittleFS!");
+        LOG_E("PortalService", "Error: /index.html not found in LittleFS!");
         server.send(404, "text/plain", "Error: /index.html not found in LittleFS! Please upload filesystem using: pio run --target uploadfs");
     }
 }
@@ -126,7 +127,7 @@ void PortalService::handleScan() {
             0
         );
         if (res != pdPASS) {
-            Serial.println("[PortalService] WiFi Scan task creation failed");
+            LOG_W("PortalService", "WiFi Scan task creation failed");
             is_scanning = false;
         }
     }
@@ -178,7 +179,7 @@ void PortalService::handleGetConfig() {
 void PortalService::handleSaveConfig() {
     if (server.hasArg("plain")) {
         String body = server.arg("plain");
-        Serial.printf("[PortalService] Received JSON Config: %s\n", body.c_str());
+        LOG_D("PortalService", "Received JSON Config: %s", body.c_str());
 
         AppConfig cfg = loadConfig();
 
@@ -284,10 +285,10 @@ void PortalService::startCaptivePortal() {
     is_portal_active = true;
 
     if (!LittleFS.begin(true)) {
-        Serial.println("[PortalService] Failed to mount LittleFS!");
+        LOG_E("PortalService", "Failed to mount LittleFS!");
     }
 
-    Serial.println("\n=== [Captive Portal] Starting AP Mode ===");
+    LOG_I("PortalService", "=== [Captive Portal] Starting AP Mode ===");
     WiFi.disconnect(true);
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("ESP32S3-CAM-AP");
@@ -295,24 +296,23 @@ void PortalService::startCaptivePortal() {
     IPAddress apIP(192, 168, 4, 1);
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
 
-    Serial.print("[Captive Portal] AP SSID: ESP32S3-CAM-AP | IP: ");
-    Serial.println(WiFi.softAPIP());
+    LOG_I("PortalService", "[Captive Portal] AP SSID: ESP32S3-CAM-AP | IP: %s", WiFi.softAPIP().toString().c_str());
 
     dnsServer.start(53, "*", apIP);
     setupRoutes();
     server.begin();
     is_server_started = true;
-    Serial.println("[Captive Portal] Web Server & DNS Started");
+    LOG_I("PortalService", "[Captive Portal] Web Server & DNS Started");
 }
 
 void PortalService::startWebServer() {
     if (!LittleFS.begin(true)) {
-        Serial.println("[PortalService] Failed to mount LittleFS!");
+        LOG_E("PortalService", "Failed to mount LittleFS!");
     }
     setupRoutes();
     server.begin();
     is_server_started = true;
-    Serial.println("[PortalService] Web Server Started on STA WiFi");
+    LOG_I("PortalService", "Web Server Started on STA WiFi");
 }
 
 void PortalService::loop() {

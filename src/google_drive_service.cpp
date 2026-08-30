@@ -1,4 +1,5 @@
 #include "google_drive_service.h"
+#include "log.h"
 
 const char *GoogleDriveService::ssid = "";
 const char *GoogleDriveService::password = "";
@@ -21,7 +22,7 @@ int GoogleDriveService::last_center_y = -1;
 int GoogleDriveService::consecutive_frames = 0;
 
 void GoogleDriveService::syncNTPTime() {
-    Serial.println("[NTP] Synchronizing time from Internet (GMT+7)...");
+    LOG_I("NTP", "Synchronizing time from Internet (GMT+7)...");
     configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com", "time.nist.gov");
 
     struct tm timeinfo;
@@ -29,9 +30,9 @@ void GoogleDriveService::syncNTPTime() {
         is_ntp_synced = true;
         char timeStr[32];
         strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-        Serial.printf("[NTP] Time synchronized successfully: %s\n", timeStr);
+        LOG_I("NTP", "Time synchronized successfully: %s", timeStr);
     } else {
-        Serial.println("[NTP] Time sync timeout (will retry later)");
+        LOG_W("NTP", "Time sync timeout (will retry later)");
     }
 }
 
@@ -63,7 +64,7 @@ void GoogleDriveService::cleanupOrphanTmpFiles() {
                 if (name.endsWith(".tmp")) {
                     String fullPath = "/faces/" + name;
                     SD_MMC.remove(fullPath.c_str());
-                    Serial.printf("[FaultTolerance] Cleaned up corrupted/incomplete file: %s\n", fullPath.c_str());
+                    LOG_I("FaultTolerance", "Cleaned up corrupted/incomplete file: %s", fullPath.c_str());
                 }
                 file = root.openNextFile();
             }
@@ -83,7 +84,7 @@ bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const S
     if (!is_sd_mounted || data == nullptr || len == 0) return false;
 
     if (sdMutex == NULL || xSemaphoreTake(sdMutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
-        Serial.println("[FaultTolerance] Could not acquire sdMutex for writing");
+        LOG_W("FaultTolerance", "Could not acquire sdMutex for writing");
         return false;
     }
 
@@ -91,7 +92,7 @@ bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const S
     uint64_t totalBytes = SD_MMC.totalBytes();
     uint64_t usedBytes = SD_MMC.usedBytes();
     if (totalBytes > usedBytes && (totalBytes - usedBytes) < (10 * 1024 * 1024)) {
-        Serial.println("[FaultTolerance] SD card low space! Cleaning oldest files...");
+        LOG_W("FaultTolerance", "SD card low space! Cleaning oldest files...");
         File root = SD_MMC.open("/faces");
         if (root && root.isDirectory()) {
             File f = root.openNextFile();
@@ -100,7 +101,7 @@ bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const S
                 f.close();
                 String delPath = "/faces/" + oldName;
                 SD_MMC.remove(delPath.c_str());
-                Serial.printf("[FaultTolerance] Deleted old cache file: %s\n", delPath.c_str());
+                LOG_I("FaultTolerance", "Deleted old cache file: %s", delPath.c_str());
             }
             root.close();
         }
@@ -116,7 +117,7 @@ bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const S
 
     File f = SD_MMC.open(tmpPath.c_str(), FILE_WRITE);
     if (!f) {
-        Serial.printf("[FaultTolerance] Error opening temp file: %s\n", tmpPath.c_str());
+        LOG_E("FaultTolerance", "Error opening temp file: %s", tmpPath.c_str());
         xSemaphoreGive(sdMutex);
         return false;
     }
@@ -126,7 +127,7 @@ bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const S
     f.close();
 
     if (written != len) {
-        Serial.printf("[FaultTolerance] Write incomplete (%u/%u bytes), removing temp file\n", written, len);
+        LOG_E("FaultTolerance", "Write incomplete (%u/%u bytes), removing temp file", (unsigned)written, (unsigned)len);
         SD_MMC.remove(tmpPath.c_str());
         xSemaphoreGive(sdMutex);
         return false;
@@ -139,10 +140,10 @@ bool GoogleDriveService::saveToSDAtomic(const uint8_t *data, size_t len, const S
 
     bool success = false;
     if (SD_MMC.rename(tmpPath.c_str(), finalPath.c_str())) {
-        Serial.printf("[FaultTolerance] Atomically saved file to SD: %s\n", finalPath.c_str());
+        LOG_I("FaultTolerance", "Atomically saved file to SD: %s", finalPath.c_str());
         success = true;
     } else {
-        Serial.printf("[FaultTolerance] Rename failed from %s to %s\n", tmpPath.c_str(), finalPath.c_str());
+        LOG_E("FaultTolerance", "Rename failed from %s to %s", tmpPath.c_str(), finalPath.c_str());
         SD_MMC.remove(tmpPath.c_str());
     }
 
@@ -157,7 +158,7 @@ bool GoogleDriveService::uploadSingleFile(const uint8_t *data, size_t len, const
 
     // Kiểm tra tính toàn vẹn của file ảnh JPEG trước khi upload
     if (!isValidJPEG(data, len)) {
-        Serial.printf("[FaultTolerance] Skipping corrupted JPEG file: %s\n", filename);
+        LOG_W("FaultTolerance", "Skipping corrupted JPEG file: %s", filename);
         return false;
     }
 
@@ -168,7 +169,7 @@ bool GoogleDriveService::uploadSingleFile(const uint8_t *data, size_t len, const
     if (!base64_buf) base64_buf = (char *)malloc(base64_len + 1);
 
     if (!base64_buf) {
-        Serial.println("[GoogleDrive] Memory allocation failed for Base64");
+        LOG_E("GoogleDrive", "Memory allocation failed for Base64");
         return false;
     }
 
@@ -197,44 +198,43 @@ bool GoogleDriveService::uploadSingleFile(const uint8_t *data, size_t len, const
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.addHeader("Content-Type", "application/json");
 
-    Serial.printf("[GoogleDrive] Uploading %s (%u bytes) to Google Apps Script...\n", filename, len);
+    LOG_I("GoogleDrive", "Uploading %s (%u bytes) to Google Apps Script...", filename, (unsigned)len);
     int httpCode = http.POST(jsonPayload);
 
     bool success = false;
     if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_FOUND || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
         String response = http.getString();
-        Serial.printf("[GoogleDrive] Upload SUCCESS! Response: %s\n", response.c_str());
+        LOG_I("GoogleDrive", "Upload SUCCESS! Response: %s", response.c_str());
         success = true;
     } else {
-        Serial.printf("[GoogleDrive] Upload FAILED! HTTP code: %d\n", httpCode);
+        LOG_E("GoogleDrive", "Upload FAILED! HTTP code: %d", httpCode);
     }
     http.end();
     return success;
 }
 
 void GoogleDriveService::uploadTaskWorker(void *param) {
-    Serial.println("[GoogleDrive] Background Worker Task started on Core 0");
+    LOG_I("GoogleDrive", "Background Worker Task started on Core 0");
 
     if (WiFi.getMode() == WIFI_OFF) {
         WiFi.mode(WIFI_STA);
     }
     WiFi.begin(ssid, password);
-    Serial.printf("[GoogleDrive] Connecting to WiFi: %s ...\n", ssid);
+    LOG_I("GoogleDrive", "Connecting to WiFi: %s ...", ssid);
 
     int retry = 0;
     while (WiFi.status() != WL_CONNECTED && retry < 25) {
         vTaskDelay(pdMS_TO_TICKS(500));
-        Serial.print(".");
         retry++;
     }
 
     if (WiFi.status() == WL_CONNECTED) {
         is_wifi_connected = true;
-        Serial.println("\n[GoogleDrive] WiFi Connected! IP: " + WiFi.localIP().toString());
+        LOG_I("GoogleDrive", "WiFi Connected! IP: %s", WiFi.localIP().toString().c_str());
         // Đồng bộ thời gian từ Internet NTP ngay khi có mạng
         syncNTPTime();
     } else {
-        Serial.println("\n[GoogleDrive] WiFi not connected yet (will auto-reconnect)");
+        LOG_W("GoogleDrive", "WiFi not connected yet (will auto-reconnect)");
     }
 
     UploadJob job;
@@ -282,10 +282,10 @@ void GoogleDriveService::uploadTaskWorker(void *param) {
                                         if (ok) {
                                             current_status = UPLOAD_SUCCESS;
                                             SD_MMC.remove(fullPath.c_str());
-                                            Serial.printf("[FaultTolerance] Uploaded & safely removed: %s\n", fullPath.c_str());
+                                            LOG_I("FaultTolerance", "Uploaded & safely removed: %s", fullPath.c_str());
                                         } else {
                                             current_status = UPLOAD_FAILED;
-                                            Serial.printf("[FaultTolerance] Retaining file for next retry: %s\n", fullPath.c_str());
+                                            LOG_W("FaultTolerance", "Retaining file for next retry: %s", fullPath.c_str());
                                         }
                                         xSemaphoreGive(sdMutex);
                                     }
@@ -299,7 +299,7 @@ void GoogleDriveService::uploadTaskWorker(void *param) {
                                 // File 0 byte bị lỗi do mất điện -> Xóa ngay
                                 file.close();
                                 SD_MMC.remove(fullPath.c_str());
-                                Serial.printf("[FaultTolerance] Removed empty 0-byte file: %s\n", fullPath.c_str());
+                                LOG_W("FaultTolerance", "Removed empty 0-byte file: %s", fullPath.c_str());
                             }
                         } else {
                             file.close();
@@ -345,7 +345,7 @@ bool GoogleDriveService::init(const char *wifi_ssid, const char *wifi_password, 
     if (SD_MMC.begin("/sdcard", true)) {
         is_sd_mounted = true;
         uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
-        Serial.printf("[GoogleDrive] SD Card mounted successfully! Size: %llu MB\n", cardSize);
+        LOG_I("GoogleDrive", "SD Card mounted successfully! Size: %llu MB", cardSize);
         if (!SD_MMC.exists("/faces")) {
             SD_MMC.mkdir("/faces");
         }
@@ -353,12 +353,12 @@ bool GoogleDriveService::init(const char *wifi_ssid, const char *wifi_password, 
         cleanupOrphanTmpFiles();
     } else {
         is_sd_mounted = false;
-        Serial.println("[GoogleDrive] SD Card not mounted, using PSRAM Memory Queue cache");
+        LOG_W("GoogleDrive", "SD Card not mounted, using PSRAM Memory Queue cache");
     }
 
     uploadQueue = xQueueCreate(3, sizeof(UploadJob));
     if (uploadQueue == NULL) {
-        Serial.println("[GoogleDrive] Failed to create Upload Queue");
+        LOG_E("GoogleDrive", "Failed to create Upload Queue");
         return false;
     }
 
@@ -481,7 +481,7 @@ void GoogleDriveService::processFaceTrigger(const CameraFrame &vgaFrame, const F
                             job.filename[sizeof(job.filename) - 1] = '\0';
 
                             if (xQueueSend(uploadQueue, &job, 0) != pdTRUE) {
-                                Serial.println("[GoogleDrive] Upload Queue Full, dropping frame");
+                                LOG_W("GoogleDrive", "Upload Queue Full, dropping frame");
                                 free(jpg_buf);
                             }
                         } else {

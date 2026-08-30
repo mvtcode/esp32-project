@@ -35,16 +35,16 @@ Hệ thống Camera AI nhận diện khuôn mặt thời gian thực kết hợp
 
 ### 1. Màn hình TFT 2.8" SPI (ST7789 - 320x240)
 
-| Chân TFT | Chân ESP32-S3 | Chức năng |
-| :--- | :--- | :--- |
-| **SCL / SCK** | `GPIO 19` | SPI Clock |
-| **SDA / MOSI** | `GPIO 20` | SPI Data Out |
-| **RES / RST** | `GPIO 21` | Reset |
-| **DC** | `GPIO 47` | Data / Command |
-| **CS** | `GPIO 45` | Chip Select |
-| **BLK / BL** | `GPIO 38` | Đèn nền Backlight (PWM / Digital) |
-| **VCC** | `5V` hoặc `3.3V` | Nguồn cấp |
-| **GND** | `GND` | Nối đất |
+| Chân TFT       | Chân ESP32-S3    | Chức năng                         |
+| :------------- | :--------------- | :-------------------------------- |
+| **SCL / SCK**  | `GPIO 19`        | SPI Clock                         |
+| **SDA / MOSI** | `GPIO 20`        | SPI Data Out                      |
+| **RES / RST**  | `GPIO 21`        | Reset                             |
+| **DC**         | `GPIO 47`        | Data / Command                    |
+| **CS**         | `GPIO 45`        | Chip Select                       |
+| **BLK / BL**   | `GPIO 38`        | Đèn nền Backlight (PWM / Digital) |
+| **VCC**        | `5V` hoặc `3.3V` | Nguồn cấp                         |
+| **GND**        | `GND`            | Nối đất                           |
 
 ### 2. Nút nhấn & Đèn LED chỉ báo RGB (GPIO 48)
 
@@ -62,6 +62,7 @@ Hệ thống Camera AI nhận diện khuôn mặt thời gian thực kết hợp
 ## 🧠 Mô hình AI & Cơ chế nhận diện khuôn mặt (Face Detection)
 
 ### 1. Thư viện & Mô hình Deep Learning
+
 - **Framework**: **ESP-DL / ESP-WHO** (Khung phần mềm Deep Learning chính thức từ Espressif Systems).
 - **Mô hình AI**: **MSR01 (Mobile Screen Recognition v1)**:
   - Mạng nơ-ron tích chập siêu nhẹ (**Lightweight CNN**) được tối ưu hóa riêng cho thị giác máy tính biên (Edge AI).
@@ -85,6 +86,7 @@ Camera OV3660 (320x240 RGB565)
 ```
 
 ### 3. Dữ liệu đầu ra của khối AI
+
 - **Hộp bao khuôn mặt (Bounding Box)**: Tọa độ pixel `[x1, y1, x2, y2]` tương ứng tỷ lệ màn hình 320x240.
 - **Điểm số tin cậy (Confidence Score)**: Mức độ chắc chắn (ngưỡng phát hiện mặc định `≥ 0.30`).
 - **5 Điểm mốc khuôn mặt (5 Keypoints)**: Tọa độ 2 mắt, đỉnh mũi và 2 bên khóe miệng (phục vụ căn chỉnh góc nhìn).
@@ -136,15 +138,15 @@ uploadTaskWorker() [Core 0 – Background FreeRTOS Task]
 
 ### 2. Bảng 7 lớp bảo vệ
 
-| Lớp | Cơ chế | Bảo vệ khỏi |
-| :--: | :--- | :--- |
-| **1** | **Atomic Write** (`.tmp` → rename `.jpg`) | File bị corrupt khi mất điện giữa chừng ghi SD |
-| **2** | **RAM Queue fallback** (3 slots) | Không có thẻ SD hoặc SD ghi thất bại |
-| **3** | **Boot cleanup** – xóa `*.tmp` còn sót | Orphan files từ phiên trước bị reset |
-| **4** | **JPEG Validation** – kiểm tra SOI/EOI | Upload ảnh bị hỏng lên Google Drive |
-| **5** | **Safe Delete after ACK** | Xóa file khi chưa upload xong |
-| **6** | **Auto Retry** – giữ file trên SD nếu thất bại | Mất kết nối mạng tạm thời |
-| **7** | **Space Management** – xóa file cũ nhất khi < 10 MB | SD card đầy, không ghi được |
+|  Lớp  | Cơ chế                                              | Bảo vệ khỏi                                    |
+| :---: | :-------------------------------------------------- | :--------------------------------------------- |
+| **1** | **Atomic Write** (`.tmp` → rename `.jpg`)           | File bị corrupt khi mất điện giữa chừng ghi SD |
+| **2** | **RAM Queue fallback** (3 slots)                    | Không có thẻ SD hoặc SD ghi thất bại           |
+| **3** | **Boot cleanup** – xóa `*.tmp` còn sót              | Orphan files từ phiên trước bị reset           |
+| **4** | **JPEG Validation** – kiểm tra SOI/EOI              | Upload ảnh bị hỏng lên Google Drive            |
+| **5** | **Safe Delete after ACK**                           | Xóa file khi chưa upload xong                  |
+| **6** | **Auto Retry** – giữ file trên SD nếu thất bại      | Mất kết nối mạng tạm thời                      |
+| **7** | **Space Management** – xóa file cũ nhất khi < 10 MB | SD card đầy, không ghi được                    |
 
 ### 3. Hành vi khi upload chậm hơn cooldown
 
@@ -170,7 +172,6 @@ Ví dụ: Cooldown = 5s, thời gian upload thực tế = 8s
 ---
 
 ## 📁 Cấu trúc thư mục dự án
-
 
 ```text
 esp32-project/
@@ -204,6 +205,7 @@ esp32-project/
 ### 2. Cấu hình `platformio.ini`
 
 Dự án đã được cấu hình tối ưu cho dòng ESP32-S3 N16R8:
+
 ```ini
 [env:esp32s3]
 platform = espressif32 @ 6.5.0
@@ -213,7 +215,7 @@ framework = arduino
 monitor_speed = 115200
 upload_speed = 921600
 
-build_flags = 
+build_flags =
     -DCORE_DEBUG_LEVEL=0
     -DBOARD_HAS_PSRAM
     -mfix-esp32-psram-cache-issue
@@ -225,7 +227,7 @@ board_build.psram_type = opi
 board_build.flash_size = 16MB
 board_build.filesystem = littlefs
 
-lib_deps = 
+lib_deps =
     esp32-camera
     lovyan03/LovyanGFX @ ^1.1.16
 ```
@@ -282,43 +284,84 @@ function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     var imageBytes = Utilities.base64Decode(data.image);
-    var blob = Utilities.newBlob(imageBytes, "image/jpeg", "face_" + new Date().getTime() + ".jpg");
-    
+    var blob = Utilities.newBlob(
+      imageBytes,
+      "image/jpeg",
+      "face_" + new Date().getTime() + ".jpg",
+    );
+
     // Lưu vào thư mục Google Drive mong muốn (hoặc thư mục gốc)
     var folder = DriveApp.getRootFolder();
     var file = folder.createFile(blob);
-    
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "success",
-      url: file.getUrl()
-    })).setMimeType(ContentService.MimeType.JSON);
+
+    return ContentService.createTextOutput(
+      JSON.stringify({
+        status: "success",
+        url: file.getUrl(),
+      }),
+    ).setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "error",
-      message: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(
+      JSON.stringify({
+        status: "error",
+        message: error.toString(),
+      }),
+    ).setMimeType(ContentService.MimeType.JSON);
   }
 }
 ```
 
 3. Nhấn **Deploy** > **New deployment** > Chọn loại **Web app**:
-   - **Execute as**: *Me*
-   - **Who has access**: *Anyone* (Bất kỳ ai)
+   - **Execute as**: _Me_
+   - **Who has access**: _Anyone_ (Bất kỳ ai)
 4. Sao chép URL Web App thu được và dán vào mục **Google Script URL** trong Captive Portal.
 
 ---
 
 ## 🎮 Thao tác điều khiển với nút BOOT
 
-| Thao tác | Chức năng | Phản hồi trên màn hình |
-| :--- | :--- | :--- |
-| **Nhấn 1 lần (Click)** | Bật / Tắt chế độ tải ảnh lên Google Drive | Toast `Upload: ON` (Xanh) / `Upload: OFF` (Đỏ) |
-| **Nhấn giữ 1 giây** | Tắt / Bật đèn nền màn hình ST7789 | Tắt màn hình hoặc Toast `Screen: ON` |
-| **Nhấn giữ 3 giây** | Khôi phục cài đặt gốc (Xóa NVS) & Khởi động lại | Toast `Factory Reset...` (Đỏ) |
-| **Giữ nút khi cắm nguồn** | Ép buộc vào chế độ Captive Portal | Hiển thị thông tin kết nối AP |
+| Thao tác                  | Chức năng                                       | Phản hồi trên màn hình                         |
+| :------------------------ | :---------------------------------------------- | :--------------------------------------------- |
+| **Nhấn 1 lần (Click)**    | Bật / Tắt chế độ tải ảnh lên Google Drive       | Toast `Upload: ON` (Xanh) / `Upload: OFF` (Đỏ) |
+| **Nhấn giữ 1 giây**       | Tắt / Bật đèn nền màn hình ST7789               | Tắt màn hình hoặc Toast `Screen: ON`           |
+| **Nhấn giữ 3 giây**       | Khôi phục cài đặt gốc (Xóa NVS) & Khởi động lại | Toast `Factory Reset...` (Đỏ)                  |
+| **Giữ nút khi cắm nguồn** | Ép buộc vào chế độ Captive Portal               | Hiển thị thông tin kết nối AP                  |
+
+---
+
+## 🔧 Cấu hình Bật / Tắt Log (Debug / Production) trong `platformio.ini`
+
+Dự án hỗ trợ quản lý log tập trung qua cờ biên dịch (build flag) trong [platformio.ini](file:///d:/projects/esp32-project/platformio.ini):
+
+```ini
+; Build options
+build_flags =
+    ; --- Logging control: Bật dòng dưới cho DEV, comment lại để TẮT LOG (PRODUCTION) ---
+    ; -DENABLE_SERIAL_LOG
+    -DCORE_DEBUG_LEVEL=0
+    -DBOARD_HAS_PSRAM
+    -mfix-esp32-psram-cache-issue
+    -DARDUINO_USB_CDC_ON_BOOT=0
+    -lhuman_face_detect
+    -ldl
+    -I include
+```
+
+> [!TIP]
+>
+> - **Khi gỡ lỗi (Development)**: Bỏ dấu chấm phẩy `;` trước `-DENABLE_SERIAL_LOG` để bật toàn bộ log chi tiết qua Serial Monitor (`LOG_I`, `LOG_D`, `LOG_W`).
+> - **Khi vận hành thực tế (Production)**: Thêm dấu chấm phẩy `;` trước `-DENABLE_SERIAL_LOG` để tắt log, giúp tiết kiệm bộ nhớ RAM/Flash và đạt tốc độ khung hình (FPS) tối đa. Log lỗi nghiêm trọng (`LOG_E`) vẫn luôn được hiển thị.
 
 ---
 
 ## 📊 Giấy phép & Đóng góp
 
 Dự án phát triển mã nguồn mở phục vụ nghiên cứu và ứng dụng Edge AI trên dòng vi điều khiển ESP32-S3. Mọi đóng góp và báo lỗi (Issue / Pull Request) luôn được chào đón!
+
+## 👨‍💻 Tác Giả
+
+**Power by [Mạc Tân](https://www.facebook.com/mvt.hp.star/)** | Mobile: [0964 335 688](tel:0964335688)
+
+---
+
+⭐ Nếu dự án này hữu ích, hãy cho một star trên GitHub!

@@ -1,6 +1,7 @@
 #include "weather_service.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include "log.h"
 
 WeatherInfo WeatherService::current_weather;
 SemaphoreHandle_t WeatherService::weatherMutex = NULL;
@@ -53,7 +54,7 @@ void WeatherService::fetchWeatherTask(void *param) {
     snprintf(url, sizeof(url), "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,relative_humidity_2m,weather_code",
              latitude, longitude);
 
-    Serial.printf("[WeatherService] Fetching: %s\n", url);
+    LOG_D("WeatherService", "Fetching: %s", url);
     http.begin(url);
     int httpCode = http.GET();
 
@@ -89,11 +90,11 @@ void WeatherService::fetchWeatherTask(void *param) {
                 xSemaphoreGive(weatherMutex);
             }
 
-            Serial.printf("[WeatherService] -> Temp: %.1f C, Hum: %d%%, Code: %d (%s)\n",
+            LOG_I("WeatherService", "-> Temp: %.1f C, Hum: %d%%, Code: %d (%s)",
                           temp, hum, wCode, getWeatherIcon(wCode));
         }
     } else {
-        Serial.printf("[WeatherService] HTTP Error: %d\n", httpCode);
+        LOG_E("WeatherService", "HTTP Error: %d", httpCode);
     }
 
     http.end();
@@ -120,7 +121,7 @@ void WeatherService::update(bool wifiConnected) {
             0
         );
         if (res != pdPASS) {
-            Serial.println("[WeatherService] Task creation failed, resetting fetch flag");
+            LOG_W("WeatherService", "Task creation failed, resetting fetch flag");
             is_fetching = false;
         }
     }

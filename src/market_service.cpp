@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include "log.h"
 
 MarketInfo MarketService::current_market;
 SemaphoreHandle_t MarketService::marketMutex = NULL;
@@ -60,7 +61,7 @@ void MarketService::fetchMarketTask(void *param) {
     http.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)");
 
     const char *url = "https://gw.vnexpress.net/th?types=gia_vang_v2,gia_xang_dau";
-    Serial.printf("[MarketService] Fetching VNExpress Market Data: %s\n", url);
+    LOG_D("MarketService", "Fetching VNExpress Market Data: %s", url);
 
     if (http.begin(client, url)) {
         int httpCode = http.GET();
@@ -119,13 +120,13 @@ void MarketService::fetchMarketTask(void *param) {
                     xSemaphoreGive(marketMutex);
                 }
 
-                Serial.printf("[MarketService] -> SJC: %s - %s | Nhẫn: %s - %s | RON95: %s | E5: %s | Dầu: %s\n",
+                LOG_I("MarketService", "-> SJC: %s - %s | Nhẫn: %s - %s | RON95: %s | E5: %s | Dầu: %s",
                               info.sjc_buy.c_str(), info.sjc_sell.c_str(),
                               info.ring_buy.c_str(), info.ring_sell.c_str(),
                               info.ron95_price.c_str(), info.e5_price.c_str(), info.diesel_price.c_str());
             }
         } else {
-            Serial.printf("[MarketService] HTTP Error: %d\n", httpCode);
+            LOG_E("MarketService", "HTTP Error: %d", httpCode);
         }
         http.end();
     }
@@ -152,7 +153,7 @@ void MarketService::update(bool wifiConnected) {
             0
         );
         if (res != pdPASS) {
-            Serial.println("[MarketService] Task creation failed");
+            LOG_W("MarketService", "Task creation failed");
             is_fetching = false;
         }
     }

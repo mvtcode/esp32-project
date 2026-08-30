@@ -9,6 +9,7 @@
 #include "led_service.h"
 #include "weather_service.h"
 #include "market_service.h"
+#include "log.h"
 
 // Chân nút nhấn BOOT trên ESP32-S3
 #define BOOT_BUTTON_PIN 0
@@ -56,7 +57,7 @@ void handleBootButton() {
             // Xử lý giữ 3 giây -> Factory Reset App
             if (hold_time >= 3000 && !long_press_3s_triggered) {
                 long_press_3s_triggered = true;
-                Serial.println("[Button BOOT] Hold 3s -> FACTORY RESET APP!");
+                LOG_W("Main", "[Button BOOT] Hold 3s -> FACTORY RESET APP!");
                 DisplayService::showToast("Factory Reset...", TFT_RED, TFT_WHITE, 3000);
 
                 prefs.begin("app_cfg", false);
@@ -75,7 +76,7 @@ void handleBootButton() {
                 } else {
                     DisplayService::showToast("Mode: Camera AI", TFT_DARKGREEN, TFT_WHITE, 1500);
                 }
-                Serial.printf("[Button BOOT] Hold 1s -> Switched to Mode: %d\n", (int)DisplayService::getMode());
+                LOG_I("Main", "[Button BOOT] Hold 1s -> Switched to Mode: %d", (int)DisplayService::getMode());
             }
         }
     } else {
@@ -91,7 +92,7 @@ void handleBootButton() {
                 appConfig.upload_enabled = new_state;
                 PortalService::saveConfig(appConfig);
 
-                Serial.printf("[Button BOOT] Single Press -> Upload: %s (press %ums)\n",
+                LOG_I("Main", "[Button BOOT] Single Press -> Upload: %s (press %ums)",
                     new_state ? "ON" : "OFF", press_duration);
 
                 if (new_state) {
@@ -106,8 +107,12 @@ void handleBootButton() {
 
 void setup() {
     Serial.begin(115200);
+#ifdef ENABLE_SERIAL_LOG
     Serial.setDebugOutput(true);
-    Serial.println("\n=== ESP32-S3 Smart Camera & Clock Calendar Pipeline ===");
+#endif
+    LOG_I("Main", "=======================================================");
+    LOG_I("Main", " ESP32-S3 Smart Camera & Clock Calendar Pipeline ");
+    LOG_I("Main", "=======================================================");
 
     // Cấu hình nút nhấn BOOT (GPIO 0)
     pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
@@ -124,20 +129,20 @@ void setup() {
 
     // 4. Kiểm tra chế độ khởi động (AP Portal hay WiFi STA)
     if (appConfig.wifi_ssid.isEmpty() || digitalRead(BOOT_BUTTON_PIN) == LOW) {
-        Serial.println("[Setup] Starting Captive Portal AP Mode (ESP32S3-CAM-AP)...");
+        LOG_I("Main", "[Setup] Starting Captive Portal AP Mode (ESP32S3-CAM-AP)...");
         PortalService::startCaptivePortal();
         
         // Hiển thị màn hình hướng dẫn cấu hình rõ ràng trên TFT
-        DisplayService::showMessage(20, 30, "=== CAU HINH WIFI ===", TFT_CYAN);
+        DisplayService::showMessage(20, 25, "=== CẤU HÌNH WIFI ===", TFT_CYAN);
         DisplayService::showMessage(20, 65, "WiFi: ESP32S3-CAM-AP", TFT_GREEN);
-        DisplayService::showMessage(20, 100, "IP: 192.168.4.1", TFT_YELLOW);
-        DisplayService::showMessage(20, 145, "Mo trinh duyet tren", TFT_WHITE);
-        DisplayService::showMessage(20, 175, "dien thoai de cai dat!", TFT_WHITE);
+        DisplayService::showMessage(20, 105, "IP: 192.168.4.1", TFT_YELLOW);
+        DisplayService::showMessage(20, 150, "Mở trình duyệt trên", TFT_WHITE);
+        DisplayService::showMessage(20, 185, "điện thoại để cài đặt!", TFT_WHITE);
         return;
     }
 
     // ================= CHẾ ĐỘ NORMAL (STA WIFI) =================
-    Serial.println("[Setup] Starting Normal Mode with WiFi STA...");
+    LOG_I("Main", "[Setup] Starting Normal Mode with WiFi STA...");
 
     // Khởi tạo WiFi STA đồng bộ trên luồng chính trước để TCP/IP stack (LWIP) sẵn sàng
     WiFi.mode(WIFI_STA);
