@@ -1,9 +1,49 @@
 #include "calendar_screen.h"
 #include "../cyd_theme.h"
 #include <stdio.h>
+#include <time.h>
 
-CalendarScreen::CalendarScreen(lv_obj_t* parent) {
-    // 1. Create root screen container
+static void btn_nav_event_cb(lv_event_t* e) {
+    CalendarScreen* screen = (CalendarScreen*)lv_event_get_user_data(e);
+    lv_obj_t* target = lv_event_get_current_target(e);
+    if (!screen) return;
+
+    if (target == screen->btnPrevMonth) {
+        Serial.println("[Calendar] Clicked: Prev Month");
+        screen->onPrevMonth();
+    } else if (target == screen->btnNextMonth) {
+        Serial.println("[Calendar] Clicked: Next Month");
+        screen->onNextMonth();
+    } else if (target == screen->btnPrevYear) {
+        Serial.println("[Calendar] Clicked: Prev Year");
+        screen->onPrevYear();
+    } else if (target == screen->btnNextYear) {
+        Serial.println("[Calendar] Clicked: Next Year");
+        screen->onNextYear();
+    } else if (target == screen->btnToday) {
+        Serial.println("[Calendar] Clicked: Today");
+        screen->onTodayClick();
+    }
+}
+
+static void cell_click_event_cb(lv_event_t* e) {
+    CalendarScreen* screen = (CalendarScreen*)lv_event_get_user_data(e);
+    int cellIndex = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_current_target(e));
+    if (screen) {
+        Serial.printf("[Calendar] Clicked cell index: %d\n", cellIndex);
+        screen->onCellClick(cellIndex);
+    }
+}
+
+CalendarScreen::CalendarScreen(lv_obj_t* parent) :
+    viewYear(2026),
+    viewMonth(8),
+    selectedDay(30),
+    realTodayYear(2026),
+    realTodayMonth(8),
+    realTodayDay(30)
+{
+    // 1. Create root screen container (480 x 282)
     rootContainer = lv_obj_create(parent);
     lv_obj_set_size(rootContainer, 480, 282);
     lv_obj_set_style_bg_opa(rootContainer, LV_OPA_TRANSP, 0);
@@ -13,307 +53,533 @@ CalendarScreen::CalendarScreen(lv_obj_t* parent) {
 
     // 2. Build left and right layout panes
     createCalendarPane(rootContainer);
-    createTimelinePane(rootContainer);
+    createDetailPane(rootContainer);
+
+    // 3. Initial refresh
+    refreshCalendar();
+}
+
+CalendarScreen::~CalendarScreen() {
+    if (rootContainer) {
+        lv_obj_del(rootContainer);
+        rootContainer = nullptr;
+    }
+}
+
+int CalendarScreen::getDaysInMonth(int year, int month) {
+    if (month == 2) {
+        bool isLeap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+        return isLeap ? 29 : 28;
+    }
+    if (month == 4 || month == 6 || month == 9 || month == 11) return 30;
+    return 31;
+}
+
+int CalendarScreen::getFirstDayOfWeek(int year, int month) {
+    struct tm timeinfo = {0};
+    timeinfo.tm_year = year - 1900;
+    timeinfo.tm_mon = month - 1;
+    timeinfo.tm_mday = 1;
+    mktime(&timeinfo);
+    // tm_wday: 0 = Sun, 1 = Mon, ..., 6 = Sat -> Convert to 0 = Mon, 1 = Tue, ..., 6 = Sun
+    int w = timeinfo.tm_wday;
+    return (w == 0) ? 6 : (w - 1);
 }
 
 void CalendarScreen::createCalendarPane(lv_obj_t* parent) {
-    lv_obj_t* leftCard = lv_obj_create(parent);
-    lv_obj_set_size(leftCard, 230, 270);
-    lv_obj_align(leftCard, LV_ALIGN_TOP_LEFT, 6, 6);
-    CydTheme::applyCardStyle(leftCard);
+    lv_obj_t* card = lv_obj_create(parent);
+    lv_obj_set_size(card, 318, 270);
+    lv_obj_align(card, LV_ALIGN_TOP_LEFT, 6, 6);
+    CydTheme::applyCardStyle(card);
 
-    // 1. Header with Month / Year & toggle buttons
-    lblMonthYear = lv_label_create(leftCard);
-    lv_label_set_text(lblMonthYear, "Tháng 05, 2026");
-    CydTheme::applyTextFont(lblMonthYear, CydTheme::getFont14(), CydTheme::getTextPrimary());
-    lv_obj_align(lblMonthYear, LV_ALIGN_TOP_MID, 0, 0);
+    // --- 1. Header with Prev/Next buttons & Month/Year title ---
+    btnPrevYear = lv_btn_create(card);
+    lv_obj_set_size(btnPrevYear, 28, 26);
+    lv_obj_align(btnPrevYear, LV_ALIGN_TOP_LEFT, 0, 0);
+    CydTheme::applyButtonStyle(btnPrevYear, CydTheme::getCardBorderColor(), CydTheme::getTextSecondary());
+    lv_obj_set_style_pad_all(btnPrevYear, 0, 0);
+    lv_obj_set_ext_click_area(btnPrevYear, 6);
+    lv_obj_t* lblPY = lv_label_create(btnPrevYear);
+    lv_label_set_text(lblPY, "<<");
+    lv_obj_clear_flag(lblPY, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(lblPY);
+    lv_obj_add_event_cb(btnPrevYear, btn_nav_event_cb, LV_EVENT_CLICKED, this);
 
-    lv_obj_t* btnPrev = lv_btn_create(leftCard);
-    lv_obj_set_size(btnPrev, 24, 20);
-    lv_obj_align(btnPrev, LV_ALIGN_TOP_LEFT, 0, -2);
-    CydTheme::applyButtonStyle(btnPrev, CydTheme::getCardBorderColor(), CydTheme::getTextSecondary());
-    lv_obj_t* lblPrev = lv_label_create(btnPrev);
-    lv_label_set_text(lblPrev, "<");
-    lv_obj_center(lblPrev);
+    btnPrevMonth = lv_btn_create(card);
+    lv_obj_set_size(btnPrevMonth, 26, 26);
+    lv_obj_align(btnPrevMonth, LV_ALIGN_TOP_LEFT, 30, 0);
+    CydTheme::applyButtonStyle(btnPrevMonth, CydTheme::getCardBorderColor(), CydTheme::getTextSecondary());
+    lv_obj_set_style_pad_all(btnPrevMonth, 0, 0);
+    lv_obj_set_ext_click_area(btnPrevMonth, 6);
+    lv_obj_t* lblPM = lv_label_create(btnPrevMonth);
+    lv_label_set_text(lblPM, "<");
+    lv_obj_clear_flag(lblPM, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(lblPM);
+    lv_obj_add_event_cb(btnPrevMonth, btn_nav_event_cb, LV_EVENT_CLICKED, this);
 
-    lv_obj_t* btnNext = lv_btn_create(leftCard);
-    lv_obj_set_size(btnNext, 24, 20);
-    lv_obj_align(btnNext, LV_ALIGN_TOP_RIGHT, 0, -2);
-    CydTheme::applyButtonStyle(btnNext, CydTheme::getCardBorderColor(), CydTheme::getTextSecondary());
-    lv_obj_t* lblNext = lv_label_create(btnNext);
-    lv_label_set_text(lblNext, ">");
-    lv_obj_center(lblNext);
+    lblMonthYearTitle = lv_label_create(card);
+    lv_obj_set_width(lblMonthYearTitle, 114);
+    lv_label_set_text(lblMonthYearTitle, "Tháng 08, 2026");
+    CydTheme::applyTextFont(lblMonthYearTitle, CydTheme::getFont14(), CydTheme::getTextPrimary());
+    lv_obj_set_style_text_align(lblMonthYearTitle, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_clear_flag(lblMonthYearTitle, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(lblMonthYearTitle, LV_ALIGN_TOP_LEFT, 58, 3);
 
-    // 2. Day Header Row (T2, T3... CN)
-    lv_obj_t* dayHeader = lv_obj_create(leftCard);
-    lv_obj_set_size(dayHeader, 210, 20);
-    lv_obj_align(dayHeader, LV_ALIGN_TOP_MID, 0, 22);
-    lv_obj_set_style_bg_opa(dayHeader, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(dayHeader, 0, 0);
-    lv_obj_set_style_pad_all(dayHeader, 0, 0);
-    lv_obj_clear_flag(dayHeader, LV_OBJ_FLAG_SCROLLABLE);
+    btnNextMonth = lv_btn_create(card);
+    lv_obj_set_size(btnNextMonth, 26, 26);
+    lv_obj_align(btnNextMonth, LV_ALIGN_TOP_LEFT, 174, 0);
+    CydTheme::applyButtonStyle(btnNextMonth, CydTheme::getCardBorderColor(), CydTheme::getTextSecondary());
+    lv_obj_set_style_pad_all(btnNextMonth, 0, 0);
+    lv_obj_set_ext_click_area(btnNextMonth, 6);
+    lv_obj_t* lblNM = lv_label_create(btnNextMonth);
+    lv_label_set_text(lblNM, ">");
+    lv_obj_clear_flag(lblNM, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(lblNM);
+    lv_obj_add_event_cb(btnNextMonth, btn_nav_event_cb, LV_EVENT_CLICKED, this);
 
-    const char* daysName[7] = {"Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy", "CN"};
+    btnNextYear = lv_btn_create(card);
+    lv_obj_set_size(btnNextYear, 28, 26);
+    lv_obj_align(btnNextYear, LV_ALIGN_TOP_LEFT, 202, 0);
+    CydTheme::applyButtonStyle(btnNextYear, CydTheme::getCardBorderColor(), CydTheme::getTextSecondary());
+    lv_obj_set_style_pad_all(btnNextYear, 0, 0);
+    lv_obj_set_ext_click_area(btnNextYear, 6);
+    lv_obj_t* lblNY = lv_label_create(btnNextYear);
+    lv_label_set_text(lblNY, ">>");
+    lv_obj_clear_flag(lblNY, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(lblNY);
+    lv_obj_add_event_cb(btnNextYear, btn_nav_event_cb, LV_EVENT_CLICKED, this);
+
+    btnToday = lv_btn_create(card);
+    lv_obj_set_size(btnToday, 64, 26);
+    lv_obj_align(btnToday, LV_ALIGN_TOP_RIGHT, 0, 0);
+    CydTheme::applyButtonStyle(btnToday, CydTheme::getAccentGlowColor(), lv_color_white());
+    lv_obj_set_style_pad_all(btnToday, 0, 0);
+    lv_obj_set_ext_click_area(btnToday, 6);
+    lv_obj_t* lblToday = lv_label_create(btnToday);
+    lv_label_set_text(lblToday, "Hôm nay");
+    CydTheme::applyTextFont(lblToday, CydTheme::getFont12(), lv_color_white());
+    lv_obj_clear_flag(lblToday, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(lblToday);
+    lv_obj_add_event_cb(btnToday, btn_nav_event_cb, LV_EVENT_CLICKED, this);
+
+    // --- 2. Weekday Header (T2 .. CN) ---
+    const char* daysName[7] = {"T2", "T3", "T4", "T5", "T6", "T7", "CN"};
     for (int i = 0; i < 7; i++) {
-        lv_obj_t* lblDay = lv_label_create(dayHeader);
+        lv_obj_t* lblDay = lv_label_create(card);
+        lv_obj_set_width(lblDay, 41);
         lv_label_set_text(lblDay, daysName[i]);
-        CydTheme::applyTextFont(lblDay, CydTheme::getFont12(), CydTheme::getTextMuted());
-        lv_obj_align(lblDay, LV_ALIGN_LEFT_MID, i * 30 + 4, 0);
+        if (i == 6) { // CN
+            CydTheme::applyTextFont(lblDay, CydTheme::getFont12(), CydTheme::getDangerColor());
+        } else if (i == 5) { // T7
+            CydTheme::applyTextFont(lblDay, CydTheme::getFont12(), CydTheme::getGoldColor());
+        } else {
+            CydTheme::applyTextFont(lblDay, CydTheme::getFont12(), CydTheme::getTextMuted());
+        }
+        lv_obj_set_style_text_align(lblDay, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_clear_flag(lblDay, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(lblDay, LV_ALIGN_TOP_LEFT, i * 43, 30);
     }
 
-    // 3. 42 Days grid matrix container (Flex/Grid style alignment)
-    calendarGrid = lv_obj_create(leftCard);
-    lv_obj_set_size(calendarGrid, 210, 134);
-    lv_obj_align(calendarGrid, LV_ALIGN_TOP_MID, 0, 42);
-    lv_obj_set_style_bg_opa(calendarGrid, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(calendarGrid, 0, 0);
-    lv_obj_set_style_pad_all(calendarGrid, 0, 0);
-    lv_obj_clear_flag(calendarGrid, LV_OBJ_FLAG_SCROLLABLE);
-
+    // --- 3. 42 Days Matrix (7 cols x 6 rows) ---
     for (int i = 0; i < 42; i++) {
         int row = i / 7;
         int col = i % 7;
-        int xPos = col * 30;
-        int yPos = row * 22;
+        int xPos = col * 43;
+        int yPos = 48 + row * 34;
 
-        // Individual cell container
-        cellsContainer[i] = lv_obj_create(calendarGrid);
-        lv_obj_set_size(cellsContainer[i], 26, 20);
-        lv_obj_set_pos(cellsContainer[i], xPos + 2, yPos);
-        lv_obj_set_style_radius(cellsContainer[i], 4, 0);
+        cellsContainer[i] = lv_obj_create(card);
+        lv_obj_set_size(cellsContainer[i], 41, 32);
+        lv_obj_set_pos(cellsContainer[i], xPos, yPos);
+        lv_obj_set_style_radius(cellsContainer[i], 6, 0);
         lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(cellsContainer[i], 0, 0);
         lv_obj_set_style_pad_all(cellsContainer[i], 0, 0);
         lv_obj_clear_flag(cellsContainer[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(cellsContainer[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_user_data(cellsContainer[i], (void*)(intptr_t)i);
+        lv_obj_add_event_cb(cellsContainer[i], cell_click_event_cb, LV_EVENT_CLICKED, this);
 
-        // Day Number Label
-        cellNumbers[i] = lv_label_create(cellsContainer[i]);
-        lv_label_set_text(cellNumbers[i], "");
-        CydTheme::applyTextFont(cellNumbers[i], CydTheme::getFont12(), CydTheme::getTextSecondary());
-        lv_obj_align(cellNumbers[i], LV_ALIGN_TOP_MID, 0, 0);
+        // Solar Number (top)
+        cellSolarNumbers[i] = lv_label_create(cellsContainer[i]);
+        lv_obj_set_width(cellSolarNumbers[i], 39);
+        lv_label_set_text(cellSolarNumbers[i], "--");
+        CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getTextPrimary());
+        lv_obj_set_style_text_align(cellSolarNumbers[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_clear_flag(cellSolarNumbers[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(cellSolarNumbers[i], LV_ALIGN_TOP_MID, 0, 1);
 
-        // Under-date Event dot indication box
-        cellDotsBox[i] = lv_obj_create(cellsContainer[i]);
-        lv_obj_set_size(cellDotsBox[i], 4, 4);
-        lv_obj_align(cellDotsBox[i], LV_ALIGN_BOTTOM_MID, 0, -1);
-        lv_obj_set_style_radius(cellDotsBox[i], LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(cellDotsBox[i], 0, 0);
-        lv_obj_add_flag(cellDotsBox[i], LV_OBJ_FLAG_HIDDEN); // hidden by default
+        // Lunar Number (bottom)
+        cellLunarNumbers[i] = lv_label_create(cellsContainer[i]);
+        lv_obj_set_width(cellLunarNumbers[i], 39);
+        lv_label_set_text(cellLunarNumbers[i], "--");
+        CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getTextMuted());
+        lv_obj_set_style_text_align(cellLunarNumbers[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_clear_flag(cellLunarNumbers[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(cellLunarNumbers[i], LV_ALIGN_BOTTOM_MID, 0, -1);
     }
-
-    // 4. Cloud Calendars Sync Status (Footer)
-    lv_obj_t* syncFooter = lv_obj_create(leftCard);
-    lv_obj_set_size(syncFooter, 210, 48);
-    lv_obj_align(syncFooter, LV_ALIGN_BOTTOM_MID, 0, 4);
-    lv_obj_set_style_bg_color(syncFooter, CydTheme::getCardBorderColor(), 0);
-    lv_obj_set_style_bg_opa(syncFooter, LV_OPA_30, 0);
-    lv_obj_set_style_border_width(syncFooter, 0, 0);
-    lv_obj_set_style_radius(syncFooter, 8, 0);
-    lv_obj_set_style_pad_all(syncFooter, 4, 0);
-    lv_obj_clear_flag(syncFooter, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Google row
-    swGoogle = lv_switch_create(syncFooter);
-    lv_obj_set_size(swGoogle, 26, 14);
-    lv_obj_align(swGoogle, LV_ALIGN_TOP_LEFT, 4, 4);
-    CydTheme::applySliderStyle(swGoogle, CydTheme::getAccentGlowColor());
-    
-    lblGoogleStatus = lv_label_create(syncFooter);
-    lv_label_set_text(lblGoogleStatus, "Google Calendar: Off");
-    CydTheme::applyTextFont(lblGoogleStatus, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblGoogleStatus, LV_ALIGN_TOP_LEFT, 36, 4);
-
-    // Apple row
-    swApple = lv_switch_create(syncFooter);
-    lv_obj_set_size(swApple, 26, 14);
-    lv_obj_align(swApple, LV_ALIGN_BOTTOM_LEFT, 4, -4);
-    CydTheme::applySliderStyle(swApple, CydTheme::getBlueColor());
-    
-    lblAppleStatus = lv_label_create(syncFooter);
-    lv_label_set_text(lblAppleStatus, "Apple Calendar: Off");
-    CydTheme::applyTextFont(lblAppleStatus, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblAppleStatus, LV_ALIGN_BOTTOM_LEFT, 36, -4);
 }
 
-void CalendarScreen::createTimelinePane(lv_obj_t* parent) {
-    lv_obj_t* rightCard = lv_obj_create(parent);
-    lv_obj_set_size(rightCard, 230, 270);
-    lv_obj_align(rightCard, LV_ALIGN_TOP_RIGHT, -6, 6);
-    CydTheme::applyCardStyle(rightCard);
+void CalendarScreen::createDetailPane(lv_obj_t* parent) {
+    lv_obj_t* card = lv_obj_create(parent);
+    lv_obj_set_size(card, 144, 270);
+    lv_obj_align(card, LV_ALIGN_TOP_RIGHT, -6, 6);
+    CydTheme::applyCardStyle(card);
 
-    // 1. Right Header: Current active date text details
-    lblEventDayNum = lv_label_create(rightCard);
-    lv_label_set_text(lblEventDayNum, "15");
-    CydTheme::applyTextFont(lblEventDayNum, CydTheme::getFont24(), CydTheme::getAccentGlowColor());
-    lv_obj_align(lblEventDayNum, LV_ALIGN_TOP_LEFT, 0, 0);
+    // Title
+    lv_obj_t* lblTitle = lv_label_create(card);
+    lv_label_set_text(lblTitle, "CHI TIẾT NGÀY");
+    CydTheme::applyTextFont(lblTitle, CydTheme::getFont12(), CydTheme::getGoldColor());
+    lv_obj_align(lblTitle, LV_ALIGN_TOP_MID, 0, 0);
 
-    lblEventDayName = lv_label_create(rightCard);
-    lv_label_set_text(lblEventDayName, "Thứ Năm");
-    CydTheme::applyTextFont(lblEventDayName, CydTheme::getFont14(), CydTheme::getTextPrimary());
-    lv_obj_align(lblEventDayName, LV_ALIGN_TOP_LEFT, 36, 2);
+    // Big Solar Day
+    lblDetailSolarDay = lv_label_create(card);
+    lv_label_set_text(lblDetailSolarDay, "30");
+    CydTheme::applyTextFont(lblDetailSolarDay, CydTheme::getFont40(), CydTheme::getTextPrimary());
+    lv_obj_align(lblDetailSolarDay, LV_ALIGN_TOP_MID, 0, 16);
 
-    lblEventDate = lv_label_create(rightCard);
-    lv_label_set_text(lblEventDate, "15 Tháng 05, 2025");
-    CydTheme::applyTextFont(lblEventDate, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblEventDate, LV_ALIGN_TOP_LEFT, 36, 18);
+    // Weekday name
+    lblDetailSolarWeekDay = lv_label_create(card);
+    lv_label_set_text(lblDetailSolarWeekDay, "Chủ Nhật");
+    CydTheme::applyTextFont(lblDetailSolarWeekDay, CydTheme::getFont14(), CydTheme::getAccentGlowColor());
+    lv_obj_align(lblDetailSolarWeekDay, LV_ALIGN_TOP_MID, 0, 58);
 
-    // 2. Events scrollable timeline lists
-    eventsScrollContainer = lv_obj_create(rightCard);
-    lv_obj_set_size(eventsScrollContainer, 210, 210);
-    lv_obj_align(eventsScrollContainer, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_opa(eventsScrollContainer, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(eventsScrollContainer, 0, 0);
-    lv_obj_set_style_pad_all(eventsScrollContainer, 0, 0);
-    lv_obj_set_layout(eventsScrollContainer, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(eventsScrollContainer, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(eventsScrollContainer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(eventsScrollContainer, 6, 0);
-    lv_obj_clear_flag(eventsScrollContainer, LV_OBJ_FLAG_SCROLL_ELASTIC);
+    // Solar Month & Year
+    lblDetailSolarMonthYear = lv_label_create(card);
+    lv_label_set_text(lblDetailSolarMonthYear, "30/08/2026");
+    CydTheme::applyTextFont(lblDetailSolarMonthYear, CydTheme::getFont12(), CydTheme::getTextSecondary());
+    lv_obj_align(lblDetailSolarMonthYear, LV_ALIGN_TOP_MID, 0, 76);
+
+    // Divider
+    lv_obj_t* line = lv_obj_create(card);
+    lv_obj_set_size(line, 120, 1);
+    lv_obj_align(line, LV_ALIGN_TOP_MID, 0, 96);
+    lv_obj_set_style_bg_color(line, CydTheme::getCardBorderColor(), 0);
+    lv_obj_set_style_border_width(line, 0, 0);
+
+    // Lunar Date Header
+    lv_obj_t* lblLunarH = lv_label_create(card);
+    lv_label_set_text(lblLunarH, "ÂM LỊCH");
+    CydTheme::applyTextFont(lblLunarH, CydTheme::getFont12(), CydTheme::getTextMuted());
+    lv_obj_align(lblLunarH, LV_ALIGN_TOP_MID, 0, 102);
+
+    // Lunar Day / Month
+    lblDetailLunarDayMonth = lv_label_create(card);
+    lv_label_set_text(lblDetailLunarDayMonth, "18/07 ÂL");
+    CydTheme::applyTextFont(lblDetailLunarDayMonth, CydTheme::getFont20(), CydTheme::getGoldColor());
+    lv_obj_align(lblDetailLunarDayMonth, LV_ALIGN_TOP_MID, 0, 118);
+
+    // Can Chi Day
+    lblDetailLunarCanChi = lv_label_create(card);
+    lv_label_set_text(lblDetailLunarCanChi, "Ngày Bính Tý");
+    CydTheme::applyTextFont(lblDetailLunarCanChi, CydTheme::getFont12(), CydTheme::getTextPrimary());
+    lv_obj_align(lblDetailLunarCanChi, LV_ALIGN_TOP_MID, 0, 144);
+
+    // Can Chi Year
+    lblDetailLunarYear = lv_label_create(card);
+    lv_label_set_text(lblDetailLunarYear, "Năm Ất Tỵ");
+    CydTheme::applyTextFont(lblDetailLunarYear, CydTheme::getFont12(), CydTheme::getTextSecondary());
+    lv_obj_align(lblDetailLunarYear, LV_ALIGN_TOP_MID, 0, 162);
+
+    // Holiday / Special Event Badge
+    boxHolidayBadge = lv_obj_create(card);
+    lv_obj_set_size(boxHolidayBadge, 126, 42);
+    lv_obj_align(boxHolidayBadge, LV_ALIGN_BOTTOM_MID, 0, -2);
+    lv_obj_set_style_bg_color(boxHolidayBadge, lv_color_make(30, 41, 59), 0);
+    lv_obj_set_style_bg_opa(boxHolidayBadge, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getCardBorderColor(), 0);
+    lv_obj_set_style_border_width(boxHolidayBadge, 1, 0);
+    lv_obj_set_style_radius(boxHolidayBadge, 6, 0);
+    lv_obj_set_style_pad_all(boxHolidayBadge, 2, 0);
+    lv_obj_clear_flag(boxHolidayBadge, LV_OBJ_FLAG_SCROLLABLE);
+
+    lblDetailHoliday = lv_label_create(boxHolidayBadge);
+    lv_obj_set_width(lblDetailHoliday, 120);
+    lv_label_set_text(lblDetailHoliday, "Ngày Hoàng Đạo");
+    CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getSuccessColor());
+    lv_obj_set_style_text_align(lblDetailHoliday, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(lblDetailHoliday);
 }
 
-// --- Dynamic Setter Updates ---
+void CalendarScreen::setToday(int year, int month, int day) {
+    if (year <= 0 || month <= 0 || day <= 0) return;
 
-void CalendarScreen::updateMonthYearHeader(const char* monthYearStr) {
-    if (lblMonthYear) lv_label_set_text(lblMonthYear, monthYearStr);
-}
+    bool changed = (realTodayYear != year || realTodayMonth != month || realTodayDay != day);
+    if (!changed) return;
 
-void CalendarScreen::updateCalendarDays(int startDayOfWeek, int daysInMonth, int activeDay, const uint32_t* dotColorsMatrix) {
-    // Fill previous empty cells
-    for (int i = 0; i < startDayOfWeek; i++) {
-        lv_label_set_text(cellNumbers[i], "");
-        lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_TRANSP, 0);
-        lv_obj_add_flag(cellDotsBox[i], LV_OBJ_FLAG_HIDDEN);
-    }
+    bool wasInitial = (realTodayYear == 0);
+    realTodayYear = year;
+    realTodayMonth = month;
+    realTodayDay = day;
 
-    // Fill days
-    for (int day = 1; day <= daysInMonth; day++) {
-        int cellIdx = startDayOfWeek + day - 1;
-        if (cellIdx >= 42) break;
-
-        char buf[8];
-        sprintf(buf, "%d", day);
-        lv_label_set_text(cellNumbers[cellIdx], buf);
-
-        // Highlight selected day
-        if (day == activeDay) {
-            lv_obj_set_style_bg_color(cellsContainer[cellIdx], CydTheme::getAccentColor(), 0);
-            lv_obj_set_style_bg_opa(cellsContainer[cellIdx], LV_OPA_COVER, 0);
-            lv_obj_set_style_text_color(cellNumbers[cellIdx], CydTheme::getWhiteColor(), 0);
-        } else {
-            lv_obj_set_style_bg_opa(cellsContainer[cellIdx], LV_OPA_TRANSP, 0);
-            lv_obj_set_style_text_color(cellNumbers[cellIdx], CydTheme::getTextSecondary(), 0);
-        }
-
-        // Draw event scheduled dot indicator
-        uint32_t dotColor = dotColorsMatrix[cellIdx];
-        if (dotColor != 0) {
-            lv_obj_clear_flag(cellDotsBox[cellIdx], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_style_bg_color(cellDotsBox[cellIdx], lv_color_hex(dotColor), 0);
-            lv_obj_set_style_bg_opa(cellDotsBox[cellIdx], LV_OPA_COVER, 0);
-        } else {
-            lv_obj_add_flag(cellDotsBox[cellIdx], LV_OBJ_FLAG_HIDDEN);
+    if (wasInitial) {
+        viewYear = year;
+        viewMonth = month;
+        selectedDay = day;
+        refreshCalendar();
+    } else {
+        // If user is currently looking at the current month, refresh highlighting
+        if (viewYear == realTodayYear && viewMonth == realTodayMonth) {
+            refreshCalendar();
         }
     }
-
-    // Fill post empty cells
-    int totalFilled = startDayOfWeek + daysInMonth;
-    for (int i = totalFilled; i < 42; i++) {
-        lv_label_set_text(cellNumbers[i], "");
-        lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_TRANSP, 0);
-        lv_obj_add_flag(cellDotsBox[i], LV_OBJ_FLAG_HIDDEN);
-    }
 }
 
-void CalendarScreen::updateSyncStatus(bool googleConnected, bool appleConnected) {
-    if (googleConnected) {
-        lv_obj_add_state(swGoogle, LV_STATE_CHECKED);
-        lv_label_set_text(lblGoogleStatus, "Google Calendar: Live");
+void CalendarScreen::setViewMonth(int year, int month) {
+    viewYear = year;
+    viewMonth = month;
+    int maxDays = getDaysInMonth(viewYear, viewMonth);
+    if (selectedDay > maxDays) selectedDay = maxDays;
+    refreshCalendar();
+}
+
+void CalendarScreen::selectDay(int day) {
+    selectedDay = day;
+    refreshCalendar();
+}
+
+void CalendarScreen::onPrevMonth() {
+    viewMonth--;
+    if (viewMonth < 1) {
+        viewMonth = 12;
+        viewYear--;
+    }
+    int maxDays = getDaysInMonth(viewYear, viewMonth);
+    if (selectedDay > maxDays) selectedDay = maxDays;
+    refreshCalendar();
+}
+
+void CalendarScreen::onNextMonth() {
+    viewMonth++;
+    if (viewMonth > 12) {
+        viewMonth = 1;
+        viewYear++;
+    }
+    int maxDays = getDaysInMonth(viewYear, viewMonth);
+    if (selectedDay > maxDays) selectedDay = maxDays;
+    refreshCalendar();
+}
+
+void CalendarScreen::onPrevYear() {
+    viewYear--;
+    int maxDays = getDaysInMonth(viewYear, viewMonth);
+    if (selectedDay > maxDays) selectedDay = maxDays;
+    refreshCalendar();
+}
+
+void CalendarScreen::onNextYear() {
+    viewYear++;
+    int maxDays = getDaysInMonth(viewYear, viewMonth);
+    if (selectedDay > maxDays) selectedDay = maxDays;
+    refreshCalendar();
+}
+
+void CalendarScreen::onTodayClick() {
+    if (realTodayYear > 0) {
+        viewYear = realTodayYear;
+        viewMonth = realTodayMonth;
+        selectedDay = realTodayDay;
     } else {
-        lv_obj_clear_state(swGoogle, LV_STATE_CHECKED);
-        lv_label_set_text(lblGoogleStatus, "Google Calendar: Off");
+        viewYear = 2026;
+        viewMonth = 8;
+        selectedDay = 30;
+    }
+    refreshCalendar();
+}
+
+void CalendarScreen::onCellClick(int cellIndex) {
+    if (cellIndex < 0 || cellIndex >= 42) return;
+    CellData cd = cellData[cellIndex];
+    if (!cd.isCurrentMonth) {
+        // Switch to clicked month
+        viewYear = cd.year;
+        viewMonth = cd.month;
+    }
+    selectedDay = cd.day;
+    refreshCalendar();
+}
+
+void CalendarScreen::refreshCalendar() {
+    char buf[64];
+
+    // 1. Update Title: "Tháng MM, YYYY"
+    sprintf(buf, "Tháng %02d, %d", viewMonth, viewYear);
+    lv_label_set_text(lblMonthYearTitle, buf);
+
+    // 2. Compute 42 Days Matrix
+    int startDayOfWeek = getFirstDayOfWeek(viewYear, viewMonth);
+    int daysInCurMonth = getDaysInMonth(viewYear, viewMonth);
+
+    int prevMonth = viewMonth - 1;
+    int prevYear = viewYear;
+    if (prevMonth < 1) {
+        prevMonth = 12;
+        prevYear--;
+    }
+    int daysInPrevMonth = getDaysInMonth(prevYear, prevMonth);
+
+    int nextMonth = viewMonth + 1;
+    int nextYear = viewYear;
+    if (nextMonth > 12) {
+        nextMonth = 1;
+        nextYear++;
     }
 
-    if (appleConnected) {
-        lv_obj_add_state(swApple, LV_STATE_CHECKED);
-        lv_label_set_text(lblAppleStatus, "Apple Calendar: Live");
+    for (int i = 0; i < 42; i++) {
+        int cellYear, cellMonth, cellDay;
+        bool isCurMonth = false;
+
+        if (i < startDayOfWeek) {
+            // Previous month
+            cellDay = daysInPrevMonth - startDayOfWeek + 1 + i;
+            cellMonth = prevMonth;
+            cellYear = prevYear;
+        } else if (i >= startDayOfWeek + daysInCurMonth) {
+            // Next month
+            cellDay = i - (startDayOfWeek + daysInCurMonth) + 1;
+            cellMonth = nextMonth;
+            cellYear = nextYear;
+        } else {
+            // Current month
+            cellDay = i - startDayOfWeek + 1;
+            cellMonth = viewMonth;
+            cellYear = viewYear;
+            isCurMonth = true;
+        }
+
+        cellData[i].year = cellYear;
+        cellData[i].month = cellMonth;
+        cellData[i].day = cellDay;
+        cellData[i].isCurrentMonth = isCurMonth;
+
+        // Calculate lunar date
+        LunarDate ld = getDetailedLunarDate(cellYear, cellMonth, cellDay);
+
+        // Solar text
+        sprintf(buf, "%d", cellDay);
+        lv_label_set_text(cellSolarNumbers[i], buf);
+
+        // Lunar text (đầu tháng hoặc rằm thêm ký hiệu nhận diện)
+        if (ld.day == 1) {
+            sprintf(buf, "1/%d", ld.month);
+        } else if (ld.day == 15) {
+            sprintf(buf, "15*");
+        } else {
+            sprintf(buf, "%d", ld.day);
+        }
+        lv_label_set_text(cellLunarNumbers[i], buf);
+
+        // Color & Styling
+        bool isSelected = (isCurMonth && cellDay == selectedDay);
+        bool isToday = (cellYear == realTodayYear && cellMonth == realTodayMonth && cellDay == realTodayDay);
+
+        if (isSelected) {
+            lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_COVER, 0);
+            lv_obj_set_style_bg_color(cellsContainer[i], lv_color_make(24, 60, 120), 0);
+            lv_obj_set_style_border_color(cellsContainer[i], CydTheme::getAccentGlowColor(), 0);
+            lv_obj_set_style_border_width(cellsContainer[i], 1, 0);
+            CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), lv_color_white());
+            CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getGoldColor());
+        } else if (isToday) {
+            lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_20, 0);
+            lv_obj_set_style_bg_color(cellsContainer[i], CydTheme::getAccentGlowColor(), 0);
+            lv_obj_set_style_border_color(cellsContainer[i], CydTheme::getAccentGlowColor(), 0);
+            lv_obj_set_style_border_width(cellsContainer[i], 1, 0);
+            CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getAccentGlowColor());
+            CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getGoldColor());
+        } else {
+            lv_obj_set_style_bg_opa(cellsContainer[i], LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(cellsContainer[i], 0, 0);
+
+            if (!isCurMonth) {
+                CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getTextMuted());
+                CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getTextMuted());
+            } else {
+                int col = i % 7;
+                if (col == 6) { // CN
+                    CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getDangerColor());
+                } else {
+                    CydTheme::applyTextFont(cellSolarNumbers[i], CydTheme::getFont12(), CydTheme::getTextPrimary());
+                }
+
+                if (ld.day == 1 || ld.day == 15) {
+                    CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getGoldColor());
+                } else {
+                    CydTheme::applyTextFont(cellLunarNumbers[i], CydTheme::getFont12(), CydTheme::getTextSecondary());
+                }
+            }
+        }
+    }
+
+    // 3. Update Right Detail Card
+    updateDetailCard();
+}
+
+void CalendarScreen::updateDetailCard() {
+    char buf[64];
+
+    // Day number
+    sprintf(buf, "%d", selectedDay);
+    lv_label_set_text(lblDetailSolarDay, buf);
+
+    // Weekday name
+    struct tm timeinfo = {0};
+    timeinfo.tm_year = viewYear - 1900;
+    timeinfo.tm_mon = viewMonth - 1;
+    timeinfo.tm_mday = selectedDay;
+    mktime(&timeinfo);
+
+    const char* weekNames[7] = {"Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"};
+    int wday = timeinfo.tm_wday;
+    if (wday >= 0 && wday < 7) {
+        lv_label_set_text(lblDetailSolarWeekDay, weekNames[wday]);
+        if (wday == 0) {
+            CydTheme::applyTextFont(lblDetailSolarWeekDay, CydTheme::getFont14(), CydTheme::getDangerColor());
+        } else {
+            CydTheme::applyTextFont(lblDetailSolarWeekDay, CydTheme::getFont14(), CydTheme::getAccentGlowColor());
+        }
+    }
+
+    // Month & Year
+    sprintf(buf, "%02d/%02d/%d", selectedDay, viewMonth, viewYear);
+    lv_label_set_text(lblDetailSolarMonthYear, buf);
+
+    // Lunar Date
+    LunarDate ld = getDetailedLunarDate(viewYear, viewMonth, selectedDay);
+    sprintf(buf, "%d/%02d ÂL", ld.day, ld.month);
+    lv_label_set_text(lblDetailLunarDayMonth, buf);
+
+    // Can Chi Day
+    if (ld.dayName && strlen(ld.dayName) > 0) {
+        sprintf(buf, "Ngày %s", ld.dayName);
     } else {
-        lv_obj_clear_state(swApple, LV_STATE_CHECKED);
-        lv_label_set_text(lblAppleStatus, "Apple Calendar: Off");
+        sprintf(buf, "Ngày Hoàng Đạo");
     }
-}
+    lv_label_set_text(lblDetailLunarCanChi, buf);
 
-void CalendarScreen::clearEvents() {
-    lv_obj_clean(eventsScrollContainer);
-}
+    // Can Chi Year
+    if (ld.yearName && strlen(ld.yearName) > 0) {
+        sprintf(buf, "Năm %s", ld.yearName);
+    } else {
+        sprintf(buf, "Năm Bính Thìn");
+    }
+    lv_label_set_text(lblDetailLunarYear, buf);
 
-void CalendarScreen::addEvent(const CalendarEvent& event) {
-    // 1. Create main timeline card item
-    lv_obj_t* item = lv_obj_create(eventsScrollContainer);
-    lv_obj_set_size(item, 206, 46);
-    lv_obj_set_style_bg_color(item, CydTheme::getCardColor(), 0);
-    lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(item, CydTheme::getCardBorderColor(), 0);
-    lv_obj_set_style_border_width(item, 1, 0);
-    lv_obj_set_style_radius(item, 6, 0);
-    lv_obj_set_style_pad_all(item, 0, 0);
-    lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
-
-    // 2. Category left side indicator bar
-    lv_obj_t* categoryBar = lv_obj_create(item);
-    lv_obj_set_size(categoryBar, 4, 46);
-    lv_obj_align(categoryBar, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_set_style_bg_color(categoryBar, event.color, 0);
-    lv_obj_set_style_bg_opa(categoryBar, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(categoryBar, 0, 0);
-    lv_obj_set_style_radius(categoryBar, 0, 0);
-
-    // 3. Time label slot on the left side
-    lv_obj_t* lblTime = lv_label_create(item);
-    lv_label_set_text(lblTime, event.timeStr);
-    CydTheme::applyTextFont(lblTime, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblTime, LV_ALIGN_LEFT_MID, 10, 0);
-    
-    // Support two-line times by reducing vertical alignment
-    lv_obj_set_style_text_align(lblTime, LV_TEXT_ALIGN_CENTER, 0);
-
-    // 4. Content pane for text info on the right side
-    lv_obj_t* textPane = lv_obj_create(item);
-    lv_obj_set_size(textPane, 142, 44);
-    lv_obj_align(textPane, LV_ALIGN_RIGHT_MID, -2, 0);
-    lv_obj_set_style_bg_opa(textPane, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(textPane, 0, 0);
-    lv_obj_set_style_pad_all(textPane, 2, 0);
-    lv_obj_clear_flag(textPane, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Song/Activity Title
-    lv_obj_t* lblTitle = lv_label_create(textPane);
-    lv_label_set_text(lblTitle, event.title);
-    CydTheme::applyTextFont(lblTitle, CydTheme::getFont12(), CydTheme::getWhiteColor());
-    lv_obj_align(lblTitle, LV_ALIGN_TOP_LEFT, 0, 2);
-    lv_label_set_long_mode(lblTitle, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_width(lblTitle, 138);
-
-    // Room Location Details
-    lv_obj_t* lblLoc = lv_label_create(textPane);
-    lv_label_set_text(lblLoc, event.location);
-    CydTheme::applyTextFont(lblLoc, CydTheme::getFont12(), CydTheme::getTextMuted());
-    lv_obj_align(lblLoc, LV_ALIGN_BOTTOM_LEFT, 0, -2);
-    lv_label_set_long_mode(lblLoc, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_width(lblLoc, 90);
-
-    // Duration Capsule badge (Top right)
-    lv_obj_t* durationBadge = lv_obj_create(textPane);
-    lv_obj_set_size(durationBadge, 42, 16);
-    lv_obj_align(durationBadge, LV_ALIGN_BOTTOM_RIGHT, -2, -2);
-    lv_obj_set_style_bg_color(durationBadge, CydTheme::getCardBorderColor(), 0);
-    lv_obj_set_style_bg_opa(durationBadge, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(durationBadge, 4, 0);
-    lv_obj_set_style_border_width(durationBadge, 0, 0);
-    lv_obj_set_style_pad_all(durationBadge, 0, 0);
-    lv_obj_clear_flag(durationBadge, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* lblDur = lv_label_create(durationBadge);
-    lv_label_set_text(lblDur, event.durationStr);
-    CydTheme::applyTextFont(lblDur, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_center(lblDur);
+    // Holiday / Special Event
+    if (ld.holiday && strlen(ld.holiday) > 0) {
+        lv_label_set_text(lblDetailHoliday, ld.holiday);
+        CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getDangerColor());
+        lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getDangerColor(), 0);
+    } else if (ld.day == 15) {
+        lv_label_set_text(lblDetailHoliday, "Ngày Rằm");
+        CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getGoldColor());
+        lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getGoldColor(), 0);
+    } else if (ld.day == 1) {
+        lv_label_set_text(lblDetailHoliday, "Mùng 1 Đầu Tháng");
+        CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getGoldColor());
+        lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getGoldColor(), 0);
+    } else {
+        lv_label_set_text(lblDetailHoliday, "Ngày Hoàng Đạo");
+        CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getSuccessColor());
+        lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getCardBorderColor(), 0);
+    }
 }

@@ -7,6 +7,7 @@
 #include "screens/calendar_screen.h"
 #include "screens/player_screen.h"
 #include "screens/settings_screen.h"
+#include "dev_hud.h"
 
 class DashboardUI {
 public:
@@ -28,41 +29,40 @@ public:
     void updateTime(const char* timeStr, const char* secondsStr, const char* dateStr, bool isAm);
     void updateLunarCalendar(const char* lunarDayStr, const char* lunarInfoStr);
     void updateCalendarRibbon(int activeDayIndex, const int* dayNumbers);
-    void updateWeather(int temp, const char* condition, int feelsLike, int humidity, int windSpeed, int uvIndex);
-    void updateGoldPrices(int buySJC, int sellSJC, int buyDelta, int sellDelta);
-    void updateFuelPrices(int ron95, int ron92, int diesel, int kerosene, int ron95Delta, int ron92Delta, int dieselDelta, int keroseneDelta);
+    void updateWeather(int temp, const char* condition, int feelsLike, int humidity, int windSpeed, int uvIndex, const char* cityName = nullptr);
+    void updateGoldPrices(const char* buySJC, const char* sellSJC);
+    void updateFuelPrices(int ron95, int ron92, int diesel, int mazut, int ron95Delta, int ron92Delta, int dieselDelta, int mazutDelta);
 
     // CalendarScreen Setters
-    void updateMonthYearHeader(const char* monthYearStr);
-    void updateCalendarDays(int startDayOfWeek, int daysInMonth, int activeDay, const uint32_t* dotColorsMatrix);
-    void updateSyncStatus(bool googleConnected, bool appleConnected);
-    void clearEvents();
-    void addEvent(const CalendarEvent& event);
+    void setCalendarToday(int year, int month, int day);
 
     // PlayerScreen Setters
     void updateTrackInfo(const char* title, const char* artist, const char* album, const char* qualityStr);
     void updatePlaybackProgress(int currentTimeSecs, int totalTimeSecs);
     void setPlayState(bool isPlaying);
     void updatePlaybackMode(bool shuffleActive, bool repeatActive);
-    void updateVolume(int volume);
+    void updateVolume(int volumePercent);
     void updateEQ(const char* eqMode);
     void clearPlaylist();
-    void addPlaylistItem(const PlaylistItem& item);
+    void addPlaylistItem(const PlaylistItem& item, int trackIndex = -1);
 
     // SettingsScreen Setters
     void updateDeviceInfo(const SettingsDeviceInfo& info);
-    void updateMemoryUsage(float usedGB, float totalGB);
-    void updateBatteryStatus(int percent, const char* durationStr);
-    void updateWiFiConnection(const char* ssid, const char* ip);
-    void updateLanguage(const char* langStr);
+    void updateSettingsTelemetry(uint32_t freeHeapBytes, const char* uptimeStr, const char* ipStr, const char* macStr);
+    void updateWifiSettings(const char* statusStr, const char* connectedSSID, const char* ipStr, int rssi);
     void setActiveMenuItem(int index);
 
-    // Tick update to run micro-animations (like music spectrum)
+    // Common Animations & Clock tick
     void tick();
+
+    // Dev HUD toggling & update
+    void setDevHudVisible(bool visible);
+    void updateDevHud(float fps, uint32_t freeHeapKb, uint8_t cpuPercent, int32_t rssi, const char* ip);
 
     lv_obj_t* getRoot() { return masterContainer; }
 
 private:
+    // UI Master View Containers
     lv_obj_t* masterContainer;
     lv_obj_t* activeViewArea;
     lv_obj_t* bottomNavBar;
@@ -73,6 +73,9 @@ private:
     PlayerScreen* playerScreen;
     SettingsScreen* settingsScreen;
 
+    // Developer Mode HUD
+    DevHud* devHud;
+
     // Tabs navigation elements
     lv_obj_t* tabContainers[4];
     lv_obj_t* tabIndicators[4];
@@ -80,48 +83,40 @@ private:
     lv_obj_t* tabLabels[4];
 
     int activeTabIndex;
+    int lastCheckedTrackIdx; // Theo dõi track index để sync UI, reset khi PlayerScreen mới
 
     // --- State Cache (For restoring screen telemetry upon tab recreation) ---
     struct HomeCache {
-        char timeStr[12] = "15:45";
-        char secStr[6] = "00";
-        char dateStr[48] = "Thứ Năm, 15/05/2025";
+        char timeStr[16] = "-- : -- : --";
+        char secStr[6] = "--";
+        char dateStr[48] = "Đang đồng bộ NTP...";
         bool isAm = false;
-        char lunarDayStr[32] = "15/4 Lịch âm";
-        char lunarInfoStr[48] = "Năm Ất Tỵ";
-        int activeDayIndex = 3;
-        int dayNumbers[7] = {12, 13, 14, 15, 16, 17, 18};
+        char lunarDayStr[32] = "ÂL: Đang đồng bộ...";
+        char lunarInfoStr[48] = "";
+        int activeDayIndex = 0;
+        int dayNumbers[7] = {1, 2, 3, 4, 5, 6, 7};
         int temp = 28;
-        char condition[64] = "Nhiều mây";
-        int feelsLike = 27;
-        int humidity = 84;
-        int windSpeed = 12;
-        int uvIndex = 6;
-        int goldBuy = 82500;
-        int goldSell = 85000;
-        int goldBuyDelta = 500;
-        int goldSellDelta = -200;
-        int fuelRon95 = 23780;
-        int fuelRon92 = 22620;
-        int fuelDiesel = 19850;
-        int fuelKerosene = 16420;
-        int fuelRon95Delta = 150;
-        int fuelRon92Delta = -80;
-        int fuelDieselDelta = 20;
-        int fuelKeroseneDelta = 0;
+        char condition[64] = "Đang tải thời tiết...";
+        int feelsLike = 28;
+        int humidity = 70;
+        int windSpeed = 10;
+        int uvIndex = 5;
+        char goldBuy[16] = "145,7";
+        char goldSell[16] = "148,7";
+        int fuelRon95 = 22600;
+        int fuelRon92 = 21760;
+        int fuelDiesel = 28080;
+        int fuelMazut = 18140;
+        int fuelRon95Delta = -60;
+        int fuelRon92Delta = -70;
+        int fuelDieselDelta = -460;
+        int fuelMazutDelta = 460;
     } homeCache;
 
     struct CalendarCache {
-        char monthYearStr[32] = "Tháng 05, 2026";
-        int startDayOfWeek = 4;
-        int daysInMonth = 31;
-        int activeDay = 15;
-        uint32_t dotColors[42] = {0};
-        bool googleConnected = true;
-        bool appleConnected = true;
-        
-        CalendarEvent events[4];
-        int eventCount = 0;
+        int year = 2026;
+        int month = 8;
+        int day = 30;
     } calCache;
 
     struct PlayerCache {
@@ -142,14 +137,14 @@ private:
     } playerCache;
 
     struct SettingsCache {
-        SettingsDeviceInfo info = {"CYD 3.5 Controller", "ESP32-3248S035", "v1.0.0", "19/05/2026", "FreeRTOS", "SN-9842A1"};
-        float usedGB = 8.6f;
-        float totalGB = 16.0f;
-        int batPercent = 95;
-        char batDuration[32] = "1 giờ 15 phút";
-        char wifiSsid[32] = "Wifi_Home";
-        char wifiIp[32] = "192.168.1.15";
-        char language[32] = "Tiếng Việt";
+        SettingsDeviceInfo info = {"ESP32 Dashboard", "CYD 3.5 ST7796", "v2.5.0", "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
+        uint32_t freeHeap = 160000;
+        char uptimeStr[32] = "00:00:00";
+        char ipStr[32] = "0.0.0.0";
+        char macStr[32] = "--:--:--:--:--:--";
+        char wifiState[32] = "Chưa kết nối";
+        char wifiSsid[32] = "";
+        int wifiRssi = -100;
         int activeMenuItem = 0;
     } settingsCache;
 

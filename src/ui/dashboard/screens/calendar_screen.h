@@ -2,58 +2,82 @@
 #define CALENDAR_SCREEN_H
 
 #include <lvgl.h>
-
-struct CalendarEvent {
-    const char* timeStr;
-    const char* title;
-    const char* location;
-    const char* durationStr;
-    lv_color_t color;
-};
+#include "../../../services/lunar_calendar.h"
 
 class CalendarScreen {
 public:
     CalendarScreen(lv_obj_t* parent);
-    ~CalendarScreen() {
-        if (rootContainer) lv_obj_del(rootContainer);
-    }
+    ~CalendarScreen();
+
 
     // Setters for dynamic updates
-    void updateMonthYearHeader(const char* monthYearStr);
-    void updateCalendarDays(int startDayOfWeek, int daysInMonth, int activeDay, const uint32_t* dotColorsMatrix); 
-    // dotColorsMatrix is 42-length array, 0 means no dot, hex color otherwise.
-    
-    void updateSyncStatus(bool googleConnected, bool appleConnected);
-    void clearEvents();
-    void addEvent(const CalendarEvent& event);
+    void setToday(int year, int month, int day);
+    void setViewMonth(int year, int month);
+    void selectDay(int day);
+    void refreshCalendar();
+
+    // Event handlers
+    void onPrevMonth();
+    void onNextMonth();
+    void onPrevYear();
+    void onNextYear();
+    void onTodayClick();
+    void onCellClick(int cellIndex);
 
     lv_obj_t* getRoot() { return rootContainer; }
+
+    // Header controls
+    lv_obj_t* btnPrevYear;
+    lv_obj_t* btnPrevMonth;
+    lv_obj_t* btnNextMonth;
+    lv_obj_t* btnNextYear;
+    lv_obj_t* btnToday;
 
 private:
     lv_obj_t* rootContainer;
 
-    // Monthly Calendar widgets
-    lv_obj_t* lblMonthYear;
-    lv_obj_t* calendarGrid;
+    // Current viewing date state
+    int viewYear;
+    int viewMonth;
+    int selectedDay;
+
+    // Real-time "Today" state
+    int realTodayYear;
+    int realTodayMonth;
+    int realTodayDay;
+
+    // Header title
+    lv_obj_t* lblMonthYearTitle;
+
+    // 42 Grid Cells
+    struct CellData {
+        int year;
+        int month;
+        int day;
+        bool isCurrentMonth;
+    } cellData[42];
+
     lv_obj_t* cellsContainer[42];
-    lv_obj_t* cellNumbers[42];
-    lv_obj_t* cellDotsBox[42];
+    lv_obj_t* cellSolarNumbers[42];
+    lv_obj_t* cellLunarNumbers[42];
 
-    // Connection switches
-    lv_obj_t* swGoogle;
-    lv_obj_t* swApple;
-    lv_obj_t* lblGoogleStatus;
-    lv_obj_t* lblAppleStatus;
+    // Right Side Detail Card
+    lv_obj_t* lblDetailSolarDay;
+    lv_obj_t* lblDetailSolarWeekDay;
+    lv_obj_t* lblDetailSolarMonthYear;
+    lv_obj_t* lblDetailLunarDayMonth;
+    lv_obj_t* lblDetailLunarCanChi;
+    lv_obj_t* lblDetailLunarYear;
+    lv_obj_t* lblDetailHoliday;
+    lv_obj_t* boxHolidayBadge;
 
-    // Daily Timeline widgets
-    lv_obj_t* lblEventDayNum;
-    lv_obj_t* lblEventDayName;
-    lv_obj_t* lblEventDate;
-    lv_obj_t* eventsScrollContainer;
-
-    // Helper functions
+    // Layout builders
     void createCalendarPane(lv_obj_t* parent);
-    void createTimelinePane(lv_obj_t* parent);
+    void createDetailPane(lv_obj_t* parent);
+    void updateDetailCard();
+
+    static int getDaysInMonth(int year, int month);
+    static int getFirstDayOfWeek(int year, int month);
 };
 
 #endif // CALENDAR_SCREEN_H

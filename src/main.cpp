@@ -3,6 +3,15 @@
 #include <TFT_eSPI.h>
 #include <lvgl.h>
 #include "ui/dashboard/dashboard_ui.h"
+#include "services/config_manager.h"
+#include "services/backlight_manager.h"
+#include "services/wifi_service.h"
+#include "services/storage_service.h"
+#include "services/system_telemetry.h"
+#include "services/time_service.h"
+#include "services/weather_service.h"
+#include "services/market_service.h"
+#include "services/audio_player_service.h"
 
 // --- 1. Hardware Initialization ---
 TFT_eSPI tft = TFT_eSPI();
@@ -10,8 +19,9 @@ TFT_eSPI tft = TFT_eSPI();
 // --- 2. LVGL Configuration ---
 static const uint32_t screenWidth  = 480;
 static const uint32_t screenHeight = 320;
+static const uint32_t bufferLines  = 25; // 25 dòng (tối ưu hóa số lần flush mà không gây nghẽn RAM)
 static lv_disp_draw_buf_t draw_buf;
-static lv_color_t buf[screenWidth * 10]; 
+static lv_color_t buf[screenWidth * bufferLines]; 
 
 /* Display flushing */
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
@@ -34,114 +44,93 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
         data->state = LV_INDEV_STATE_PR;
         data->point.x = touchX;
         data->point.y = touchY;
+        // Đánh thức màn hình và reset bộ đếm sleep timer
+        BacklightManager::feedActivity();
     }
 }
 
-// --- 3. Dynamic Mock Telemetry States ---
 DashboardUI* ui = nullptr;
-
-// Time and calendar state
-int hourVal = 15;
-int minVal = 45;
-int secVal = 0;
-int activeDay = 15; // 15/05/2025
-int lunarDay = 18;
-int lunarMonth = 4;
-const char* lunarYear = "Ất Tỵ";
-
-// Weather state
-float temp = 28.5f;
-float humidity = 84.0f;
-float wind = 12.0f;
-float uv = 6.2f;
-
-// Gold Prices state
-uint32_t goldBuy = 87500000;
-uint32_t goldSell = 89500000;
-bool goldUp = true;
-
-// Fuel Prices state
-uint32_t ron95 = 23780;
-uint32_t e5 = 22620;
-uint32_t diesel = 19850;
-uint32_t mazut = 16420;
-
-// Music Player state
-int currentTrackSec = 84; // 01:24
-int totalTrackSec = 275;  // 04:35
-bool trackIsPlaying = true;
-int activeTrackIdx = 0;
-int volumeVal = 20;
 
 // Timers
 unsigned long last1sTick = 0;
+unsigned long last500msTick = 0;
 unsigned long last5sTick = 0;
-unsigned long last50msTick = 0;
+unsigned long last25msTick = 0;
 
-// Helper to push all telemetry values to the HomeScreen
+// Push live telemetry and data to HomeScreen
 void syncHomeScreenTelemetry() {
     if (!ui) return;
 
-    // 1. Clock Update
-    char timeStr[12];
-    char secStr[6];
-    char dateStr[48];
-    sprintf(timeStr, "%02d:%02d", hourVal, minVal);
-    sprintf(secStr, "%02d", secVal);
-    sprintf(dateStr, "Thứ Năm, 15/05/2025");
-    ui->updateTime(timeStr, secStr, dateStr, (hourVal < 12));
+    // 1. Clock & Lunar Calendar Update
+    TimeInfo t = TimeService::getTimeInfo();
+    ui->updateTime(t.timeStr, t.secStr, t.dateStr, t.isAm);
+    if (t.isSynced && t.year >= 2024) {
+        ui->setCalendarToday(t.year, t.month, t.day);
+    }
 
-    // 2. Lunar Calendar Update
-    char lunarDayStr[32];
-    char lunarInfoStr[48];
-    sprintf(lunarDayStr, "%d/%d Lịch âm", lunarDay, lunarMonth);
-    sprintf(lunarInfoStr, "Năm %s", lunarYear);
-    ui->updateLunarCalendar(lunarDayStr, lunarInfoStr);
+    char lunarDayStr[64];
+    snprintf(lunarDayStr, sizeof(lunarDayStr), "ÂL: %02d/%02d (%s)", t.lunar.day, t.lunar.month, t.lunar.dayName);
+    ui->updateLunarCalendar(lunarDayStr, "");
 
-    // 3. Weekly Ribbon Update (Thursday is active day 15, index 3 of 7 columns)
-    int dayNumbers[7] = {12, 13, 14, 15, 16, 17, 18};
-    ui->updateCalendarRibbon(3, dayNumbers);
+    // 2. Weather Live Update
+    WeatherInfo w = WeatherService::getWeather();
+    if (w.is_valid) {
+        ui->updateWeather((int)roundf(w.temperature), w.condition_text.c_str(), 
+                          (int)roundf(w.feels_like), w.humidity, w.wind_speed, w.uv_index, w.city_name.c_str());
+    }
 
-    // 4. Weather Update
-    // signature expects: int temp, const char* condition, int feelsLike, int humidity, int windSpeed, int uvIndex
-    ui->updateWeather((int)temp, "Nhiều mây", (int)(temp - 1.5f), (int)humidity, (int)wind, (int)uv);
-
-    // 5. Gold prices update (values represent k-VND like the mockup strings)
-    // signature expects: int buySJC, int sellSJC, int buyDelta, int sellDelta
-    int goldBuyK = (int)(goldBuy / 1000);
-    int goldSellK = (int)(goldSell / 1000);
-    int buyDeltaK = goldUp ? 150 : -100;
-    int sellDeltaK = goldUp ? 200 : -50;
-    ui->updateGoldPrices(goldBuyK, goldSellK, buyDeltaK, sellDeltaK);
-
-    // 6. Fuel prices update
-    // signature expects: int ron95, int ron92, int diesel, int kerosene, int ron95Delta, int ron92Delta, int dieselDelta, int keroseneDelta
-    ui->updateFuelPrices((int)ron95, (int)e5, (int)diesel, (int)mazut, 150, -80, 20, 0);
+    // 3. Market (Gold & Fuel) Live Update
+    MarketInfo m = MarketService::getMarket();
+    if (m.is_valid) {
+        ui->updateGoldPrices(m.sjc_buy_str.c_str(), m.sjc_sell_str.c_str());
+        ui->updateFuelPrices(m.ron95_price, m.e5_price, m.diesel_price, m.mazut_price, 
+                             m.ron95_delta, m.ron92_delta, m.diesel_delta, m.mazut_delta);
+    }
 }
 
-// --- 4. Setup and Main Loop ---
+// --- Setup and Main Loop ---
 void setup() {
     Serial.begin(115200);
     delay(100);
-    Serial.println("System starting...");
+    Serial.println("====================================");
+    Serial.println(" ESP32 CYD 3.5 Dashboard Starting ");
+    Serial.println("====================================");
 
-    // Turn on Backlight (CYD 3.5 uses GPIO 27)
-    pinMode(27, OUTPUT);
-    digitalWrite(27, HIGH);
+    // 1. Initialize NVS Storage & Configuration
+    ConfigManager::init();
 
-    // TFT & Touch initialization
+    // 2. Initialize Backlight PWM (LEDC on GPIO 27)
+    BacklightManager::init();
+
+    // 3. Initialize WiFi Service (auto-reconnects if saved)
+    WifiService::init();
+
+    // 4. Initialize SD Card Storage Service
+    StorageService::init();
+
+    // 4.1 Initialize Audio Player Service (Preallocates Helix DSP buffers on clean heap)
+    AudioPlayerService::init();
+
+    // 5. Initialize Live Online Services (Phase 2)
+    TimeService::init();
+    WeatherService::init();
+    MarketService::init();
+
+    // 6. Initialize System Telemetry (FPS, RAM, CPU)
+    SystemTelemetry::init();
+
+    // 7. TFT & Touch initialization
     tft.init();
     tft.setRotation(1);
     
-    // Save/Restore touch calibration data (matches standard ST7796 resistive CYD)
+    // Save/Restore touch calibration data (CYD 3.5 resistive touch)
     uint16_t calData[5] = { 334, 3478, 384, 3435, 3 }; 
     tft.setTouch(calData);
 
-    // LVGL System Initialization
+    // 8. LVGL System Initialization
     lv_init();
-    lv_disp_draw_buf_init(&draw_buf, buf, NULL, screenWidth * 10);
+    lv_disp_draw_buf_init(&draw_buf, buf, NULL, screenWidth * bufferLines);
 
-    /* Initialize display driver */
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
     disp_drv.hor_res = screenWidth;
@@ -150,176 +139,143 @@ void setup() {
     disp_drv.draw_buf = &draw_buf;
     lv_disp_drv_register(&disp_drv);
 
-    /* Initialize touchpad driver */
     static lv_indev_drv_t indev_drv;
     lv_indev_drv_init(&indev_drv);
     indev_drv.type = LV_INDEV_TYPE_POINTER;
     indev_drv.read_cb = my_touchpad_read;
+    indev_drv.scroll_limit = 6;
+    indev_drv.long_press_time = 400;
     lv_indev_drv_register(&indev_drv);
 
-    // Initialize custom modular C++ UI
+    // 9. Initialize Dashboard UI
     Serial.println("Initializing UI panels...");
     ui = new DashboardUI();
     Serial.println("UI Initialization complete!");
 
-    // Set initial values on home screen
+    // Set initial values
     syncHomeScreenTelemetry();
 
     if (ui) {
         // Set initial values on Calendar Screen
-        ui->updateMonthYearHeader("Tháng 05, 2026");
-        uint32_t dots[42] = {0};
-        dots[4 + 15 - 1] = 0x5E35B1; // Active event dot on May 15th (Thursday)
-        dots[4 + 20 - 1] = 0x4CAF50; // Active event dot on May 20th
-        ui->updateCalendarDays(4, 31, 15, dots);
-        ui->updateSyncStatus(true, true);
-        ui->clearEvents();
-        
-        CalendarEvent ev1 = {"09:30\n10:30", "Họp Kế Hoạch Tuần", "Phòng họp A", "1 giờ", lv_color_hex(0x5E35B1)};
-        CalendarEvent ev2 = {"14:00\n15:30", "Gặp Khách Hàng", "Phòng Khách", "1.5h", lv_color_hex(0x4CAF50)};
-        ui->addEvent(ev1);
-        ui->addEvent(ev2);
+        TimeInfo t = TimeService::getTimeInfo();
+        if (t.isSynced && t.year >= 2024) {
+            ui->setCalendarToday(t.year, t.month, t.day);
+        } else {
+            ui->setCalendarToday(2026, 8, 30);
+        }
 
         // Set initial values on Player Screen
-        ui->updateTrackInfo("Nơi Này Có Anh", "Sơn Tùng M-TP", "Album 2017", "MP3 320kbps");
-        ui->updatePlaybackProgress(currentTrackSec, totalTrackSec);
-        ui->setPlayState(true);
-        ui->updatePlaybackMode(true, false);
-        ui->updateVolume(volumeVal);
-        ui->updateEQ("POP");
-        ui->clearPlaylist();
-        
-        PlaylistItem track1 = {"Nơi Này Có Anh", "Sơn Tùng M-TP", "04:35", true};
-        PlaylistItem track2 = {"Duyên Mình Lỡ", "Hương Tràm", "04:20", false};
-        PlaylistItem track3 = {"Một Bước Yêu", "Mr. Siro", "05:12", false};
-        ui->addPlaylistItem(track1);
-        ui->addPlaylistItem(track2);
-        ui->addPlaylistItem(track3);
+        ui->updateTrackInfo("Chưa mở trình phát", "Chạm Tab để phát nhạc", "Thẻ nhớ SD", "MP3/WAV");
+        ui->updatePlaybackProgress(0, 0);
+        ui->setPlayState(false);
+        ui->updateVolume(50);
+        ui->updatePlaybackMode(false, true);
+        ui->updateEQ("DAC OUT");
 
         // Set initial values on Settings Screen
-        SettingsDeviceInfo info = {"CYD 3.5 Controller", "ESP32-3248S035", "v1.0.0", "19/05/2026", "FreeRTOS", "SN-9842A1"};
+        SettingsDeviceInfo info = {"CYD 3.5 Controller", "ESP32-3248S035", "v2.5.0", "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
         ui->updateDeviceInfo(info);
-        ui->updateMemoryUsage(8.6f, 16.0f);
-        ui->updateBatteryStatus(95, "1 giờ 15 phút");
-        ui->updateWiFiConnection("Wifi_Home", "192.168.1.15");
-        ui->updateLanguage("Tiếng Việt");
-        ui->setActiveMenuItem(0);
+        ui->updateSettingsTelemetry(SystemTelemetry::getFreeHeap(), SystemTelemetry::getUptimeFormatted().c_str(), WifiService::getIPAddress().c_str(), WifiService::getMacAddress().c_str());
+        ui->updateWifiSettings(WifiService::getStateString(), WifiService::getConnectedSSID().c_str(), WifiService::getIPAddress().c_str(), WifiService::getRSSI());
+
+        // Developer HUD state
+        ui->setDevHudVisible(ConfigManager::isDevModeEnabled());
     }
 
     last1sTick = millis();
+    last500msTick = millis();
     last5sTick = millis();
-    last50msTick = millis();
+    last25msTick = millis();
 }
 
 void loop() {
     lv_timer_handler(); // Run core LVGL drawing ticks
+    SystemTelemetry::recordFrame();
     
+    // Background services loop
+    WifiService::update();
+    BacklightManager::update();
+    AudioPlayerService::update();
+
+    bool wifiConnected = WifiService::isConnected();
+    TimeService::update(wifiConnected);
+    WeatherService::update(wifiConnected);
+    MarketService::update(wifiConnected);
+
     unsigned long now = millis();
 
-    // 50ms tick: updates the visualizer spectrum waveforms fluidly
-    if (now - last50msTick >= 50) {
-        last50msTick = now;
-        if (ui) ui->tick();
+    // 25ms tick: updates visualizer & micro-animations at smooth 40 FPS
+    if (now - last25msTick >= 25) {
+        last25msTick = now;
+        if (ui) {
+            ui->tick();
+        }
     }
 
-    // 1s tick: updates clock and active track progress timelines
+    // 500ms tick: updates Dev HUD & System Telemetry
+    if (now - last500msTick >= 500) {
+        last500msTick = now;
+        SystemTelemetry::update();
+
+        if (ui) {
+            bool devMode = ConfigManager::isDevModeEnabled();
+            ui->setDevHudVisible(devMode);
+            if (devMode) {
+                ui->updateDevHud(
+                    SystemTelemetry::getFPS(),
+                    SystemTelemetry::getFreeHeap() / 1024,
+                    SystemTelemetry::getCpuUsage(),
+                    WifiService::getRSSI(),
+                    WifiService::getIPAddress().c_str()
+                );
+            }
+
+            // Real-time telemetry in Settings Screen
+            ui->updateSettingsTelemetry(
+                SystemTelemetry::getFreeHeap(),
+                SystemTelemetry::getUptimeFormatted().c_str(),
+                WifiService::getIPAddress().c_str(),
+                WifiService::getMacAddress().c_str()
+            );
+
+            // WiFi status in Settings Screen
+            ui->updateWifiSettings(
+                WifiService::getStateString(),
+                WifiService::getConnectedSSID().c_str(),
+                WifiService::getIPAddress().c_str(),
+                WifiService::getRSSI()
+            );
+        }
+    }
+
+    // 1s tick: updates clock and live telemetry
     if (now - last1sTick >= 1000) {
         last1sTick = now;
-
-        // Clock Update
-        secVal++;
-        if (secVal >= 60) {
-            secVal = 0;
-            minVal++;
-            if (minVal >= 60) {
-                minVal = 0;
-                hourVal++;
-                if (hourVal >= 24) {
-                    hourVal = 0;
-                }
-            }
-        }
-        
-        // Sync time to Home Screen
-        if (ui) {
-            char timeStr[12];
-            char secStr[6];
-            char dateStr[48];
-            sprintf(timeStr, "%02d:%02d", hourVal, minVal);
-            sprintf(secStr, "%02d", secVal);
-            sprintf(dateStr, "Thứ Năm, 15/05/2025");
-            ui->updateTime(timeStr, secStr, dateStr, (hourVal < 12));
-        }
-
-        // Music Progress Update
-        if (trackIsPlaying) {
-            currentTrackSec++;
-            if (currentTrackSec >= totalTrackSec) {
-                currentTrackSec = 0;
-                // cycle songs in mockup playlist!
-                activeTrackIdx = (activeTrackIdx + 1) % 6;
-                if (activeTrackIdx == 0) {
-                    ui->updateTrackInfo("Nơi Này Có Anh", "Sơn Tùng M-TP", "Album 2017", "MP3 320kbps");
-                    totalTrackSec = 275;
-                } else if (activeTrackIdx == 1) {
-                    ui->updateTrackInfo("Duyên Mình Lỡ", "Hương Tràm", "Single 2018", "FLAC 1411kbps");
-                    totalTrackSec = 260;
-                } else if (activeTrackIdx == 2) {
-                    ui->updateTrackInfo("Một Bước Yêu", "Mr. Siro", "Single 2019", "MP3 320kbps");
-                    totalTrackSec = 312;
-                } else {
-                    ui->updateTrackInfo("Hẹn Em Ở Lần Yêu 2", "Nguyễn Duy Anh", "Album 2021", "MP3 320kbps");
-                    totalTrackSec = 288;
-                }
-            }
-            if (ui) {
-                ui->updatePlaybackProgress(currentTrackSec, totalTrackSec);
-            }
-        }
-    }
-
-    // 5s tick: simulates weather fluctuations and price index changes
-    if (now - last5sTick >= 5000) {
-        last5sTick = now;
-
-        // Fluctuating Weather slightly
-        float tempDelta = ((rand() % 11) - 5) * 0.1f; // -0.5 to +0.5
-        temp += tempDelta;
-        if (temp < 15.0f) temp = 15.0f;
-        if (temp > 38.0f) temp = 38.0f;
-
-        float humDelta = ((rand() % 5) - 2) * 1.0f; // -2 to +2
-        humidity += humDelta;
-        if (humidity < 40.0f) humidity = 40.0f;
-        if (humidity > 95.0f) humidity = 95.0f;
-
-        // Fluctuating SJC Gold price
-        int goldDelta = ((rand() % 3) - 1) * 100000; // -100k, 0, or +100k
-        goldBuy += goldDelta;
-        goldSell += goldDelta;
-        goldUp = (goldDelta >= 0);
-
-        // Fluctuating Fuel slightly
-        int fuelDelta = (rand() % 3) - 1; // -1, 0, +1 VND
-        ron95 += fuelDelta * 20;
-        e5 += fuelDelta * 10;
-
-        // Push everything to the HomeScreen
         syncHomeScreenTelemetry();
 
-        // Fluctuating Settings details
-        static int batLvl = 78;
-        static int batCountdown = 12; // decrease every 12 ticks
-        batCountdown--;
-        if (batCountdown <= 0) {
-            batCountdown = 12;
-            batLvl--;
-            if (batLvl < 5) batLvl = 100;
-            if (ui) {
-                ui->updateBatteryStatus(batLvl, "~ 5 giờ 10 phút");
-            }
+        // Real-time Audio Player state sync
+        if (ui) {
+            bool isPlaying = AudioPlayerService::isPlaying();
+            ui->setPlayState(isPlaying);
+            
+            AudioTrack cur = AudioPlayerService::getCurrentTrack();
+            int elapsed = AudioPlayerService::getCurrentElapsedSec();
+            int total = AudioPlayerService::getCurrentTotalSec();
+            ui->updateTrackInfo(cur.title, cur.artist, "SD Music", cur.format);
+            ui->updatePlaybackProgress(elapsed, total);
+            ui->updatePlaybackMode(AudioPlayerService::isShuffle(), AudioPlayerService::getRepeatMode() != REPEAT_MODE_OFF);
+            ui->updateVolume(AudioPlayerService::getVolume());
         }
     }
 
-    delay(2); // Short sleep to prevent starving background watchdog timers on ESP32
+    // 5s tick: Force-sync đảm bảo dữ liệu không bị stale (chỉ chạy nếu 1s tick chưa chạy trong cùng iteration)
+    if (now - last5sTick >= 5000) {
+        last5sTick = now;
+        // Tránh gọi 2 lần nếu 1s tick cũng vừa kích hoạt trong cùng 1 loop()
+        if (now - last1sTick > 10) {
+            syncHomeScreenTelemetry();
+        }
+    }
+
+    delay(2);
 }

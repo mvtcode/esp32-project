@@ -13,9 +13,8 @@ struct PlaylistItem {
 class PlayerScreen {
 public:
     PlayerScreen(lv_obj_t* parent);
-    ~PlayerScreen() {
-        if (rootContainer) lv_obj_del(rootContainer);
-    }
+    ~PlayerScreen();
+
 
     // Setters for dynamic updates
     void updateTrackInfo(const char* title, const char* artist, const char* album, const char* qualityStr);
@@ -26,7 +25,8 @@ public:
     void updateEQ(const char* eqMode);
     
     void clearPlaylist();
-    void addPlaylistItem(const PlaylistItem& item);
+    void addPlaylistItem(const PlaylistItem& item, int trackIndex = -1);
+    void syncCurrentTrackUI();
 
     // Micro-animation for spectrum wave
     void tickSpectrumAnimation();
@@ -73,6 +73,15 @@ private:
     // Helper functions
     void createPlayerControlsPane(lv_obj_t* parent);
     void createPlaylistPane(lv_obj_t* parent);
+
+    // UI Event Callbacks
+    static void play_pause_click_cb(lv_event_t* e);
+    static void prev_click_cb(lv_event_t* e);
+    static void next_click_cb(lv_event_t* e);
+    static void shuffle_click_cb(lv_event_t* e);
+    static void repeat_click_cb(lv_event_t* e);
+    static void volume_slider_cb(lv_event_t* e);
+    static void playlist_item_click_cb(lv_event_t* e);
 };
 
 #endif // PLAYER_SCREEN_H

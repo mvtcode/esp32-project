@@ -31,8 +31,8 @@
     #define LV_TICK_CUSTOM_SYS_TIME_EXPR (millis())
 #endif
 
-#define LV_DISP_DEF_REFR_PERIOD 30      /*[ms]*/
-#define LV_INDEV_DEF_READ_PERIOD 30     /*[ms]*/
+#define LV_DISP_DEF_REFR_PERIOD 16      /*[ms] ~60 FPS refresh rate*/
+#define LV_INDEV_DEF_READ_PERIOD 16     /*[ms] ~60Hz touch sampling rate*/
 #define LV_DPI_DEF 130                  /*[px/inch]*/
 
 /*=======================

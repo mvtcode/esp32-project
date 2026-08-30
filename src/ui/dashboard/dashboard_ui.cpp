@@ -1,14 +1,17 @@
 #include "dashboard_ui.h"
 #include "cyd_theme.h"
+#include "../../services/audio_player_service.h"
 #include <stdio.h>
 #include <string.h>
 
 DashboardUI::DashboardUI() : 
-    activeTabIndex(-1), 
+    activeTabIndex(-1),
+    lastCheckedTrackIdx(-2),
     homeScreen(nullptr), 
     calendarScreen(nullptr), 
     playerScreen(nullptr), 
-    settingsScreen(nullptr) 
+    settingsScreen(nullptr),
+    devHud(nullptr)
 {
     // 1. Create Master Container (Whole screen: 480x320)
     masterContainer = lv_obj_create(lv_scr_act());
@@ -45,11 +48,15 @@ DashboardUI::DashboardUI() :
     // 4. Build the Tabs Navigation
     initTabs();
 
-    // 5. Make Home screen active by default
+    // 5. Create Developer HUD
+    devHud = new DevHud();
+
+    // 6. Make Home screen active by default
     setTabActive(0);
 }
 
 DashboardUI::~DashboardUI() {
+    if (devHud) delete devHud;
     if (homeScreen) delete homeScreen;
     if (calendarScreen) delete calendarScreen;
     if (playerScreen) delete playerScreen;
@@ -59,13 +66,11 @@ DashboardUI::~DashboardUI() {
 void DashboardUI::initTabs() {
     const char* tabIcons[4] = {LV_SYMBOL_HOME, LV_SYMBOL_LIST, LV_SYMBOL_AUDIO, LV_SYMBOL_SETTINGS};
     
-    // Create tab items using flex layout inside bottom nav bar
     lv_obj_set_layout(bottomNavBar, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(bottomNavBar, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(bottomNavBar, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     for (int i = 0; i < 4; i++) {
-        // Tab button container
         tabContainers[i] = lv_obj_create(bottomNavBar);
         lv_obj_set_size(tabContainers[i], 100, 36);
         lv_obj_set_style_bg_opa(tabContainers[i], LV_OPA_TRANSP, 0);
@@ -75,23 +80,21 @@ void DashboardUI::initTabs() {
         lv_obj_add_event_cb(tabContainers[i], tab_click_event_cb, LV_EVENT_CLICKED, this);
         lv_obj_clear_flag(tabContainers[i], LV_OBJ_FLAG_SCROLLABLE);
 
-        // Indicator bar (Active glow line at top of tab button)
         tabIndicators[i] = lv_obj_create(tabContainers[i]);
         lv_obj_set_size(tabIndicators[i], 60, 2);
         lv_obj_align(tabIndicators[i], LV_ALIGN_TOP_MID, 0, 0);
         lv_obj_set_style_bg_color(tabIndicators[i], CydTheme::getAccentGlowColor(), 0);
-        lv_obj_set_style_bg_opa(tabIndicators[i], LV_OPA_TRANSP, 0); // hidden by default
+        lv_obj_set_style_bg_opa(tabIndicators[i], LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(tabIndicators[i], 0, 0);
         lv_obj_set_style_radius(tabIndicators[i], 2, 0);
+        lv_obj_clear_flag(tabIndicators[i], LV_OBJ_FLAG_CLICKABLE);
 
-        // Icon label (Pure icon style)
         this->tabIcons[i] = lv_label_create(tabContainers[i]);
         lv_label_set_text(this->tabIcons[i], tabIcons[i]);
         CydTheme::applyTextFont(this->tabIcons[i], CydTheme::getFont20(), CydTheme::getTextSecondary());
         lv_obj_align(this->tabIcons[i], LV_ALIGN_CENTER, 0, 1);
         lv_obj_clear_flag(this->tabIcons[i], LV_OBJ_FLAG_CLICKABLE);
 
-        // Text label is no longer used for pure icon navigation
         tabLabels[i] = nullptr;
     }
 }
@@ -99,131 +102,118 @@ void DashboardUI::initTabs() {
 void DashboardUI::setTabActive(int index) {
     if (index == activeTabIndex) return;
 
-    // Reset previous active tab styling & DESTROY the old screen to free up heap RAM!
-    if (activeTabIndex >= 0) {
-        lv_obj_set_style_bg_opa(tabIndicators[activeTabIndex], LV_OPA_TRANSP, 0);
-        lv_obj_set_style_text_color(tabIcons[activeTabIndex], CydTheme::getTextSecondary(), 0);
-        if (tabLabels[activeTabIndex]) {
-            lv_obj_set_style_text_color(tabLabels[activeTabIndex], CydTheme::getTextSecondary(), 0);
-        }
-        
-        switch (activeTabIndex) {
-            case 0:
-                if (homeScreen) {
-                    delete homeScreen;
-                    homeScreen = nullptr;
-                }
-                break;
-            case 1:
-                if (calendarScreen) {
-                    delete calendarScreen;
-                    calendarScreen = nullptr;
-                }
-                break;
-            case 2:
-                if (playerScreen) {
-                    delete playerScreen;
-                    playerScreen = nullptr;
-                }
-                break;
-            case 3:
-                if (settingsScreen) {
-                    delete settingsScreen;
-                    settingsScreen = nullptr;
-                }
-                break;
-        }
-    }
+    // 1. Giải phóng đúng screen đang active (không xóa hết 4 cái)
+    Serial.printf("[UI] Tab switch %d -> %d | Heap: %u bytes\n",
+                  activeTabIndex, index, ESP.getFreeHeap());
 
-    // Set new active tab styling
-    activeTabIndex = index;
-    lv_obj_set_style_bg_opa(tabIndicators[activeTabIndex], LV_OPA_COVER, 0);
-    lv_obj_set_style_text_color(tabIcons[activeTabIndex], CydTheme::getAccentGlowColor(), 0);
-    if (tabLabels[activeTabIndex]) {
-        lv_obj_set_style_text_color(tabLabels[activeTabIndex], CydTheme::getAccentGlowColor(), 0);
-    }
-
-    // CREATE and POPULATE new active screen!
-    lv_obj_t* activeRoot = nullptr;
     switch (activeTabIndex) {
-        case 0:
+        case 0: if (homeScreen)     { delete homeScreen;     homeScreen     = nullptr; } break;
+        case 1: if (calendarScreen) { delete calendarScreen; calendarScreen = nullptr; } break;
+        case 2: if (playerScreen)   { delete playerScreen;   playerScreen   = nullptr;
+                                      lastCheckedTrackIdx = -2; } break;
+        case 3: if (settingsScreen) { delete settingsScreen; settingsScreen = nullptr; } break;
+        default: break;
+    }
+
+    Serial.printf("[UI] Screen freed     | Heap: %u bytes\n", ESP.getFreeHeap());
+
+    // 2. Cập nhật navigation indicators
+    for (int i = 0; i < 4; i++) {
+        if (i == index) {
+            lv_obj_set_style_bg_opa(tabIndicators[i], LV_OPA_COVER, 0);
+            lv_obj_set_style_text_color(tabIcons[i], CydTheme::getAccentGlowColor(), 0);
+        } else {
+            lv_obj_set_style_bg_opa(tabIndicators[i], LV_OPA_TRANSP, 0);
+            lv_obj_set_style_text_color(tabIcons[i], CydTheme::getTextSecondary(), 0);
+        }
+    }
+
+    activeTabIndex = index;
+
+    // 3. Tạo screen mới theo yêu cầu và khởi phục dữ liệu cache
+    switch (activeTabIndex) {
+        case 0: {
             homeScreen = new HomeScreen(activeViewArea);
-            activeRoot = homeScreen->getRoot();
-            // Restore from Cache
             homeScreen->updateTime(homeCache.timeStr, homeCache.secStr, homeCache.dateStr, homeCache.isAm);
             homeScreen->updateLunarCalendar(homeCache.lunarDayStr, homeCache.lunarInfoStr);
             homeScreen->updateCalendarRibbon(homeCache.activeDayIndex, homeCache.dayNumbers);
             homeScreen->updateWeather(homeCache.temp, homeCache.condition, homeCache.feelsLike, homeCache.humidity, homeCache.windSpeed, homeCache.uvIndex);
-            homeScreen->updateGoldPrices(homeCache.goldBuy, homeCache.goldSell, homeCache.goldBuyDelta, homeCache.goldSellDelta);
-            homeScreen->updateFuelPrices(homeCache.fuelRon95, homeCache.fuelRon92, homeCache.fuelDiesel, homeCache.fuelKerosene, homeCache.fuelRon95Delta, homeCache.fuelRon92Delta, homeCache.fuelDieselDelta, homeCache.fuelKeroseneDelta);
+            homeScreen->updateGoldPrices(homeCache.goldBuy, homeCache.goldSell);
+            homeScreen->updateFuelPrices(homeCache.fuelRon95, homeCache.fuelRon92, homeCache.fuelDiesel, homeCache.fuelMazut,
+                                        homeCache.fuelRon95Delta, homeCache.fuelRon92Delta, homeCache.fuelDieselDelta, homeCache.fuelMazutDelta);
             break;
-            
-        case 1:
+        }
+        case 1: {
             calendarScreen = new CalendarScreen(activeViewArea);
-            activeRoot = calendarScreen->getRoot();
-            // Restore from Cache
-            calendarScreen->updateMonthYearHeader(calCache.monthYearStr);
-            calendarScreen->updateCalendarDays(calCache.startDayOfWeek, calCache.daysInMonth, calCache.activeDay, calCache.dotColors);
-            calendarScreen->updateSyncStatus(calCache.googleConnected, calCache.appleConnected);
-            calendarScreen->clearEvents();
-            for (int i = 0; i < calCache.eventCount; i++) {
-                calendarScreen->addEvent(calCache.events[i]);
-            }
+            calendarScreen->setToday(calCache.year, calCache.month, calCache.day);
             break;
-            
-        case 2:
+        }
+        case 2: {
+            if (!AudioPlayerService::isInitialized()) {
+                Serial.println("[DashboardUI] Lazy loading Audio Player Service...");
+                AudioPlayerService::init();
+            }
+
             playerScreen = new PlayerScreen(activeViewArea);
-            activeRoot = playerScreen->getRoot();
-            // Restore from Cache
-            playerScreen->updateTrackInfo(playerCache.title, playerCache.artist, playerCache.album, playerCache.qualityStr);
-            playerScreen->updatePlaybackProgress(playerCache.currentSec, playerCache.totalSec);
-            playerScreen->setPlayState(playerCache.isPlaying);
-            playerScreen->updatePlaybackMode(playerCache.shuffleActive, playerCache.repeatActive);
-            playerScreen->updateVolume(playerCache.volume);
-            playerScreen->updateEQ(playerCache.eqMode);
-            playerScreen->clearPlaylist();
-            for (int i = 0; i < playerCache.playlistCount; i++) {
-                playerScreen->addPlaylistItem(playerCache.playlist[i]);
+            lastCheckedTrackIdx = -2; // Reset để syncCurrentTrackUI() chạy ngay khi vào tab
+
+            // If playlist is currently empty but SD card is ready, try scanning
+            if (AudioPlayerService::getTrackCount() == 0 && AudioPlayerService::isSdReady()) {
+                AudioPlayerService::scanMusicFiles();
             }
+
+            // Populate UI playlist
+            int count = AudioPlayerService::getTrackCount();
+            if (count > 0) {
+                playerScreen->clearPlaylist();
+                if (count > MAX_AUDIO_TRACKS) count = MAX_AUDIO_TRACKS;
+                for (int i = 0; i < count; i++) {
+                    const AudioTrack* t = AudioPlayerService::getTrack(i);
+                    if (!t) continue;
+                    char durStr[16];
+                    if (t->durationSec >= 3600) {
+                        int h = t->durationSec / 3600;
+                        int m = (t->durationSec % 3600) / 60;
+                        int s = t->durationSec % 60;
+                        snprintf(durStr, sizeof(durStr), "%02d:%02d:%02d", h, m, s);
+                    } else {
+                        snprintf(durStr, sizeof(durStr), "%02d:%02d", t->durationSec / 60, t->durationSec % 60);
+                    }
+                    PlaylistItem item = {t->title, t->artist, durStr, i == AudioPlayerService::getCurrentTrackIndex()};
+                    playerScreen->addPlaylistItem(item, i);
+                }
+            }
+
+            // Auto-play immediately when entering player mode if not playing
+            if (!AudioPlayerService::isPlaying() && AudioPlayerService::getTrackCount() > 0) {
+                AudioPlayerService::play();
+            }
+            playerScreen->syncCurrentTrackUI();
+            playerScreen->updateVolume(playerCache.volume);
+            playerScreen->updatePlaybackMode(playerCache.shuffleActive, playerCache.repeatActive);
             break;
-            
-        case 3:
+        }
+        case 3: {
             settingsScreen = new SettingsScreen(activeViewArea);
-            activeRoot = settingsScreen->getRoot();
-            // Restore from Cache
             settingsScreen->updateDeviceInfo(settingsCache.info);
-            settingsScreen->updateMemoryUsage(settingsCache.usedGB, settingsCache.totalGB);
-            settingsScreen->updateBatteryStatus(settingsCache.batPercent, settingsCache.batDuration);
-            settingsScreen->updateWiFiConnection(settingsCache.wifiSsid, settingsCache.wifiIp);
-            settingsScreen->updateLanguage(settingsCache.language);
+            settingsScreen->updateTelemetry(settingsCache.freeHeap, settingsCache.uptimeStr, settingsCache.ipStr, settingsCache.macStr);
+            settingsScreen->updateWifiStatus(settingsCache.wifiState, settingsCache.wifiSsid, settingsCache.ipStr, settingsCache.wifiRssi);
             settingsScreen->setActiveMenuItem(settingsCache.activeMenuItem);
             break;
+        }
     }
-    
-    if (activeRoot) {
-        lv_obj_clear_flag(activeRoot, LV_OBJ_FLAG_HIDDEN);
-        // Play subtle opacity animation on transition
-        lv_obj_set_style_opa(activeRoot, LV_OPA_TRANSP, 0);
-        lv_obj_fade_in(activeRoot, 150, 0);
-    }
+    Serial.printf("[UI] Screen built      | Heap: %u bytes\n", ESP.getFreeHeap());
 }
+
 
 void DashboardUI::tab_click_event_cb(lv_event_t* e) {
-    lv_obj_t* tabBtn = lv_event_get_target(e);
-    DashboardUI* uiInstance = (DashboardUI*)lv_event_get_user_data(e);
-    int index = (int)(intptr_t)lv_obj_get_user_data(tabBtn);
-    uiInstance->setTabActive(index);
+    DashboardUI* self = (DashboardUI*)lv_event_get_user_data(e);
+    lv_obj_t* target = lv_event_get_current_target(e);
+    int tabIdx = (int)(intptr_t)lv_obj_get_user_data(target);
+    self->setTabActive(tabIdx);
 }
 
-void DashboardUI::tick() {
-    // Only run player visualizer ticks if the player tab is active to save MCU cycles
-    if (activeTabIndex == 2 && playerScreen) {
-        playerScreen->tickSpectrumAnimation();
-    }
-}
-
-// --- Dynamic Cache-Populating Setters ---
-
+// --- Home Screen Setters ---
 void DashboardUI::updateTime(const char* timeStr, const char* secondsStr, const char* dateStr, bool isAm) {
     strncpy(homeCache.timeStr, timeStr, sizeof(homeCache.timeStr) - 1);
     strncpy(homeCache.secStr, secondsStr, sizeof(homeCache.secStr) - 1);
@@ -240,76 +230,47 @@ void DashboardUI::updateLunarCalendar(const char* lunarDayStr, const char* lunar
 
 void DashboardUI::updateCalendarRibbon(int activeDayIndex, const int* dayNumbers) {
     homeCache.activeDayIndex = activeDayIndex;
-    for (int i = 0; i < 7; i++) {
-        homeCache.dayNumbers[i] = dayNumbers[i];
-    }
+    for (int i = 0; i < 7; i++) homeCache.dayNumbers[i] = dayNumbers[i];
     if (homeScreen) homeScreen->updateCalendarRibbon(activeDayIndex, dayNumbers);
 }
 
-void DashboardUI::updateWeather(int temp, const char* condition, int feelsLike, int humidity, int windSpeed, int uvIndex) {
+void DashboardUI::updateWeather(int temp, const char* condition, int feelsLike, int humidity, int windSpeed, int uvIndex, const char* cityName) {
     homeCache.temp = temp;
     strncpy(homeCache.condition, condition, sizeof(homeCache.condition) - 1);
     homeCache.feelsLike = feelsLike;
     homeCache.humidity = humidity;
     homeCache.windSpeed = windSpeed;
     homeCache.uvIndex = uvIndex;
-    if (homeScreen) homeScreen->updateWeather(temp, condition, feelsLike, humidity, windSpeed, uvIndex);
+    if (homeScreen) homeScreen->updateWeather(temp, condition, feelsLike, humidity, windSpeed, uvIndex, cityName);
 }
 
-void DashboardUI::updateGoldPrices(int buySJC, int sellSJC, int buyDelta, int sellDelta) {
-    homeCache.goldBuy = buySJC;
-    homeCache.goldSell = sellSJC;
-    homeCache.goldBuyDelta = buyDelta;
-    homeCache.goldSellDelta = sellDelta;
-    if (homeScreen) homeScreen->updateGoldPrices(buySJC, sellSJC, buyDelta, sellDelta);
+void DashboardUI::updateGoldPrices(const char* buySJC, const char* sellSJC) {
+    if (buySJC) strncpy(homeCache.goldBuy, buySJC, sizeof(homeCache.goldBuy) - 1);
+    if (sellSJC) strncpy(homeCache.goldSell, sellSJC, sizeof(homeCache.goldSell) - 1);
+    if (homeScreen) homeScreen->updateGoldPrices(buySJC, sellSJC);
 }
 
-void DashboardUI::updateFuelPrices(int ron95, int ron92, int diesel, int kerosene, int ron95Delta, int ron92Delta, int dieselDelta, int keroseneDelta) {
+void DashboardUI::updateFuelPrices(int ron95, int ron92, int diesel, int mazut, int ron95Delta, int ron92Delta, int dieselDelta, int mazutDelta) {
     homeCache.fuelRon95 = ron95;
     homeCache.fuelRon92 = ron92;
     homeCache.fuelDiesel = diesel;
-    homeCache.fuelKerosene = kerosene;
+    homeCache.fuelMazut = mazut;
     homeCache.fuelRon95Delta = ron95Delta;
     homeCache.fuelRon92Delta = ron92Delta;
     homeCache.fuelDieselDelta = dieselDelta;
-    homeCache.fuelKeroseneDelta = keroseneDelta;
-    if (homeScreen) homeScreen->updateFuelPrices(ron95, ron92, diesel, kerosene, ron95Delta, ron92Delta, dieselDelta, keroseneDelta);
+    homeCache.fuelMazutDelta = mazutDelta;
+    if (homeScreen) homeScreen->updateFuelPrices(ron95, ron92, diesel, mazut, ron95Delta, ron92Delta, dieselDelta, mazutDelta);
 }
 
-void DashboardUI::updateMonthYearHeader(const char* monthYearStr) {
-    strncpy(calCache.monthYearStr, monthYearStr, sizeof(calCache.monthYearStr) - 1);
-    if (calendarScreen) calendarScreen->updateMonthYearHeader(monthYearStr);
+// --- Calendar Screen Setters ---
+void DashboardUI::setCalendarToday(int year, int month, int day) {
+    calCache.year = year;
+    calCache.month = month;
+    calCache.day = day;
+    if (calendarScreen) calendarScreen->setToday(year, month, day);
 }
 
-void DashboardUI::updateCalendarDays(int startDayOfWeek, int daysInMonth, int activeDay, const uint32_t* dotColorsMatrix) {
-    calCache.startDayOfWeek = startDayOfWeek;
-    calCache.daysInMonth = daysInMonth;
-    calCache.activeDay = activeDay;
-    for (int i = 0; i < 42; i++) {
-        calCache.dotColors[i] = dotColorsMatrix[i];
-    }
-    if (calendarScreen) calendarScreen->updateCalendarDays(startDayOfWeek, daysInMonth, activeDay, dotColorsMatrix);
-}
-
-void DashboardUI::updateSyncStatus(bool googleConnected, bool appleConnected) {
-    calCache.googleConnected = googleConnected;
-    calCache.appleConnected = appleConnected;
-    if (calendarScreen) calendarScreen->updateSyncStatus(googleConnected, appleConnected);
-}
-
-void DashboardUI::clearEvents() {
-    calCache.eventCount = 0;
-    if (calendarScreen) calendarScreen->clearEvents();
-}
-
-void DashboardUI::addEvent(const CalendarEvent& event) {
-    if (calCache.eventCount < 4) {
-        calCache.events[calCache.eventCount] = event;
-        calCache.eventCount++;
-    }
-    if (calendarScreen) calendarScreen->addEvent(event);
-}
-
+// --- Player Screen Setters ---
 void DashboardUI::updateTrackInfo(const char* title, const char* artist, const char* album, const char* qualityStr) {
     strncpy(playerCache.title, title, sizeof(playerCache.title) - 1);
     strncpy(playerCache.artist, artist, sizeof(playerCache.artist) - 1);
@@ -350,43 +311,65 @@ void DashboardUI::clearPlaylist() {
     if (playerScreen) playerScreen->clearPlaylist();
 }
 
-void DashboardUI::addPlaylistItem(const PlaylistItem& item) {
+void DashboardUI::addPlaylistItem(const PlaylistItem& item, int trackIndex) {
     if (playerCache.playlistCount < 6) {
-        playerCache.playlist[playerCache.playlistCount] = item;
-        playerCache.playlistCount++;
+        playerCache.playlist[playerCache.playlistCount++] = item;
     }
-    if (playerScreen) playerScreen->addPlaylistItem(item);
+    if (playerScreen) playerScreen->addPlaylistItem(item, trackIndex);
 }
 
+// --- Settings Screen Setters ---
 void DashboardUI::updateDeviceInfo(const SettingsDeviceInfo& info) {
     settingsCache.info = info;
     if (settingsScreen) settingsScreen->updateDeviceInfo(info);
 }
 
-void DashboardUI::updateMemoryUsage(float usedGB, float totalGB) {
-    settingsCache.usedGB = usedGB;
-    settingsCache.totalGB = totalGB;
-    if (settingsScreen) settingsScreen->updateMemoryUsage(usedGB, totalGB);
+void DashboardUI::updateSettingsTelemetry(uint32_t freeHeap, const char* uptimeStr, const char* ipStr, const char* macStr) {
+    settingsCache.freeHeap = freeHeap;
+    if (uptimeStr) strncpy(settingsCache.uptimeStr, uptimeStr, sizeof(settingsCache.uptimeStr) - 1);
+    if (ipStr) strncpy(settingsCache.ipStr, ipStr, sizeof(settingsCache.ipStr) - 1);
+    if (macStr) strncpy(settingsCache.macStr, macStr, sizeof(settingsCache.macStr) - 1);
+
+    if (settingsScreen) {
+        settingsScreen->updateTelemetry(freeHeap, uptimeStr, ipStr, macStr);
+    }
 }
 
-void DashboardUI::updateBatteryStatus(int percent, const char* durationStr) {
-    settingsCache.batPercent = percent;
-    strncpy(settingsCache.batDuration, durationStr, sizeof(settingsCache.batDuration) - 1);
-    if (settingsScreen) settingsScreen->updateBatteryStatus(percent, durationStr);
-}
+void DashboardUI::updateWifiSettings(const char* stateStr, const char* ssid, const char* ip, int rssi) {
+    if (stateStr) strncpy(settingsCache.wifiState, stateStr, sizeof(settingsCache.wifiState) - 1);
+    if (ssid) strncpy(settingsCache.wifiSsid, ssid, sizeof(settingsCache.wifiSsid) - 1);
+    if (ip) strncpy(settingsCache.ipStr, ip, sizeof(settingsCache.ipStr) - 1);
+    settingsCache.wifiRssi = rssi;
 
-void DashboardUI::updateWiFiConnection(const char* ssid, const char* ip) {
-    strncpy(settingsCache.wifiSsid, ssid, sizeof(settingsCache.wifiSsid) - 1);
-    strncpy(settingsCache.wifiIp, ip, sizeof(settingsCache.wifiIp) - 1);
-    if (settingsScreen) settingsScreen->updateWiFiConnection(ssid, ip);
-}
-
-void DashboardUI::updateLanguage(const char* langStr) {
-    strncpy(settingsCache.language, langStr, sizeof(settingsCache.language) - 1);
-    if (settingsScreen) settingsScreen->updateLanguage(langStr);
+    if (settingsScreen) {
+        settingsScreen->updateWifiStatus(stateStr, ssid, ip, rssi);
+    }
 }
 
 void DashboardUI::setActiveMenuItem(int index) {
     settingsCache.activeMenuItem = index;
     if (settingsScreen) settingsScreen->setActiveMenuItem(index);
+}
+
+void DashboardUI::setDevHudVisible(bool visible) {
+    if (devHud) devHud->setVisible(visible);
+}
+
+void DashboardUI::updateDevHud(float fps, uint32_t freeHeapKb, uint8_t cpuPercent, int32_t rssi, const char* ip) {
+    if (devHud) devHud->updateStats(fps, freeHeapKb, cpuPercent, rssi, ip);
+}
+
+void DashboardUI::tick() {
+    if (playerScreen) {
+        if (playerCache.isPlaying) {
+            playerScreen->tickSpectrumAnimation();
+        }
+
+        // Dùng member lastCheckedTrackIdx (không phải static local) để có thể reset khi tạo mới PlayerScreen
+        int curIdx = AudioPlayerService::getCurrentTrackIndex();
+        if (curIdx != lastCheckedTrackIdx) {
+            lastCheckedTrackIdx = curIdx;
+            playerScreen->syncCurrentTrackUI();
+        }
+    }
 }

@@ -71,10 +71,20 @@ public:
     }
 
     static void applySliderStyle(lv_obj_t* slider, lv_color_t activeColor) {
-        lv_obj_set_style_bg_color(slider, getCardBorderColor(), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(slider, lv_color_make(35, 38, 55), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(slider, lv_color_make(60, 65, 90), LV_PART_MAIN);
+        lv_obj_set_style_border_width(slider, 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+
         lv_obj_set_style_bg_color(slider, activeColor, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_INDICATOR);
+        lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+
         lv_obj_set_style_bg_color(slider, getWhiteColor(), LV_PART_KNOB);
-        lv_obj_set_style_pad_all(slider, 2, LV_PART_KNOB);
+        lv_obj_set_style_bg_opa(slider, LV_OPA_COVER, LV_PART_KNOB);
+        lv_obj_set_style_radius(slider, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+        lv_obj_set_style_pad_all(slider, 3, LV_PART_KNOB);
     }
 };
 
