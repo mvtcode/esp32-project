@@ -96,13 +96,18 @@ Hệ thống quản lý tài nguyên thông minh (100% Resource Isolation), tự
 | **L/R** (Mic Trái) | **GND** | Kênh Trái (phát ở slot WS = LOW) |
 | **L/R** (Mic Phải) | **3.3V** | Kênh Phải (phát ở slot WS = HIGH) |
 
-### 3. Mạch DAC giải mã âm thanh PCM5102A (I²S Output)
-| Chân PCM5102A | ESP32 Pin | Ghi chú |
-| :--- | :---: | :--- |
-| **BCK** | **GPIO 18** | Bit Clock |
-| **LCK / WS** | **GPIO 19** | Left/Right Clock |
-| **DIN** | **GPIO 23** | Data In |
-| **SCK** | **GND** | Nối đất để sử dụng Internal PLL của PCM5102A |
+### 3. Mạch DAC giải mã âm thanh (I²S Output - Hỗ trợ PCM5102A hoặc PCM5100A)
+*Dự án hỗ trợ cả 2 dòng module DAC họ PCM510xA (PCM5102A và PCM5100A), không cần thay đổi code.*
+
+| Chân Module (PCM5102A) | Chân Module (PCM5100A) | ESP32 Pin / Nguồn | Chức năng / Ghi chú |
+| :--- | :--- | :---: | :--- |
+| **BCK** | **BCK** | **GPIO 18** | I²S Bit Clock |
+| **LCK / WS** | **WS** | **GPIO 19** | I²S Word Select (Left/Right Clock) |
+| **DIN** | **DIN** | **GPIO 23** | I²S Serial Data In |
+| **SCK** | **MC** | **GND** | Nối đất để sử dụng bộ tạo xung nội (*Internal PLL*) |
+| *(Mặc định/Bỏ trống)* | **SD** | **3.3V** | Soft Mute / Shutdown (Kéo lên 3.3V để Enable ngõ ra âm thanh) |
+| **VCC / VIN** | **VCC / VIN** | **3.3V / 5V** | Cấp nguồn cho module |
+| **GND** | **GND** | **GND** | Nối đất chung |
 
 ### 4. Module đọc thẻ nhớ MicroSD (SPI Interface)
 | Chân MicroSD Module | ESP32 Pin | Ghi chú |
