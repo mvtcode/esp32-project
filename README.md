@@ -13,12 +13,14 @@ Trình phát video Motion JPEG và âm thanh I2S đồng bộ mượt mà trên 
 
 ## 🌟 Tính Năng Nổi Bật
 
-- ⚡ **Tăng Tốc Phần Cứng Với ESP32-S3**:
-  - Vi xử lý **Xtensa LX7 Dual-Core @ 240MHz** có tập lệnh vector **PIE / SIMD** giải mã Motion JPEG trong thời gian thực đạt 20 FPS ổn định.
-  - Tận dụng **8MB Octal PSRAM (OPI)** làm bộ đệm streaming và frame buffer lớn, chống hiện tượng drop frame hoặc tràn RAM.
+- ⚡ **Tăng Tốc Phần Cứng & Zero-Decode (Tùy Chọn)**:
+  - Hỗ trợ định dạng **Raw RGB565 Big-Endian (`rgb565be`)**: Triệt tiêu hoàn toàn thời gian giải mã (**`Decode = 0 ms`**), nạp thẳng pixel vào PSRAM rồi truyền DMA qua bus SPI 40 MHz đạt **18–20 FPS mượt mà**.
+  - Hỗ trợ định dạng **Motion JPEG (MJPEG)**: Tận dụng tập lệnh vector **PIE / SIMD** của ESP32-S3 Xtensa LX7 @ 240MHz để giải mã thời gian thực, dung lượng file nén cực nhẹ (~30–50 MB).
+  - **Tự động nhận diện (Auto-detect)**: Firmware tự phân biệt frame Raw RGB565 ($115.200\text{ bytes}$) hay MJPEG để tối ưu luồng xử lý mà không cần cấu hình lại code.
 - 🎞️ **Container AVI All-in-One Tối Ưu**:
-  - Tích hợp cả **Video (Motion JPEG 320x180 @ 20fps)** và **Audio (PCM WAV 16-bit Mono @ 22.05kHz)** trong 1 file duy nhất `/esp32-video/video.avi`.
-  - Đọc tuần tự (sequential streaming) qua DMA, không phải nhảy seek giữa 2 file độc lập, tăng gấp đôi băng thông đọc thẻ MicroSD.
+  - Tích hợp cả **Video (Raw RGB565 hoặc MJPEG 320x180 @ 18–20fps)** và **Audio (PCM WAV 16-bit Mono @ 22.05kHz)** trong duy nhất 1 file `/esp32-video/video.avi`.
+  - **High-Speed SD_MMC 40MHz & Multi-Block Streaming**: Đọc tuần tự đa khối liên tục với tốc độ lên tới ~5.2 MB/s, cơ chế tự động mở lại luồng khi tua/replay để duy trì tốc độ đọc thẻ đỉnh cao.
+  - **PSRAM Framebuffer (112 KB)**: Đọc gom toàn bộ frame vào PSRAM và đẩy ra màn hình qua 1 transaction SPI duy nhất (`startWrite` + `pushPixels`), loại bỏ triệt để độ trễ lặp CS pin.
   - Tương thích 100% khi mở trực tiếp trên máy tính bằng VLC Media Player.
 - 🔊 **Âm Thanh I2S Hi-Fi Qua Audio Codec ES8311 & Ampli FM8002E**:
   - **ESP32-S3 không có DAC nội**, dự án giao tiếp với chip **Everest Semiconductor ES8311 (I2C 0x18)**:
@@ -35,7 +37,24 @@ Trình phát video Motion JPEG và âm thanh I2S đồng bộ mượt mà trên 
   - Nút **▶ Play** ở tâm màn hình tự động biến mất ngay khi phát video để hiển thị trọn vẹn khung hình cinema, chỉ xuất hiện lại khi tạm dừng (Pause).
   - Tự động ẩn toàn bộ overlay sau 1 giây; chạm màn hình (**Tap-to-Wake**) để bật lại trong 1.5 giây.
 - 🕹️ **Điều Khiển Linh Hoạt**:
-  - Hỗ trợ cảm ứng điện dung FT6336G và nút bấm vật lý **BOOT (GPIO0)**.
+---
+
+## ⚖️ Phân Tích & Điểm Cân Bằng Hiệu Năng (Performance Trade-off)
+
+Quá trình tối ưu trên phần cứng thực tế ESP32-S3 đã chỉ ra bài toán đánh đổi cốt lõi giữa **Băng thông Thẻ nhớ SD** và **Tốc độ Giải mã CPU**:
+
+| Phương pháp | Đọc thẻ nhớ (SD) | Giải mã CPU (Decode) | Đẩy màn hình (Push SPI) | Tổng thời gian / frame | FPS thực tế | Tải CPU | Đánh giá & Giới hạn phần cứng |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1. Có nén (Encode MJPEG)** | **~2 – 6 ms** (File nhẹ ~4–10KB) | **~25 – 50 ms** (Nghẽn CPU decode) | **~27 ms** | ~55 – 83 ms | **11 – 14 FPS** | 100% (Nóng chip) | Nhẹ tải thẻ SD nhưng CPU bị nghẽn ở khâu tính toán giải mã IDCT |
+| **2. Không nén (No-Encode Raw) ở FPS cao (24–30 FPS)** | **~65 – 70 ms** (Nghẽn thẻ SD) | **0 ms** (Zero Decode) | **~27 ms** | ~92 – 97 ms | **~10 FPS** (Drop frame) | < 10% | Khung hình nặng 115 KB/frame; ở FPS cao vượt quá ngưỡng streaming ổn định của thẻ nhớ |
+| **⭐ 3. Không nén (No-Encode Raw) @ 18–19 FPS (Tối ưu nhất)** | **~22 – 24 ms** (Đạt chuẩn Multi-Block) | **0 ms** (Zero Decode) | **~27 ms** | **~50 – 52 ms** | **19.0 FPS** (Mượt tuyệt đối) | **< 10%** (Cực mát) | **ĐIỂM CÂN BẰNG TỐI ƯU**: Thẻ SD đọc vừa vặn với tốc độ streaming 40MHz, không bị drop frame (`skip=no`) |
+
+> [!TIP]
+> **Kết luận thực nghiệm:**
+> Phương pháp tốt nhất hiện tại trên ESP32-S3 là **Raw No-Encode (RGB565) ở mức 19 FPS**.
+> - **Nếu No-Encode ở FPS quá cao (24–30 FPS)**: Dung lượng dữ liệu quá lớn ($115.200\text{ bytes/frame}$) gây nghẽn cổ chai tại thẻ nhớ SD (thời gian đọc SD tăng vọt lên ~65ms).
+> - **Nếu Encode (MJPEG)**: File nhẹ giúp thẻ nhớ đọc rất nhanh (2–6ms), nhưng CPU lại tốn 25–50ms để giải mã từng khối DCT.
+> - **Điểm cân bằng lý tưởng: 19 FPS Raw No-Encode**: Thẻ nhớ đọc nhẹ nhàng trong **~22–24ms**, thời gian giải mã là **0 ms**, thời gian push SPI là **~27ms** $\rightarrow$ Hệ thống đạt chuẩn **19.0 FPS mượt mà tuyệt đối**.
 
 ---
 
@@ -112,21 +131,31 @@ Toàn bộ cấu hình chân GPIO được định nghĩa tập trung tại file
 2. Đảm bảo đã có `ffmpeg.exe` trong thư mục `tools/` (hoặc máy tính đã cài đặt sẵn FFmpeg trong PATH).
 
 ### Bước 2: Chạy script chuyển đổi tự động
-Mở PowerShell tại thư mục gốc của dự án và thực thi:
+Mở PowerShell tại thư mục gốc của dự án và chọn 1 trong 2 chế độ:
 
+#### Cách 1: Chế độ Raw RGB565 (Khuyên dùng - Zero Decode, 19 FPS mượt mà tuyệt đối)
 ```powershell
-.\tools\video-to-frames.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\video-to-frames.ps1 -Format rgb565 -Fps 19
 ```
+- **Ưu điểm**: Triệt tiêu thời gian decode (`Decode = 0 ms`), video chạy chuẩn **19.0 FPS**, CPU < 10%.
+- **Dung lượng**: ~400 MB cho video ~3.5 phút.
+
+#### Cách 2: Chế độ Motion JPEG (Dung lượng file nén cực nhẹ)
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\video-to-frames.ps1 -Format mjpeg -Quality 12 -Fps 18
+```
+- **Ưu điểm**: Dung lượng siêu nhẹ chỉ ~30–40 MB cho video 3.5 phút.
+- **Hiệu năng**: Decode JPEG SIMD mất ~25–30 ms/frame, đạt ~14–16 FPS.
 
 Script sẽ tự động:
 - Cắt và scale video về chuẩn **$320 \times 180$ (Tỉ lệ 16:9)**.
-- Đặt tốc độ khung hình chuẩn **20 fps**.
+- Đặt tốc độ khung hình chuẩn theo tham số `-Fps` (18 hoặc 20 fps).
 - Trích xuất âm thanh sang **PCM 16-bit Mono @ 22.05kHz**.
 - Đóng gói đồng bộ thành 1 tệp duy nhất **`tools/out/video.avi`**.
 
 ### Bước 3: Copy vào thẻ nhớ MicroSD
 1. Định dạng thẻ MicroSD sang chuẩn **FAT32**.
-2. Tạo thư mục `esp32-video` và sao chép file `video.avi` vào:
+2. Tạo thư mục `esp32-video` và sao chép **duy nhất 1 file** `video.avi` vào:
 
 ```text
 [Thẻ MicroSD FAT32]:/
@@ -158,15 +187,14 @@ pio device monitor
 ```
 *(Mẹo: Có thể gộp lệnh: `pio run -e esp32s3 -t upload; pio device monitor`)*
 
-Khi khởi động thành công, Serial Monitor sẽ hiển thị:
+Khi phát video, hệ thống in log đo kiểm hiệu năng thời gian thực mỗi 60 frame:
 ```text
-[AudioI2sService] I2S DMA đã khởi tạo thành công (MCLK=4, BCLK=5, LRC=7, DOUT=8, Rate=22050Hz)
-[AudioI2sService] Phát hiện Audio Codec ES8311 tại I2C 0x18 (Chip ID: 0x8311)
-[AudioI2sService] Codec ES8311 sẵn sàng (Reg00=0x80, Reg31=0x00, Reg32=0xBF, Vol=100%)
-[AudioI2sService] Đã kích hoạt PIN_PA_ENABLE (GPIO 1, Active LOW - Amp ON)
-[AudioI2sService] Đã khởi tạo Audio RingBuffer 16KB
-[VideoPlayer] AVI Mode (All-in-One): Frames = 1200, Duration = 60000 ms
+[VideoPlayerService] [FPS] 60 rendered / 3155 ms = 19.0 fps | skip=no
+[VideoPlayerService] [Profile/frame] SD=22ms  Decode=0ms  Push=27ms
 ```
+- **SD**: Thời gian đọc khối dữ liệu từ thẻ nhớ SD_MMC (chế độ Multi-Block Streaming ~22–24ms).
+- **Decode**: Thời gian giải mã hình ảnh (`0ms` với Raw RGB565, hoặc `~25-30ms` với MJPEG).
+- **Push**: Thời gian đẩy toàn bộ framebuffer 112 KB qua bus SPI 40 MHz tới màn hình ILI9341V.
 
 ---
 

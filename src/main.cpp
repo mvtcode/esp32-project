@@ -20,7 +20,7 @@ static VideoPlayerService playerService(tft, audioService, videoUI);
 static uint32_t lastButtonPress = 0;
 static uint32_t lastTouchPress = 0;
 
-// Hàm đọc cảm ứng điện dung FT6336G qua I2C (Address 0x38)
+// Hàm đọc cảm ứng điện dung FT6336G (I2C) hoặc điện trở XPT2046 (SPI)
 static bool getTouchCoordinates(uint16_t* x, uint16_t* y) {
 #if defined(PIN_TOUCH_SDA) && defined(PIN_TOUCH_SCL)
     Wire.beginTransmission(0x38);
@@ -53,6 +53,8 @@ static bool getTouchCoordinates(uint16_t* x, uint16_t* y) {
     *x = rawY;
     *y = 239 - rawX;
     return true;
+#elif defined(PIN_TOUCH_CS) || defined(TOUCH_CS)
+    return tft.getTouch(x, y);
 #else
     return false;
 #endif
@@ -64,14 +66,20 @@ void setup() {
     digitalWrite(PIN_TFT_BL, HIGH);
 
     Serial.begin(115200);
-#if ARDUINO_USB_CDC_ON_BOOT
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
     Serial.setTxTimeoutMs(0); // Không chặn/treo CPU khi không mở Serial Monitor
 #endif
     delay(100);
 
+#if defined(BOARD_ESP32S3)
     LOG_I(TAG, "=============================================");
     LOG_I(TAG, "ESP32-S3 2.8 Video Player (320x240 + I2S)   ");
     LOG_I(TAG, "=============================================");
+#else
+    LOG_I(TAG, "=============================================");
+    LOG_I(TAG, "ESP32 CYD Video Player (ST7796 + DAC)        ");
+    LOG_I(TAG, "=============================================");
+#endif
 
     // Kiểm tra PSRAM
     if (psramFound()) {
@@ -88,17 +96,23 @@ void setup() {
     // 2. Cấu hình nút bấm BOOT (GPIO0)
     pinMode(PIN_BUTTON_BOOT, INPUT_PULLUP);
 
-    // 3. Khởi tạo màn hình (Landscape: 320x240)
-    LOG_I(TAG, "2. Đang khởi tạo màn hình TFT (320x240)...");
+    // 3. Khởi tạo màn hình
+    LOG_I(TAG, "2. Đang khởi tạo màn hình TFT...");
     tft.init();
-    tft.setRotation(1); // Chế độ nằm ngang (Landscape: 320x240)
+    tft.setRotation(1); // Chế độ nằm ngang (Landscape)
+#if defined(TFT_INVERSION_ON) && TFT_INVERSION_ON
     tft.invertDisplay(true); // Sửa lỗi màn hình IPS (ES3C28P) bị âm bản (negative colors)
+#endif
     tft.fillScreen(TFT_BLACK);
     LOG_I(TAG, "Màn hình TFT đã khởi tạo thành công");
 
     // Hiển thị màn hình chờ khởi động
     tft.setTextColor(TFT_CYAN, TFT_BLACK);
+#if defined(BOARD_ESP32S3)
     tft.drawString("ESP32-S3 Video Player", 40, 80, 4);
+#else
+    tft.drawString("ESP32 Video Player", 40, 80, 4);
+#endif
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.drawString("Dang kiem tra the nho MicroSD...", 50, 130, 2);
 

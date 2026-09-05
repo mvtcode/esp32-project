@@ -43,12 +43,14 @@ private:
     VideoUI& m_ui;
 
     File m_videoFile;
+    char m_videoPath[128];
     VideoState m_state;
     int m_fps;
     uint32_t m_currentFrame;
     uint32_t m_totalDurationMs;
 
     bool m_isAvi;
+    bool m_isRawRgb;             // true nếu frame video trong AVI là Raw RGB565 (115200 bytes) -> Zero Decode
     uint32_t m_moviOffset;
 
     uint8_t* m_frameBuffer;

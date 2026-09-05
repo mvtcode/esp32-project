@@ -40,11 +40,18 @@ VideoPlayerService::VideoPlayerService(TFT_eSPI& tft, AudioI2sService& audioServ
       m_currentFrame(0),
       m_totalDurationMs(0),
       m_isAvi(false),
+      m_isRawRgb(false),
       m_moviOffset(0),
       m_frameBuffer(nullptr),
+#if defined(BOARD_HAS_PSRAM) || defined(CONFIG_SPIRAM_SUPPORT)
       m_frameBufferCapacity(98304),    // 96 KB: đủ cho MJPEG 320x180 quality cao
       m_readChunkBuffer(nullptr),
       m_readChunkSize(32768),           // 32 KB (PSRAM): giảm latency FATFS read
+#else
+      m_frameBufferCapacity(40960),    // 40 KB: an toàn cho Internal SRAM của esp32dev
+      m_readChunkBuffer(nullptr),
+      m_readChunkSize(4096),            // 4 KB: đọc SD theo block nhỏ để tiết kiệm RAM
+#endif
       m_readChunkPos(0),
       m_readChunkLen(0),
       m_audioReadBuf(nullptr),
@@ -53,6 +60,7 @@ VideoPlayerService::VideoPlayerService(TFT_eSPI& tft, AudioI2sService& audioServ
       m_isFirstFrameRendered(false),
       m_playbackStartTime(0),
       m_playbackElapsedMs(0) {
+    memset(m_videoPath, 0, sizeof(m_videoPath));
 }
 
 VideoPlayerService::~VideoPlayerService() {
@@ -179,6 +187,9 @@ bool VideoPlayerService::openVideo(const char* videoPath, const char* wavPath, i
         return false;
     }
 
+    strncpy(m_videoPath, videoPath, sizeof(m_videoPath) - 1);
+    m_videoPath[sizeof(m_videoPath) - 1] = '\0';
+
     // Cập nhật tiêu đề video trên UI
     const char* baseName = strrchr(videoPath, '/');
     if (!baseName) baseName = strrchr(videoPath, '\\');
@@ -273,11 +284,15 @@ bool VideoPlayerService::openVideo(const char* videoPath, const char* wavPath, i
     LOG_I(TAG, "Đã mở video: %s (Kích thước: %u KB, Thời lượng: %u ms)",
           videoPath, (uint32_t)(m_videoFile.size() / 1024), m_totalDurationMs);
 
-    // Đọc và vẽ ngay frame đầu tiên (Frame 0) tại y=20 (tâm màn hình), sau đó dừng ở trạng thái PAUSED
+    // Đọc và vẽ ngay frame đầu tiên (Frame 0) tại y=30, sau đó dừng ở trạng thái PAUSED
     size_t frameSize = 0;
     if (readNextFrame(frameSize)) {
-        // Render frame đầu tiên: decode vào render buffer + 1 pushImage
-        if (s_renderBuffer) {
+        if (m_isRawRgb) {
+            if (s_renderBuffer) {
+                // Raw RGB: Dữ liệu đã nạp trực tiếp vào s_renderBuffer -> Đẩy thẳng
+                m_tft.pushImage(0, 30, kVideoW, kVideoH, s_renderBuffer);
+            }
+        } else if (s_renderBuffer) {
             TJpgDec.drawJpg(0, 0, m_frameBuffer, frameSize);
             m_tft.pushImage(0, 30, kVideoW, kVideoH, s_renderBuffer);
         } else {
@@ -323,35 +338,83 @@ bool VideoPlayerService::readNextFrameAvi(size_t& frameSize, bool skipVideo) {
             return false;
         }
 
-        // 1. Chunk Video: 00dc (MJPEG frame)
-        if (chunkHdr[2] == 'd' && chunkHdr[3] == 'c') {
-            if (skipVideo) {
-                // Bỏ qua giải mã video: Chỉ cần seek qua chunk trong 0.05ms (không đọc 51KB từ SD)
-                if (StorageService::lock(pdMS_TO_TICKS(50))) {
-                    m_videoFile.seek(m_videoFile.position() + chunkSize + pad);
+        // 1. Chunk Video: 00dc hoặc 00db (MJPEG frame hoặc Raw RGB565 frame)
+        if (chunkHdr[2] == 'd' && (chunkHdr[3] == 'c' || chunkHdr[3] == 'b')) {
+            const size_t rawFrameBytes = (size_t)kVideoW * kVideoH * sizeof(uint16_t); // 115200 bytes
+            if (chunkSize == rawFrameBytes) {
+                m_isRawRgb = true;
+                if (m_renderBuffer) {
+                    // CÓ PSRAM (ESP32-S3): Đọc 1 lần vào m_renderBuffer, update() sẽ push lên màn hình
+                    if (!StorageService::lock(pdMS_TO_TICKS(100))) return false;
+                    size_t bytesRead = m_videoFile.read(reinterpret_cast<uint8_t*>(m_renderBuffer), chunkSize);
+                    if (pad > 0) m_videoFile.read(); // Bỏ qua padding byte
                     StorageService::unlock();
-                }
-                frameSize = 0;
-                return true; // Đã xử lý xong 1 frame (bỏ qua hình ảnh)
-            }
 
-            if (chunkSize > m_frameBufferCapacity) {
-                LOG_W(TAG, "Frame size %u vượt quá buffer %u", chunkSize, m_frameBufferCapacity);
-                if (StorageService::lock(pdMS_TO_TICKS(50))) {
-                    m_videoFile.seek(m_videoFile.position() + chunkSize + pad);
+                    if (bytesRead != chunkSize) return false;
+                    if (skipVideo) {
+                        frameSize = 0; // Đã đọc xong nhưng bỏ qua vẽ màn hình
+                    } else {
+                        frameSize = chunkSize;
+                    }
+                    return true;
+                } else {
+                    // KHÔNG CÓ PSRAM (esp32dev): Stream từng block từ SD trực tiếp lên TFT SPI!
+                    if (!StorageService::lock(pdMS_TO_TICKS(100))) return false;
+                    if (skipVideo) {
+                        m_videoFile.seek(m_videoFile.position() + chunkSize + pad);
+                        StorageService::unlock();
+                        frameSize = 0;
+                        return true;
+                    }
+
+                    m_tft.startWrite();
+                    m_tft.setAddrWindow(0, 30, kVideoW, kVideoH);
+                    uint32_t remaining = chunkSize;
+                    size_t chunkBufSize = (m_frameBufferCapacity > 0) ? m_frameBufferCapacity : 4096;
+                    while (remaining > 0) {
+                        size_t toRead = (remaining > chunkBufSize) ? chunkBufSize : remaining;
+                        size_t r = m_videoFile.read(m_frameBuffer, toRead);
+                        if (r == 0) break;
+                        m_tft.pushPixels(reinterpret_cast<uint16_t*>(m_frameBuffer), (uint32_t)(r / 2));
+                        remaining -= r;
+                    }
+                    if (pad > 0) m_videoFile.read(); // Bỏ qua padding byte
+                    m_tft.endWrite();
                     StorageService::unlock();
+
+                    if (remaining > 0) return false;
+                    frameSize = chunkSize;
+                    return true;
                 }
-                continue;
+            } else {
+                // Motion JPEG: Frame nhỏ (~4-10KB)
+                if (skipVideo) {
+                    if (StorageService::lock(pdMS_TO_TICKS(50))) {
+                        m_videoFile.seek(m_videoFile.position() + chunkSize + pad);
+                        StorageService::unlock();
+                    }
+                    frameSize = 0;
+                    return true;
+                }
+
+                m_isRawRgb = false;
+                if (chunkSize > m_frameBufferCapacity) {
+                    LOG_W(TAG, "Frame size %u vượt quá buffer %u", chunkSize, m_frameBufferCapacity);
+                    if (StorageService::lock(pdMS_TO_TICKS(50))) {
+                        m_videoFile.seek(m_videoFile.position() + chunkSize + pad);
+                        StorageService::unlock();
+                    }
+                    continue;
+                }
+
+                if (!StorageService::lock(pdMS_TO_TICKS(100))) return false;
+                size_t bytesRead = m_videoFile.read(m_frameBuffer, chunkSize);
+                if (pad > 0) m_videoFile.read(); // Bỏ qua padding byte
+                StorageService::unlock();
+
+                if (bytesRead != chunkSize) return false;
+                frameSize = chunkSize;
             }
-
-            if (!StorageService::lock(pdMS_TO_TICKS(100))) return false;
-            size_t bytesRead = m_videoFile.read(m_frameBuffer, chunkSize);
-            if (pad > 0) m_videoFile.read(); // Bỏ qua padding byte
-            StorageService::unlock();
-
-            if (bytesRead != chunkSize) return false;
-            frameSize = chunkSize;
-            return true;
         }
         // 2. Chunk Audio: 01wb (PCM WAV audio) — Đọc toàn bộ trong 1 SD transaction
         else if (chunkHdr[2] == 'w' && chunkHdr[3] == 'b') {
@@ -444,10 +507,15 @@ bool VideoPlayerService::readNextFrameMjpeg(size_t& frameSize) {
 
 void VideoPlayerService::play() {
     m_state = VideoState::PLAYING;
-    m_playbackStartTime = millis() - m_playbackElapsedMs;
+    // Đồng bộ tuyệt đối m_playbackStartTime khớp chính xác với m_currentFrame hiện tại!
+    if (m_fps > 0) {
+        m_playbackStartTime = millis() - ((uint64_t)m_currentFrame * 1000ULL / m_fps);
+    } else {
+        m_playbackStartTime = millis() - m_playbackElapsedMs;
+    }
     m_audioService.play();
     m_ui.triggerOverlay(1000); // Hiện overlay 1s rồi tự ẩn (Cinema Mode)
-    LOG_I(TAG, "VideoPlayer: PLAY (Elapsed: %u ms)", m_playbackElapsedMs);
+    LOG_I(TAG, "VideoPlayer: PLAY (Frame: %u)", m_currentFrame);
 }
 
 void VideoPlayerService::pause() {
@@ -478,10 +546,21 @@ void VideoPlayerService::reset() {
 
     if (StorageService::lock()) {
         if (m_videoFile) {
-            if (m_isAvi && m_moviOffset > 0) {
-                m_videoFile.seek(m_moviOffset);
-            } else {
-                m_videoFile.seek(0);
+            m_videoFile.close();
+            // Đóng và mở lại từ đầu: reset hoàn toàn FATFS cluster chain
+            if (m_videoPath[0] != '\0') {
+                m_videoFile = StorageService::openFile(m_videoPath, FILE_READ);
+                if (m_videoFile && m_isAvi && m_moviOffset > 0) {
+                    // Đọc tuần tự tới m_moviOffset thay vì gọi seek() để giữ trọn vẹn multi-block streaming
+                    uint32_t toSkip = m_moviOffset;
+                    uint8_t dummy[512];
+                    while (toSkip > 0 && m_videoFile.available()) {
+                        size_t n = (toSkip > sizeof(dummy)) ? sizeof(dummy) : toSkip;
+                        size_t r = m_videoFile.read(dummy, n);
+                        if (r == 0) break;
+                        toSkip -= r;
+                    }
+                }
             }
         }
         StorageService::unlock();
@@ -492,7 +571,11 @@ void VideoPlayerService::reset() {
     // Vẽ lại frame 0 tại y=30 và cập nhật UI về 00:00
     size_t frameSize = 0;
     if (readNextFrame(frameSize)) {
-        if (s_renderBuffer) {
+        if (m_isRawRgb) {
+            if (s_renderBuffer) {
+                m_tft.pushImage(0, 30, kVideoW, kVideoH, s_renderBuffer);
+            }
+        } else if (s_renderBuffer) {
             TJpgDec.drawJpg(0, 0, m_frameBuffer, frameSize);
             m_tft.pushImage(0, 30, kVideoW, kVideoH, s_renderBuffer);
         } else {
@@ -539,8 +622,16 @@ void VideoPlayerService::update() {
     if (ok) {
         if (!shouldSkip && frameSize > 0) {
             uint32_t t2 = 0, t3 = 0;
-            // Render: decode vào PSRAM render buffer rồi push toàn bộ trong 1 SPI transaction
-            if (s_renderBuffer) {
+            if (m_isRawRgb) {
+                t2 = micros();
+                if (s_renderBuffer) {
+                    m_tft.startWrite();
+                    m_tft.setAddrWindow(0, 30, kVideoW, kVideoH);
+                    m_tft.pushPixels(s_renderBuffer, (uint32_t)kVideoW * kVideoH);
+                    m_tft.endWrite();
+                }
+                t3 = micros();
+            } else if (s_renderBuffer) {
                 TJpgDec.drawJpg(0, 0, m_frameBuffer, frameSize);
                 t2 = micros();
                 // startWrite/endWrite giữ SPI CS LOW liên tục trong suốt pushImage → không bị overhead CS toggle

@@ -156,7 +156,8 @@ bool AudioI2sService::begin() {
         return true;
     }
 
-    // 1. Cấu hình I2S DMA driver trước để ESP32 bắt đầu xuất xung MCLK, BCLK, WS cho Codec
+#if defined(PIN_I2S_BCLK) && defined(PIN_I2S_LRC) && defined(PIN_I2S_DOUT)
+    // 1. Cấu hình I2S DMA driver xuất ra DAC ngoài / Codec ES8311 (ESP32-S3)
     i2s_config_t i2sConfig = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
         .sample_rate = m_sampleRate,
@@ -197,32 +198,67 @@ bool AudioI2sService::begin() {
 
     i2s_zero_dma_buffer(I2S_NUM_0);
     m_i2sInstalled = true;
-    LOG_I(TAG, "I2S DMA đã khởi tạo thành công (MCLK=%d, BCLK=%d, LRC=%d, DOUT=%d, Rate=%uHz)",
-          PIN_I2S_MCLK, PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DOUT, m_sampleRate);
+    LOG_I(TAG, "I2S DMA đã khởi tạo thành công (BCLK=%d, LRC=%d, DOUT=%d, Rate=%uHz)",
+          PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DOUT, m_sampleRate);
 
     // 2. Khởi tạo Codec ES8311 qua I2C sau khi I2S clock đã xuất ổn định
     initEs8311Codec();
 
-    // 3. Kích hoạt Power Amplifier FM8002E (Active LOW trên ES3C28P)
 #if defined(PIN_PA_ENABLE)
     pinMode(PIN_PA_ENABLE, OUTPUT);
     digitalWrite(PIN_PA_ENABLE, LOW); // Bật bộ khuếch đại công suất FM8002E (Active LOW)
     LOG_I(TAG, "Đã kích hoạt PIN_PA_ENABLE (GPIO %d, Active LOW - Amp ON)", PIN_PA_ENABLE);
 #endif
 
-    // 4. Tạo RingBuffer 32KB cho luồng audio từ file AVI (Non-blocking)
+#else
+    // Classic ESP32 (esp32dev / CYD 3.5"): Sử dụng I2S Internal DAC tích hợp (GPIO25/26)
+    i2s_config_t i2sConfig = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_DAC_BUILT_IN),
+        .sample_rate = m_sampleRate,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
+        .communication_format = I2S_COMM_FORMAT_STAND_MSB,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = 8,
+        .dma_buf_len = 256,
+        .use_apll = false,
+        .tx_desc_auto_clear = true
+    };
+
+    esp_err_t err = i2s_driver_install(I2S_NUM_0, &i2sConfig, 0, NULL);
+    if (err != ESP_OK) {
+        LOG_E(TAG, "Lỗi cài đặt driver I2S Internal DAC: %d", err);
+        return false;
+    }
+
+    i2s_set_pin(I2S_NUM_0, NULL);
+    i2s_set_dac_mode(I2S_DAC_CHANNEL_BOTH_EN);
+    i2s_zero_dma_buffer(I2S_NUM_0);
+    m_i2sInstalled = true;
+    LOG_I(TAG, "I2S Internal DAC (GPIO25/26) đã khởi tạo thành công (Rate=%uHz)", m_sampleRate);
+#endif
+
+    // 3. Tạo RingBuffer cho luồng audio từ file AVI (Non-blocking)
     if (!m_ringBuffer) {
+#if defined(BOARD_HAS_PSRAM) || defined(CONFIG_SPIRAM_SUPPORT)
         m_ringBuffer = xRingbufferCreate(32768, RINGBUF_TYPE_BYTEBUF);
+#else
+        m_ringBuffer = xRingbufferCreate(8192, RINGBUF_TYPE_BYTEBUF);
+#endif
         if (m_ringBuffer) {
-            LOG_I(TAG, "Đã khởi tạo Audio RingBuffer 32KB");
+            LOG_I(TAG, "Đã khởi tạo Audio RingBuffer");
         }
     }
 
-    // 5. Tạo FreeRTOS Task chạy trên Core 0
+    // 4. Tạo FreeRTOS Task chạy trên Core 0
     BaseType_t res = xTaskCreatePinnedToCore(
         audioTask,
         "AudioI2sTask",
-        6144,           // Tăng stack: stereoBuffer 2KB + I2S driver call stack
+#if defined(BOARD_HAS_PSRAM) || defined(CONFIG_SPIRAM_SUPPORT)
+        6144,
+#else
+        3072,
+#endif
         this,
         2,              // Mức ưu tiên vừa phải
         &m_taskHandle,
@@ -382,8 +418,16 @@ void AudioI2sService::playPcmDirect(const uint8_t* pcmData, size_t len) {
             if (!m_codecDetected && m_volume < 100) {
                 s = (int16_t)(((int32_t)s * m_volume) / 100);
             }
+#if !defined(PIN_I2S_BCLK)
+            // Trên ESP32 DAC nội (I2S_MODE_DAC_BUILT_IN): DAC nhận số unsigned 16-bit
+            // Giá trị signed (-32768..32767) cần cộng 32768 để đưa về dải 0..65535
+            uint16_t dacVal = (uint16_t)(((int32_t)s + 32768) & 0xFFFF);
+            stereoBuffer[i * 2] = dacVal;     // Left
+            stereoBuffer[i * 2 + 1] = dacVal; // Right (GPIO26)
+#else
             stereoBuffer[i * 2] = s;     // Left
             stereoBuffer[i * 2 + 1] = s; // Right
+#endif
         }
 
         size_t bytesWritten = 0;
