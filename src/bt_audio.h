@@ -48,9 +48,35 @@ void bt_audio_set_volume(uint8_t volume);
 uint8_t bt_audio_get_volume();
 
 /**
- * @brief Toggle Play/Pause on connected phone/PC via AVRCP.
+ * @brief Pause Bluetooth audio playback via AVRCP.
  */
-void bt_audio_play_pause();
+void bt_audio_pause();
+
+/**
+ * @brief Resume Bluetooth audio playback via AVRCP.
+ */
+void bt_audio_resume();
+
+/**
+ * @brief Toggle Play/Pause on connected phone/PC via AVRCP.
+ * @return true if now playing/resumed, false if paused.
+ */
+bool bt_audio_play_pause();
+
+/**
+ * @brief Check if Bluetooth audio playback is currently paused.
+ */
+bool bt_audio_is_paused();
+
+/**
+ * @brief Skip to previous track on connected phone/PC via AVRCP.
+ */
+void bt_audio_prev_track();
+
+/**
+ * @brief Skip to next track on connected phone/PC via AVRCP.
+ */
+void bt_audio_next_track();
 
 /**
  * @brief Clear paired device MAC and enter discoverable/pairing mode.

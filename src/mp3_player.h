@@ -38,8 +38,9 @@ void mp3_player_prev_track();
 
 /**
  * @brief Toggle Play / Pause state.
+ * @return true if now playing, false if now paused
  */
-void mp3_player_toggle_play_pause();
+bool mp3_player_toggle_play_pause();
 
 /**
  * @brief Pause playback with soft volume ramp down.

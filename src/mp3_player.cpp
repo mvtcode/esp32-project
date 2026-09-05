@@ -828,12 +828,13 @@ void mp3_player_prev_track() {
     }
 }
 
-void mp3_player_toggle_play_pause() {
+bool mp3_player_toggle_play_pause() {
     if (s_is_paused) {
         mp3_player_resume();
     } else {
         mp3_player_pause();
     }
+    return !s_is_paused;
 }
 
 void mp3_player_pause() {
@@ -853,7 +854,7 @@ void mp3_player_resume() {
 }
 
 void mp3_player_adjust_volume(int32_t delta) {
-    int32_t new_vol = (int32_t)s_current_volume + (delta * 4);
+    int32_t new_vol = (int32_t)s_current_volume + delta; //(delta * 4);
     if (new_vol < 0) new_vol = 0;
     if (new_vol > 127) new_vol = 127;
     mp3_player_set_volume((uint8_t)new_vol);

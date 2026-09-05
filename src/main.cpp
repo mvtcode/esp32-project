@@ -277,13 +277,21 @@ void loop() {
             } else if (button_pressed(BTN_BACK)) {
                 // Click: Play / Pause toggle
                 LOG_I("BTN", "BACK pressed (Short -> Play/Pause)");
-                mp3_player_toggle_play_pause();
-                display_toast(mp3_player_is_paused() ? "PAUSE" : "PLAY");
+                bool s_is_paused = mp3_player_toggle_play_pause();
+                display_toast(s_is_paused ? "PAUSE" : "PLAY");
             }
         }
     } else if (s_current_mode == AUDIO_MODE_BT) {
-        if (button_pressed(BTN_BACK)) {
-            bt_audio_play_pause();
+        if (button_long_pressed(BTN_BACK)) {
+            // Long press >= 600ms: Previous track
+            LOG_I("BTN", "BT BACK long-pressed (Hold -> Prev Track)");
+            bt_audio_prev_track();
+            display_toast("PREV TRACK");
+        } else if (button_pressed(BTN_BACK)) {
+            // Click: Play / Pause toggle
+            LOG_I("BTN", "BT BACK pressed (Short -> Play/Pause)");
+            bool is_playing = bt_audio_play_pause();
+            display_toast(is_playing ? "PLAY" : "PAUSE");
         }
     } else if (s_current_mode == AUDIO_MODE_CLOCK) {
         if (button_pressed(BTN_BACK)) {

@@ -7,6 +7,9 @@
 static QueueHandle_t     s_vis_queue = nullptr;
 static bool              s_is_connected = false;
 static bool              s_is_playing = false;
+static bool              s_is_paused = false;
+static uint32_t          s_last_pause_ts = 0;
+static uint32_t          s_last_data_ts = 0;
 static bool              s_is_started = false;
 static uint8_t           s_current_volume = 80;
 static char              s_device_name[64] = "None";
@@ -26,9 +29,16 @@ static FrameAccumulator s_fa;
 static void bt_i2s_data_callback(const uint8_t *data, uint32_t len) {
     if (!data || len == 0 || !s_is_started) return;
 
+    // Drop lingering packets in flight right after user pressed pause
+    if (s_is_paused && (millis() - s_last_pause_ts < 500)) {
+        return;
+    }
+
     const int16_t *samples = (const int16_t *)data;
     size_t num_pairs = len / (2 * sizeof(int16_t));
+    s_last_data_ts = millis();
     s_is_playing = true;
+    s_is_paused = false;
 
     // 1. Feed Visualizer queue FIRST so OLED visualizer always works
     if (s_vis_queue) {
@@ -85,6 +95,7 @@ static void a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
         } else if (a2d->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
             s_is_connected = false;
             s_is_playing = false;
+            s_is_paused = false;
             memset(s_connected_bda, 0, 6);
             LOG_I("BT", "A2DP Disconnected (reason: %d)", a2d->conn_stat.disc_rsn);
             display_toast("BT DISCONNECTED");
@@ -94,8 +105,14 @@ static void a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
         break;
     }
     case ESP_A2D_AUDIO_STATE_EVT: {
-        s_is_playing = (a2d->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED);
-        LOG_I("BT", "Audio state: %s", s_is_playing ? "STARTED" : "STOPPED");
+        bool started = (a2d->audio_stat.state == ESP_A2D_AUDIO_STATE_STARTED);
+        s_is_playing = started;
+        if (!started) {
+            s_is_paused = true;
+        } else {
+            s_is_paused = false;
+        }
+        LOG_I("BT", "Audio state: %s", started ? "STARTED" : "STOPPED");
         break;
     }
     case ESP_A2D_AUDIO_CFG_EVT: {
@@ -152,6 +169,7 @@ static void avrc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *par
         if (rc->change_ntf.event_id == ESP_AVRC_RN_PLAY_STATUS_CHANGE) {
             uint8_t status = rc->change_ntf.event_parameter.playback;
             s_is_playing = (status == ESP_AVRC_PLAYBACK_PLAYING);
+            s_is_paused = !s_is_playing;
             LOG_D("AVRCP CT", "Remote Play Status: %s", s_is_playing ? "PLAYING" : "PAUSED");
             // Re-register notification for next event
             esp_avrc_ct_send_register_notification_cmd(1, ESP_AVRC_RN_PLAY_STATUS_CHANGE, 0);
@@ -304,6 +322,7 @@ void bt_audio_stop() {
     }
     s_is_connected = false;
     s_is_playing = false;
+    s_is_paused = false;
 
     // 2. Set scan mode to non-connectable
     esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
@@ -324,7 +343,7 @@ void bt_audio_stop() {
 }
 
 void bt_audio_adjust_volume(int32_t delta) {
-    int32_t new_vol = (int32_t)s_current_volume + (delta * 4);
+    int32_t new_vol = (int32_t)s_current_volume + delta; //(delta * 4);
     if (new_vol < 0) new_vol = 0;
     if (new_vol > 127) new_vol = 127;
     bt_audio_set_volume((uint8_t)new_vol);
@@ -350,21 +369,73 @@ uint8_t bt_audio_get_volume() {
     return s_current_volume;
 }
 
-void bt_audio_play_pause() {
-    if (!s_is_connected) {
-        LOG_W("AVRCP", "No device connected to send Play/Pause");
-        display_toast("BT NOT CONNECTED");
-        return;
-    }
+static void bt_audio_send_passthrough(uint8_t cmd) {
     static uint8_t s_tl = 0;
-    uint8_t cmd = s_is_playing ? ESP_AVRC_PT_CMD_PAUSE : ESP_AVRC_PT_CMD_PLAY;
-    LOG_D("AVRCP", "Sending %s command to host (tl=%d)", s_is_playing ? "PAUSE" : "PLAY", s_tl);
-    display_toast(s_is_playing ? "PAUSE" : "PLAY");
-    
     esp_avrc_ct_send_passthrough_cmd(s_tl, cmd, ESP_AVRC_PT_CMD_STATE_PRESSED);
     delay(40);
     esp_avrc_ct_send_passthrough_cmd(s_tl, cmd, ESP_AVRC_PT_CMD_STATE_RELEASED);
     s_tl = (s_tl + 1) & 0x0F;
+}
+
+void bt_audio_pause() {
+    if (!s_is_connected) {
+        LOG_W("AVRCP", "No device connected to pause");
+        display_toast("BT NOT CONNECTED");
+        return;
+    }
+    s_is_paused = true;
+    s_is_playing = false;
+    s_last_pause_ts = millis();
+    LOG_I("AVRCP", "Sending PAUSE to host");
+    bt_audio_send_passthrough(ESP_AVRC_PT_CMD_PAUSE);
+}
+
+void bt_audio_resume() {
+    if (!s_is_connected) {
+        LOG_W("AVRCP", "No device connected to resume");
+        display_toast("BT NOT CONNECTED");
+        return;
+    }
+    s_is_paused = false;
+    s_is_playing = true;
+    LOG_I("AVRCP", "Sending PLAY to host");
+    bt_audio_send_passthrough(ESP_AVRC_PT_CMD_PLAY);
+}
+
+bool bt_audio_play_pause() {
+    if (!s_is_connected) {
+        LOG_W("AVRCP", "No device connected to send Play/Pause");
+        display_toast("BT NOT CONNECTED");
+        return false;
+    }
+    if (bt_audio_is_playing()) {
+        bt_audio_pause();
+    } else {
+        bt_audio_resume();
+    }
+    return bt_audio_is_playing();
+}
+
+bool bt_audio_is_paused() {
+    return s_is_paused;
+}
+
+void bt_audio_prev_track() {
+    if (!s_is_connected) {
+        display_toast("BT NOT CONNECTED");
+        return;
+    }
+    LOG_I("AVRCP", "Sending PREV TRACK to host");
+    bt_audio_send_passthrough(ESP_AVRC_PT_CMD_BACKWARD);
+}
+
+void bt_audio_next_track() {
+    if (!s_is_connected) {
+        display_toast("BT NOT CONNECTED");
+        return;
+    }
+    LOG_I("AVRCP", "Sending NEXT TRACK to host");
+    bt_audio_send_passthrough(ESP_AVRC_PT_CMD_FORWARD);
 }
 
 void bt_audio_start_repairing() {
@@ -374,6 +445,8 @@ void bt_audio_start_repairing() {
     }
     nvs_erase_bt_mac();
     memset(s_connected_bda, 0, 6);
+    s_is_playing = false;
+    s_is_paused = false;
     if (s_is_started) {
         esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
     }
@@ -384,6 +457,8 @@ bool bt_audio_is_connected() {
 }
 
 bool bt_audio_is_playing() {
+    if (!s_is_connected || s_is_paused) return false;
+    if (s_last_data_ts > 0 && (millis() - s_last_data_ts > 1000)) return false;
     return s_is_playing;
 }
 
