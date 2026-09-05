@@ -1,0 +1,6 @@
+# Bỏ qua các file nhị phân lớn và thư mục output
+ffmpeg.exe
+*.mp4
+*.mjpeg
+*.wav
+out/
