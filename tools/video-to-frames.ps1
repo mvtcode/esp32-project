@@ -1,21 +1,21 @@
 # ==============================================================================
 # Script: video-to-frames.ps1
-# Convert video MP4 -> video.avi / video.mjpeg (480x270 @ 20fps) & audio.wav (PCM 16-bit Mono)
+# Convert video MP4 -> video.avi / video.mjpeg (320x180 @ 20fps) & audio.wav (PCM 16-bit Mono)
 # Usage: powershell -ExecutionPolicy Bypass -File .\tools\video-to-frames.ps1
 # ==============================================================================
 
 param (
     [string]$InputVideo = "$PSScriptRoot\video.mp4",
     [string]$OutputDir  = "$PSScriptRoot\out",
-    [int]$Fps           = 15,     # 15 fps giup ESP32 xu ly muot ma trong thoi gian thuc, khong drop frame
-    [int]$Width         = 480,
-    [int]$Height        = 270,
-    [int]$Quality       = 8,      # 2-31: 8 cho frame ~15KB, ESP32 doc the va decode cuc nhanh (gap 3 lan q=4)
-    [int]$AudioRate     = 22050   # 22050 Hz Mono WAV toi uu cho ESP32 DAC
+    [int]$Fps           = 20,     # 20 fps muot ma tren ESP32-S3 voi SIMD acceleration
+    [int]$Width         = 320,
+    [int]$Height        = 180,    # 320x180 ti le chuan 16:9, can giua man hinh 320x240
+    [int]$Quality       = 7,      # 2-31: 7 cho frame ~8-12KB, ESP32-S3 decode trong ~20ms
+    [int]$AudioRate     = 22050   # 22050 Hz Mono WAV PCM toi uu cho I2S DMA
 )
 
 Write-Host "==================================================================" -ForegroundColor Cyan
-Write-Host "   ESP32 CYD 3.5 VIDEO & AUDIO CONVERTER (MJPEG + WAV PCM)        " -ForegroundColor Cyan
+Write-Host "   ESP32-S3 2.8 VIDEO & AUDIO CONVERTER (MJPEG + WAV PCM)         " -ForegroundColor Cyan
 Write-Host "==================================================================" -ForegroundColor Cyan
 
 # 1. Tim kiem cong cu FFmpeg
@@ -106,9 +106,11 @@ Write-Host "==================================================================" 
 Write-Host " CONVERT HOAN TAT THANH CONG!" -ForegroundColor Green
 Write-Host "==================================================================" -ForegroundColor Green
 Write-Host "Ket qua tai: $OutputDir" -ForegroundColor White
-Write-Host ("  1. video.avi   : {0:N2} MB  [BAN CO THE MO TRUC TIEP TREN VLC DE XEM VIDEO]" -f ($aviItem.Length / 1MB)) -ForegroundColor Cyan
-Write-Host ("  2. video.mjpeg : {0:N2} MB  [Raw MJPEG stream]" -f ((Get-Item $outputMjpeg).Length / 1MB)) -ForegroundColor Cyan
-Write-Host ("  3. audio.wav   : {0:N2} MB  [WAV PCM Mono @ 22.05kHz]" -f ($wavItem.Length / 1MB)) -ForegroundColor Cyan
+    Write-Host ("  1. video.avi   : {0:N2} MB  [ALL-IN-ONE: Chứa cả Video & Audio]" -f ($aviItem.Length / 1MB)) -ForegroundColor Cyan
+    if (Test-Path $outputMjpeg) {
+        Write-Host ("  2. video.mjpeg : {0:N2} MB  [Raw MJPEG stream]" -f ((Get-Item $outputMjpeg).Length / 1MB)) -ForegroundColor Cyan
+    }
+    Write-Host ("  3. audio.wav   : {0:N2} MB  [WAV PCM Mono @ 22.05kHz]" -f ($wavItem.Length / 1MB)) -ForegroundColor Cyan
 
 # Uoc tinh bang thong the nho SD cho video ~58 giay
 $durationSec = 57.6

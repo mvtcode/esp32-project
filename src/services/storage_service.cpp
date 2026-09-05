@@ -4,12 +4,14 @@
 static const char *TAG = "StorageService";
 
 bool StorageService::s_mounted = false;
+#if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(ARDUINO_ARCH_ESP32S3) && !defined(BOARD_ESP32S3)
 SPIClass* StorageService::s_sdSPI = nullptr;
+#endif
 SemaphoreHandle_t StorageService::s_sdMutex = nullptr;
 
 bool StorageService::begin() {
     if (s_mounted) {
-        if (SD.cardType() != CARD_NONE) return true;
+        if (STORAGE_FS.cardType() != CARD_NONE) return true;
         s_mounted = false;
     }
 
@@ -17,6 +19,24 @@ bool StorageService::begin() {
         s_sdMutex = xSemaphoreCreateMutex();
     }
 
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ARDUINO_ARCH_ESP32S3) || defined(BOARD_ESP32S3)
+    // ESP32-S3 sử dụng giao tiếp SDIO/SD_MMC (4-bit hoặc 1-bit)
+    LOG_I(TAG, "Khởi tạo SD_MMC (CLK=%d, CMD=%d, D0=%d, D1=%d, D2=%d, D3=%d)...",
+          PIN_SD_CLK, PIN_SD_CMD, PIN_SD_D0, PIN_SD_D1, PIN_SD_D2, PIN_SD_D3);
+    
+    SD_MMC.setPins(PIN_SD_CLK, PIN_SD_CMD, PIN_SD_D0, PIN_SD_D1, PIN_SD_D2, PIN_SD_D3);
+
+    // Thử mount ở chế độ 4-bit (mode1bit = false)
+    if (!SD_MMC.begin("/sd", false)) {
+        LOG_W(TAG, "Thử lại SD_MMC ở chế độ 1-bit...");
+        if (!SD_MMC.begin("/sd", true)) {
+            LOG_E(TAG, "Không thể kết nối thẻ MicroSD qua SD_MMC!");
+            s_mounted = false;
+            return false;
+        }
+    }
+#else
+    // ESP32 CYD sử dụng giao tiếp SPI
     if (!s_sdSPI) {
         s_sdSPI = new SPIClass(VSPI);
         s_sdSPI->begin(PIN_SD_SCLK, PIN_SD_MISO, PIN_SD_MOSI, PIN_SD_CS);
@@ -26,7 +46,6 @@ bool StorageService::begin() {
     digitalWrite(PIN_SD_CS, HIGH);
     delay(20);
 
-    // Khởi tạo SD với tần số 25MHz cho tốc độ đọc tối ưu, dự phòng 20MHz/10MHz
     if (!SD.begin(PIN_SD_CS, *s_sdSPI, 25000000, "/sd", 8)) {
         LOG_W(TAG, "Thử lại SD với tần số 20MHz...");
         digitalWrite(PIN_SD_CS, HIGH);
@@ -37,16 +56,17 @@ bool StorageService::begin() {
             return false;
         }
     }
+#endif
 
-    uint8_t cardType = SD.cardType();
+    uint8_t cardType = STORAGE_FS.cardType();
     if (cardType == CARD_NONE) {
         LOG_W(TAG, "Không tìm thấy thẻ nhớ trong khe cắm.");
         s_mounted = false;
         return false;
     }
 
-    uint64_t totalBytes = SD.totalBytes();
-    uint64_t cardSize = SD.cardSize();
+    uint64_t totalBytes = STORAGE_FS.totalBytes();
+    uint64_t cardSize = STORAGE_FS.cardSize();
     s_mounted = true;
 
     LOG_I(TAG, "Thẻ nhớ đã mount thành công: Dung lượng = %llu MB | FATFS = %llu MB",
@@ -62,13 +82,15 @@ bool StorageService::isMounted() {
 
 void StorageService::end() {
     if (s_mounted) {
-        SD.end();
+        STORAGE_FS.end();
         s_mounted = false;
     }
+#if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(ARDUINO_ARCH_ESP32S3) && !defined(BOARD_ESP32S3)
     if (s_sdSPI) {
         delete s_sdSPI;
         s_sdSPI = nullptr;
     }
+#endif
     if (s_sdMutex) {
         vSemaphoreDelete(s_sdMutex);
         s_sdMutex = nullptr;
@@ -90,7 +112,7 @@ void StorageService::unlock() {
 bool StorageService::fileExists(const char* path) {
     if (!s_mounted || !path) return false;
     if (!lock()) return false;
-    bool exists = SD.exists(path);
+    bool exists = STORAGE_FS.exists(path);
     unlock();
     return exists;
 }
@@ -99,7 +121,7 @@ uint32_t StorageService::getFileSize(const char* path) {
     if (!s_mounted || !path) return 0;
     if (!lock()) return 0;
     uint32_t size = 0;
-    File f = SD.open(path, FILE_READ);
+    File f = STORAGE_FS.open(path, FILE_READ);
     if (f) {
         size = f.size();
         f.close();

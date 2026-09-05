@@ -3,6 +3,14 @@
 
 static const char *TAG = "VideoUI";
 
+// Kích thước chuẩn màn hình 2.8" Phase 2
+static const int16_t kScreenWidth   = 320;
+static const int16_t kScreenHeight  = 240;
+static const int16_t kHeaderHeight  = 30;
+static const int16_t kVideoHeight   = 180;
+static const int16_t kFooterHeight  = 30;
+static const int16_t kFooterTop     = 210;
+
 // Định nghĩa màu sắc Cinema Mode
 #define COLOR_CINEMA_BG     0x0000  // Đen tuyền cho rạp phim
 #define COLOR_PROGRESS_BG   0x2945  // Xám tối cho thanh nền
@@ -22,14 +30,15 @@ VideoUI::VideoUI(TFT_eSPI& tft)
 }
 
 void VideoUI::init() {
-    // 1. Vẽ nền đen cho Header (y: 0..19)
-    m_tft.fillRect(0, 0, 480, 20, COLOR_CINEMA_BG);
+    // 1. Vẽ nền đen cho Header (y: 0..29)
+    m_tft.fillRect(0, 0, kScreenWidth, kHeaderHeight, COLOR_CINEMA_BG);
 
-    // 2. Vẽ nền đen cho Footer (y: 290..319)
-    m_tft.fillRect(0, 290, 480, 30, COLOR_CINEMA_BG);
+    // 2. Vẽ nền đen cho Footer (y: 210..239)
+    m_tft.fillRect(0, kFooterTop, kScreenWidth, kFooterHeight, COLOR_CINEMA_BG);
 
     forceShowOverlay();
-    LOG_I(TAG, "VideoUI đã khởi tạo (Header 20px, Video 270px, Footer 30px)");
+    LOG_I(TAG, "VideoUI đã khởi tạo (Header %dpx, Video %dpx, Footer %dpx)",
+          kHeaderHeight, kVideoHeight, kFooterHeight);
 }
 
 void VideoUI::setVideoTitle(const char* title) {
@@ -55,8 +64,8 @@ void VideoUI::forceShowOverlay() {
 
 void VideoUI::clearOverlayWhenPlaying() {
     // Xóa sạch vùng Header và Footer về màu đen tuyền khi vào chế độ phát
-    m_tft.fillRect(0, 0, 480, 20, COLOR_CINEMA_BG);
-    m_tft.fillRect(0, 290, 480, 30, COLOR_CINEMA_BG);
+    m_tft.fillRect(0, 0, kScreenWidth, kHeaderHeight, COLOR_CINEMA_BG);
+    m_tft.fillRect(0, kFooterTop, kScreenWidth, kFooterHeight, COLOR_CINEMA_BG);
     m_needClearCenter = true; // Báo hiệu frame video tiếp theo ghi đè nút giữa
 }
 
@@ -83,10 +92,10 @@ void VideoUI::formatTime(uint32_t ms, char* buf, size_t len) {
 void VideoUI::drawHeader() {
     if (!m_overlayVisible) return;
 
-    // Header nằm ở y: 0 -> 19 (Cao 20px, hoàn toàn không đè lên video y=20..289)
-    m_tft.fillRect(0, 0, 480, 20, COLOR_CINEMA_BG);
+    // Header nằm ở y: 0 -> 29 (Cao 30px, hoàn toàn không đè lên video y=30..209)
+    m_tft.fillRect(0, 0, kScreenWidth, kHeaderHeight, COLOR_CINEMA_BG);
     m_tft.setTextColor(TFT_WHITE, COLOR_CINEMA_BG);
-    m_tft.drawString(m_title, 12, 2, 2);
+    m_tft.drawString(m_title, 8, 6, 2);
 }
 
 void VideoUI::drawFooter(uint32_t currentMs, uint32_t totalMs) {
@@ -94,28 +103,32 @@ void VideoUI::drawFooter(uint32_t currentMs, uint32_t totalMs) {
 
     uint32_t currentSec = currentMs / 1000;
 
-    // Footer nằm ở y: 290 -> 319 (Cao 30px, hoàn toàn không đè lên video y=20..289)
+    // Footer nằm ở y: 210 -> 239 (Cao 30px, hoàn toàn không đè lên video y=30..209)
     if (currentSec != m_lastDrawnSec) {
         m_lastDrawnSec = currentSec;
 
-        // Current time căn trái ở x=10, y=297
+        // Current time căn trái ở x=8, y=217
         char timeBuf[16];
         formatTime(currentMs, timeBuf, sizeof(timeBuf));
         m_tft.setTextColor(TFT_WHITE, COLOR_CINEMA_BG);
-        m_tft.drawString(timeBuf, 10, 297, 2);
+        m_tft.drawString(timeBuf, 8, 217, 2);
 
-        // Total duration căn phải ở x=420, y=297
+        // Total duration căn phải ở x=272, y=217
         char totalBuf[16];
         formatTime(totalMs, totalBuf, sizeof(totalBuf));
         m_tft.setTextColor(COLOR_TEXT_MUTED, COLOR_CINEMA_BG);
-        m_tft.drawString(totalBuf, 422, 297, 2);
+        m_tft.drawString(totalBuf, 272, 217, 2);
     }
 
-    // Tính toán chiều dài thanh progress bar (x: 70 -> 410, rộng 340px, cao 4px tại y=303)
+    // Thanh progress bar: x từ 52 -> 262 (rộng 210px, cao 4px tại y=223)
+    const int progressLeft = 52;
+    const int progressMaxW = 210;
+    const int progressY = 223;
+
     int progressWidth = 0;
     if (totalMs > 0) {
-        progressWidth = (int)(((uint64_t)currentMs * 340ULL) / totalMs);
-        if (progressWidth > 340) progressWidth = 340;
+        progressWidth = (int)(((uint64_t)currentMs * (uint64_t)progressMaxW) / totalMs);
+        if (progressWidth > progressMaxW) progressWidth = progressMaxW;
     }
 
     if (progressWidth != m_lastProgressWidth) {
@@ -123,12 +136,12 @@ void VideoUI::drawFooter(uint32_t currentMs, uint32_t totalMs) {
             int deltaX = m_lastProgressWidth;
             int deltaW = progressWidth - deltaX;
             if (deltaW > 0) {
-                m_tft.fillRoundRect(70 + deltaX, 303, deltaW, 4, 1, COLOR_PROGRESS_FILL);
+                m_tft.fillRoundRect(progressLeft + deltaX, progressY, deltaW, 4, 1, COLOR_PROGRESS_FILL);
             }
         } else {
-            m_tft.fillRoundRect(70, 303, 340, 4, 2, COLOR_PROGRESS_BG);
+            m_tft.fillRoundRect(progressLeft, progressY, progressMaxW, 4, 2, COLOR_PROGRESS_BG);
             if (progressWidth > 0) {
-                m_tft.fillRoundRect(70, 303, progressWidth, 4, 1, COLOR_PROGRESS_FILL);
+                m_tft.fillRoundRect(progressLeft, progressY, progressWidth, 4, 1, COLOR_PROGRESS_FILL);
             }
         }
         m_lastProgressWidth = progressWidth;
@@ -138,22 +151,22 @@ void VideoUI::drawFooter(uint32_t currentMs, uint32_t totalMs) {
 void VideoUI::drawCenterPlayIcon() {
     if (!m_overlayVisible) return;
 
-    // Nút tròn nằm chính giữa video: x=240, y=155 (vì video từ y=20..289, tâm là 20+135=155)
-    m_tft.fillCircle(240, 155, 30, COLOR_BUTTON_BG);
-    m_tft.drawCircle(240, 155, 30, TFT_WHITE);
+    // Nút tròn nằm chính giữa video: x=160, y=120 (tâm màn hình 320x240)
+    m_tft.fillCircle(160, 120, 24, COLOR_BUTTON_BG);
+    m_tft.drawCircle(160, 120, 24, TFT_WHITE);
 
     // Tam giác Play ▶ căn giữa
-    m_tft.fillTriangle(234, 142, 234, 168, 254, 155, TFT_WHITE);
+    m_tft.fillTriangle(155, 110, 155, 130, 170, 120, TFT_WHITE);
 }
 
 void VideoUI::drawCenterPauseIcon() {
     if (!m_overlayVisible) return;
 
-    // Nút tròn nằm chính giữa video
-    m_tft.fillCircle(240, 155, 30, COLOR_BUTTON_BG);
-    m_tft.drawCircle(240, 155, 30, TFT_WHITE);
+    // Nút tròn nằm chính giữa video: x=160, y=120
+    m_tft.fillCircle(160, 120, 24, COLOR_BUTTON_BG);
+    m_tft.drawCircle(160, 120, 24, TFT_WHITE);
 
     // Hai vạch Pause ❚❚
-    m_tft.fillRect(232, 143, 6, 24, TFT_WHITE);
-    m_tft.fillRect(242, 143, 6, 24, TFT_WHITE);
+    m_tft.fillRect(153, 111, 5, 18, TFT_WHITE);
+    m_tft.fillRect(162, 111, 5, 18, TFT_WHITE);
 }

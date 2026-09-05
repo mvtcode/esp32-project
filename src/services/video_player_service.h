@@ -5,7 +5,7 @@
 #include <SD.h>
 #include <TFT_eSPI.h>
 #include <TJpg_Decoder.h>
-#include "audio_dac_service.h"
+#include "audio_i2s_service.h"
 #include "ui/video_ui.h"
 
 enum class VideoState {
@@ -16,7 +16,7 @@ enum class VideoState {
 
 class VideoPlayerService {
 public:
-    VideoPlayerService(TFT_eSPI& tft, AudioDacService& audioService, VideoUI& ui);
+    VideoPlayerService(TFT_eSPI& tft, AudioI2sService& audioService, VideoUI& ui);
     ~VideoPlayerService();
 
     bool begin();
@@ -39,7 +39,7 @@ private:
     bool readNextFrameMjpeg(size_t& frameSize);
 
     TFT_eSPI& m_tft;
-    AudioDacService& m_audioService;
+    AudioI2sService& m_audioService;
     VideoUI& m_ui;
 
     File m_videoFile;

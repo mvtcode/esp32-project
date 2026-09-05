@@ -14,7 +14,7 @@ static bool tftOutputCallback(int16_t x, int16_t y, uint16_t w, uint16_t h, uint
     return 1;
 }
 
-VideoPlayerService::VideoPlayerService(TFT_eSPI& tft, AudioDacService& audioService, VideoUI& ui)
+VideoPlayerService::VideoPlayerService(TFT_eSPI& tft, AudioI2sService& audioService, VideoUI& ui)
     : m_tft(tft),
       m_audioService(audioService),
       m_ui(ui),
@@ -57,15 +57,23 @@ bool VideoPlayerService::begin() {
     TJpgDec.setSwapBytes(true); // Đổi byte màu RGB565 cho màn hình ST7796
     TJpgDec.setCallback(tftOutputCallback);
 
-    // Cấp phát bộ nhớ: ưu tiên PSRAM nếu có, nếu không thì dùng Internal Heap
-    if (psramFound()) {
-        m_frameBuffer = (uint8_t*)ps_malloc(m_frameBufferCapacity);
-        m_readChunkBuffer = (uint8_t*)ps_malloc(m_readChunkSize);
-        LOG_I(TAG, "Đã cấp phát bộ đệm Video trên PSRAM");
+    // Cấp phát bộ nhớ: Ưu tiên Internal Fast SRAM (240MHz 0-wait) cho tốc độ giải mã JPEG tối đa
+    m_frameBuffer = (uint8_t*)heap_caps_malloc(m_frameBufferCapacity, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!m_frameBuffer) {
+        if (psramFound()) {
+            m_frameBuffer = (uint8_t*)ps_malloc(m_frameBufferCapacity);
+            LOG_I(TAG, "Đã cấp phát bộ đệm Video trên PSRAM");
+        } else {
+            m_frameBuffer = (uint8_t*)malloc(m_frameBufferCapacity);
+            LOG_I(TAG, "Đã cấp phát bộ đệm Video trên Internal Heap");
+        }
     } else {
-        m_frameBuffer = (uint8_t*)malloc(m_frameBufferCapacity);
+        LOG_I(TAG, "Đã cấp phát Frame Buffer 64KB trên Fast Internal SRAM!");
+    }
+
+    m_readChunkBuffer = (uint8_t*)heap_caps_malloc(m_readChunkSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!m_readChunkBuffer) {
         m_readChunkBuffer = (uint8_t*)malloc(m_readChunkSize);
-        LOG_I(TAG, "Đã cấp phát bộ đệm Video trên Internal Heap");
     }
 
     if (!m_frameBuffer || !m_readChunkBuffer) {
@@ -98,7 +106,7 @@ bool VideoPlayerService::openVideo(const char* videoPath, const char* wavPath, i
         m_videoFile.close();
     }
 
-    m_videoFile = SD.open(videoPath, FILE_READ);
+    m_videoFile = StorageService::openFile(videoPath, FILE_READ);
     StorageService::unlock();
 
     if (!m_videoFile) {
@@ -203,7 +211,7 @@ bool VideoPlayerService::openVideo(const char* videoPath, const char* wavPath, i
     // Đọc và vẽ ngay frame đầu tiên (Frame 0) tại y=20 (tâm màn hình), sau đó dừng ở trạng thái PAUSED
     size_t frameSize = 0;
     if (readNextFrame(frameSize)) {
-        TJpgDec.drawJpg(0, 20, m_frameBuffer, frameSize);
+        TJpgDec.drawJpg(0, 30, m_frameBuffer, frameSize);
         m_isFirstFrameRendered = true;
     }
 
@@ -410,10 +418,10 @@ void VideoPlayerService::reset() {
 
     m_audioService.reset();
 
-    // Vẽ lại frame 0 tại y=20 và cập nhật UI về 00:00
+    // Vẽ lại frame 0 tại y=30 và cập nhật UI về 00:00
     size_t frameSize = 0;
     if (readNextFrame(frameSize)) {
-        TJpgDec.drawJpg(0, 20, m_frameBuffer, frameSize);
+        TJpgDec.drawJpg(0, 30, m_frameBuffer, frameSize);
     }
     m_ui.forceShowOverlay();
     m_ui.drawHeader();
@@ -437,14 +445,19 @@ void VideoPlayerService::update() {
     // Tính toán frame mục tiêu theo trục thời gian thực (Master Clock)
     uint32_t targetFrame = (m_fps > 0) ? ((elapsedMs * m_fps) / 1000) : 0;
 
-    // Nếu bị trễ hơn 1 frame (do frame trước decode lâu),
-    // skip video của frame này (seek 0.05ms) nhưng VẪN ĐỌC VÀ NẠP ĐẦY ĐỦ AUDIO!
-    bool shouldSkip = (targetFrame > m_currentFrame + 1);
+    // QUAN TRỌNG: FPS Pacing - Nếu chưa đến thời điểm hiển thị frame tiếp theo, nhường CPU
+    // Giúp duy trì nhịp khung hình đều đặn 20 FPS (50ms/frame), tránh hiện tượng giật cục do chạy quá nhanh
+    if (m_currentFrame > targetFrame) {
+        return;
+    }
+
+    // Nếu bị trễ hơn 2 frame (do thẻ SD chậm đột ngột), skip video frame này để bắt kịp âm thanh
+    bool shouldSkip = (targetFrame > m_currentFrame + 2);
 
     size_t frameSize = 0;
     if (readNextFrame(frameSize, shouldSkip)) {
         if (!shouldSkip && frameSize > 0) {
-            TJpgDec.drawJpg(0, 20, m_frameBuffer, frameSize);
+            TJpgDec.drawJpg(0, 30, m_frameBuffer, frameSize);
         }
         m_currentFrame++;
     } else {
@@ -457,10 +470,9 @@ void VideoPlayerService::update() {
     // Cập nhật timer ẩn/hiện của giao diện Cinema Mode
     m_ui.update(true);
 
-    // Nếu đang trong thời gian hiển thị overlay: vẽ Header, Footer và Center Icon
+    // Nếu đang trong thời gian hiển thị overlay: chỉ vẽ Header và Footer trong dải viền đen (không đè lên video)
     if (m_ui.isOverlayVisible()) {
         m_ui.drawHeader();
         m_ui.drawFooter(elapsedMs, m_totalDurationMs);
-        m_ui.drawCenterPauseIcon();
     }
 }

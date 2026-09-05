@@ -16,9 +16,9 @@
  */
 
 #ifdef ENABLE_SERIAL_LOG
-  #define LOG_D(tag, fmt, ...) Serial.printf("[%s][DEBUG] " fmt "\n", tag, ##__VA_ARGS__)
-  #define LOG_I(tag, fmt, ...) Serial.printf("[%s] " fmt "\n", tag, ##__VA_ARGS__)
-  #define LOG_W(tag, fmt, ...) Serial.printf("[%s][WARN] " fmt "\n", tag, ##__VA_ARGS__)
+  #define LOG_D(tag, fmt, ...) do { Serial.printf("[%s][DEBUG] " fmt "\n", tag, ##__VA_ARGS__); } while(0)
+  #define LOG_I(tag, fmt, ...) do { Serial.printf("[%s] " fmt "\n", tag, ##__VA_ARGS__); } while(0)
+  #define LOG_W(tag, fmt, ...) do { Serial.printf("[%s][WARN] " fmt "\n", tag, ##__VA_ARGS__); } while(0)
 #else
   #define LOG_D(tag, fmt, ...) do {} while(0)
   #define LOG_I(tag, fmt, ...) do {} while(0)
@@ -26,4 +26,4 @@
 #endif
 
 // Error logs luôn được giữ lại để chẩn đoán sự cố nghiêm trọng
-#define LOG_E(tag, fmt, ...) Serial.printf("[%s][ERROR] " fmt "\n", tag, ##__VA_ARGS__)
+#define LOG_E(tag, fmt, ...) do { Serial.printf("[%s][ERROR] " fmt "\n", tag, ##__VA_ARGS__); } while(0)
