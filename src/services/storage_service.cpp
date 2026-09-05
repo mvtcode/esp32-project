@@ -26,13 +26,16 @@ bool StorageService::begin() {
     
     SD_MMC.setPins(PIN_SD_CLK, PIN_SD_CMD, PIN_SD_D0, PIN_SD_D1, PIN_SD_D2, PIN_SD_D3);
 
-    // Thử mount ở chế độ 4-bit (mode1bit = false)
-    if (!SD_MMC.begin("/sd", false)) {
-        LOG_W(TAG, "Thử lại SD_MMC ở chế độ 1-bit...");
-        if (!SD_MMC.begin("/sd", true)) {
-            LOG_E(TAG, "Không thể kết nối thẻ MicroSD qua SD_MMC!");
-            s_mounted = false;
-            return false;
+    // Thử mount ở chế độ 4-bit High Speed 40MHz trước
+    if (!SD_MMC.begin("/sd", false, false, SDMMC_FREQ_HIGHSPEED)) {
+        LOG_W(TAG, "HS 40MHz thất bại, thử 4-bit Default 20MHz...");
+        if (!SD_MMC.begin("/sd", false, false, SDMMC_FREQ_DEFAULT)) {
+            LOG_W(TAG, "Thử lại SD_MMC ở chế độ 1-bit...");
+            if (!SD_MMC.begin("/sd", true, false, SDMMC_FREQ_DEFAULT)) {
+                LOG_E(TAG, "Không thể kết nối thẻ MicroSD qua SD_MMC!");
+                s_mounted = false;
+                return false;
+            }
         }
     }
 #else

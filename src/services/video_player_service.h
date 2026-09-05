@@ -59,6 +59,11 @@ private:
     size_t m_readChunkPos;
     size_t m_readChunkLen;
 
+    uint8_t* m_audioReadBuf;     // Buffer đọc audio chunk từ AVI trong 1 SD transaction
+    size_t m_audioReadBufSize;   // = 4096 bytes (đủ cho ~2 frame audio @22050Hz)
+
+    uint16_t* m_renderBuffer;    // PSRAM framebuffer 320x180x2=112KB: push cả frame trong 1 SPI transaction
+
     bool m_isFirstFrameRendered;
     uint32_t m_playbackStartTime;
     uint32_t m_playbackElapsedMs;

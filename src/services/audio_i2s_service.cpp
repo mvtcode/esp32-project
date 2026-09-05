@@ -210,11 +210,11 @@ bool AudioI2sService::begin() {
     LOG_I(TAG, "Đã kích hoạt PIN_PA_ENABLE (GPIO %d, Active LOW - Amp ON)", PIN_PA_ENABLE);
 #endif
 
-    // 4. Tạo RingBuffer 16KB cho luồng audio từ file AVI (Non-blocking)
+    // 4. Tạo RingBuffer 32KB cho luồng audio từ file AVI (Non-blocking)
     if (!m_ringBuffer) {
-        m_ringBuffer = xRingbufferCreate(16384, RINGBUF_TYPE_BYTEBUF);
+        m_ringBuffer = xRingbufferCreate(32768, RINGBUF_TYPE_BYTEBUF);
         if (m_ringBuffer) {
-            LOG_I(TAG, "Đã khởi tạo Audio RingBuffer 16KB");
+            LOG_I(TAG, "Đã khởi tạo Audio RingBuffer 32KB");
         }
     }
 
@@ -222,7 +222,7 @@ bool AudioI2sService::begin() {
     BaseType_t res = xTaskCreatePinnedToCore(
         audioTask,
         "AudioI2sTask",
-        4096,
+        6144,           // Tăng stack: stereoBuffer 2KB + I2S driver call stack
         this,
         2,              // Mức ưu tiên vừa phải
         &m_taskHandle,

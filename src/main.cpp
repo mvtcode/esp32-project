@@ -191,25 +191,29 @@ void loop() {
         }
     }
 
-    // 2. Kiểm tra cảm ứng chạm trên màn hình (Touch Screen)
-    uint16_t touchX, touchY;
-    if (getTouchCoordinates(&touchX, &touchY)) {
-        if (now - lastTouchPress > 350) { // Chống rung chạm 350ms
-            lastTouchPress = now;
-            if (playerService.isPlaying()) {
-                if (!videoUI.isOverlayVisible()) {
-                    // Nếu đang phát và overlay đang ẩn: Chạm để đánh thức Header, Footer, Center hiện lên 1.5s
-                    LOG_I(TAG, "Cham cam ung tai (%d, %d) -> Danh thuc Overlay", touchX, touchY);
-                    videoUI.triggerOverlay(1500);
+    // 2. Kiểm tra cảm ứng chạm trên màn hình (Touch Screen) — Throttle 100ms để tiết kiệm I2C bus time
+    static uint32_t lastTouchCheck = 0;
+    if (now - lastTouchCheck >= 100) {  // Chỉ check touch 10 lần/giây (Wire I2C thiều ~2-5ms/lần)
+        lastTouchCheck = now;
+        uint16_t touchX, touchY;
+        if (getTouchCoordinates(&touchX, &touchY)) {
+            if (now - lastTouchPress > 350) { // Chống rung chạm 350ms
+                lastTouchPress = now;
+                if (playerService.isPlaying()) {
+                    if (!videoUI.isOverlayVisible()) {
+                        // Nếu đang phát và overlay đang ẩn: Chạm để đánh thức Header, Footer, Center hiện lên 1.5s
+                        LOG_I(TAG, "Cham cam ung tai (%d, %d) -> Danh thuc Overlay", touchX, touchY);
+                        videoUI.triggerOverlay(1500);
+                    } else {
+                        // Nếu overlay đang hiển thị: Chạm để tạm dừng
+                        LOG_I(TAG, "Cham cam ung tai (%d, %d) -> Tạm dừng (Pause)", touchX, touchY);
+                        playerService.pause();
+                    }
                 } else {
-                    // Nếu overlay đang hiển thị: Chạm để tạm dừng
-                    LOG_I(TAG, "Cham cam ung tai (%d, %d) -> Tạm dừng (Pause)", touchX, touchY);
-                    playerService.pause();
+                    // Đang Pause: Chạm để tiếp tục phát
+                    LOG_I(TAG, "Cham cam ung tai (%d, %d) -> Tiep tuc phat (Play)", touchX, touchY);
+                    playerService.play();
                 }
-            } else {
-                // Đang Pause: Chạm để tiếp tục phát
-                LOG_I(TAG, "Cham cam ung tai (%d, %d) -> Tiep tuc phat (Play)", touchX, touchY);
-                playerService.play();
             }
         }
     }
@@ -218,5 +222,11 @@ void loop() {
     playerService.update();
 
     // 4. Nhường thời gian thực thi (Non-blocking)
-    vTaskDelay(1);
+    // taskYIELD() khi đang phát: chỉ nhường time-slice không block CPU (~0μs, so với vTaskDelay(1) block 1ms)
+    // vTaskDelay(1) khi pause: đủ cho IDLE task reset Watchdog Timer
+    if (playerService.isPlaying()) {
+        taskYIELD();
+    } else {
+        vTaskDelay(1);
+    }
 }

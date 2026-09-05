@@ -5,11 +5,28 @@
 
 static const char *TAG = "VideoPlayerService";
 static TFT_eSPI* s_activeTft = nullptr;
+static uint16_t* s_renderBuffer = nullptr;  // PSRAM framebuffer cho single-shot frame push
 
-// Callback cho TJpg_Decoder render từng block ảnh lên màn hình ST7796
+// Kích thước vùng video trên màn hình (320x240 có Header 30px + Footer 30px)
+static const int16_t kVideoW = 320;
+static const int16_t kVideoH = 180;
+
+// Callback fallback: render từng tile trực tiếp lên màn hình (dùng khi không có PSRAM buffer)
 static bool tftOutputCallback(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
     if (s_activeTft) {
-        s_activeTft->pushImage(x, y, w, h, bitmap);
+        s_activeTft->pushImage(x, y + 30, w, h, bitmap);
+    }
+    return 1;
+}
+
+// Callback chính: giải mã JPEG vào PSRAM framebuffer (320x180), push 1 lần
+static bool tftFrameCallback(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
+    if (!s_renderBuffer || x < 0 || y < 0) return 1;
+    if ((x + w) > kVideoW || (y + h) > kVideoH) return 1;
+    uint16_t* dst = s_renderBuffer + (int32_t)y * kVideoW + x;
+    for (int16_t row = 0; row < h; row++) {
+        memcpy(dst, bitmap + (int32_t)row * w, (size_t)w * sizeof(uint16_t));
+        dst += kVideoW;
     }
     return 1;
 }
@@ -25,11 +42,14 @@ VideoPlayerService::VideoPlayerService(TFT_eSPI& tft, AudioI2sService& audioServ
       m_isAvi(false),
       m_moviOffset(0),
       m_frameBuffer(nullptr),
-      m_frameBufferCapacity(65536), // 64 KB đủ cho frame JPEG 480x270 nén
+      m_frameBufferCapacity(98304),    // 96 KB: đủ cho MJPEG 320x180 quality cao
       m_readChunkBuffer(nullptr),
-      m_readChunkSize(8192),        // Chunk 8 KB đọc thẻ nhớ SD tối ưu
+      m_readChunkSize(32768),           // 32 KB (PSRAM): giảm latency FATFS read
       m_readChunkPos(0),
       m_readChunkLen(0),
+      m_audioReadBuf(nullptr),
+      m_audioReadBufSize(4096),         // 4 KB: đủ đọc toàn bộ audio chunk ~2205 bytes/@20fps trong 1 transaction
+      m_renderBuffer(nullptr),
       m_isFirstFrameRendered(false),
       m_playbackStartTime(0),
       m_playbackElapsedMs(0) {
@@ -47,6 +67,15 @@ VideoPlayerService::~VideoPlayerService() {
         free(m_readChunkBuffer);
         m_readChunkBuffer = nullptr;
     }
+    if (m_audioReadBuf) {
+        free(m_audioReadBuf);
+        m_audioReadBuf = nullptr;
+    }
+    if (m_renderBuffer) {
+        free(m_renderBuffer);
+        m_renderBuffer = nullptr;
+        s_renderBuffer = nullptr;
+    }
 }
 
 bool VideoPlayerService::begin() {
@@ -54,33 +83,69 @@ bool VideoPlayerService::begin() {
 
     // Cấu hình giải mã TJpg_Decoder
     TJpgDec.setJpgScale(1);
-    TJpgDec.setSwapBytes(true); // Đổi byte màu RGB565 cho màn hình ST7796
-    TJpgDec.setCallback(tftOutputCallback);
+    TJpgDec.setSwapBytes(true); // Đổi byte màu RGB565 cho màn hình
+    // Callback sẽ được set sau khi biết có render buffer hay không
 
-    // Cấp phát bộ nhớ: Ưu tiên Internal Fast SRAM (240MHz 0-wait) cho tốc độ giải mã JPEG tối đa
+    // Frame Buffer: ưu tiên Internal Fast SRAM (240MHz 0-wait) cho tốc độ giải mã JPEG tối đa
     m_frameBuffer = (uint8_t*)heap_caps_malloc(m_frameBufferCapacity, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!m_frameBuffer) {
-        if (psramFound()) {
-            m_frameBuffer = (uint8_t*)ps_malloc(m_frameBufferCapacity);
-            LOG_I(TAG, "Đã cấp phát bộ đệm Video trên PSRAM");
+        // Fallback: dùng PSRAM (chậm hơn ~15% nhưng đủ dùng)
+        m_frameBuffer = (uint8_t*)heap_caps_malloc(m_frameBufferCapacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (m_frameBuffer) {
+            LOG_W(TAG, "Frame Buffer 96KB đặt trên PSRAM (Internal SRAM không đủ)");
         } else {
             m_frameBuffer = (uint8_t*)malloc(m_frameBufferCapacity);
-            LOG_I(TAG, "Đã cấp phát bộ đệm Video trên Internal Heap");
+            LOG_W(TAG, "Frame Buffer dùng mặc định malloc");
         }
     } else {
-        LOG_I(TAG, "Đã cấp phát Frame Buffer 64KB trên Fast Internal SRAM!");
+        LOG_I(TAG, "Frame Buffer 96KB trên Fast Internal SRAM!");
     }
 
-    m_readChunkBuffer = (uint8_t*)heap_caps_malloc(m_readChunkSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    // Read Chunk Buffer: Dùng PSRAM để tiết kiệm Internal SRAM cho tốc độ decode JPEG
+    m_readChunkBuffer = (uint8_t*)heap_caps_malloc(m_readChunkSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!m_readChunkBuffer) {
-        m_readChunkBuffer = (uint8_t*)malloc(m_readChunkSize);
+        // Fallback: Internal heap
+        m_readChunkBuffer = (uint8_t*)heap_caps_malloc(m_readChunkSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!m_readChunkBuffer) {
+            m_readChunkBuffer = (uint8_t*)malloc(m_readChunkSize);
+        }
+        LOG_W(TAG, "Read Chunk Buffer 32KB dùng Internal/default heap");
+    } else {
+        LOG_I(TAG, "Read Chunk Buffer 32KB trên PSRAM");
     }
 
-    if (!m_frameBuffer || !m_readChunkBuffer) {
+    // Audio Read Buffer: Dùng PSRAM, chỉ là staging buffer cho SD read
+    m_audioReadBuf = (uint8_t*)heap_caps_malloc(m_audioReadBufSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!m_audioReadBuf) {
+        m_audioReadBuf = (uint8_t*)malloc(m_audioReadBufSize);
+    }
+
+    // Render Buffer: PSRAM framebuffer 320x180x2=112KB
+    // Thay vì 240 tile pushImage riêng lẻ (àoverhead SPI) → 1 pushImage duy nhất sau khi decode xong
+    m_renderBuffer = (uint16_t*)heap_caps_malloc(
+        (size_t)kVideoW * kVideoH * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (m_renderBuffer) {
+        s_renderBuffer = m_renderBuffer;
+        // Khởi tạo toàn bộ buffer với màu đen → viền đen quanh video luôn được điền sẵn, không cần fillRect
+        memset(m_renderBuffer, 0, (size_t)kVideoW * kVideoH * sizeof(uint16_t));
+        TJpgDec.setCallback(tftFrameCallback);  // Decode vào buffer, push 1 lần
+        LOG_I(TAG, "Render Buffer %u KB trên PSRAM: single-shot push OK! (%dx%d)",
+              (uint32_t)((size_t)kVideoW * kVideoH * 2 / 1024), kVideoW, kVideoH);
+    } else {
+        TJpgDec.setCallback(tftOutputCallback); // Fallback: tile-by-tile
+        LOG_W(TAG, "Không cấp phát được Render Buffer PSRAM, dùng tile-by-tile fallback");
+    }
+
+    if (!m_frameBuffer || !m_readChunkBuffer || !m_audioReadBuf) {
         LOG_E(TAG, "Không đủ bộ nhớ heap để cấp phát bộ đệm Video!");
         return false;
     }
 
+    LOG_I(TAG, "VideoPlayerService bắt đầu: FrameBuf=%u KB, ReadChunk=%u KB, AudioBuf=%u B, RenderBuf=%s",
+          (uint32_t)(m_frameBufferCapacity / 1024),
+          (uint32_t)(m_readChunkSize / 1024),
+          (uint32_t)(m_audioReadBufSize),
+          m_renderBuffer ? "PSRAM 112KB" : "N/A (fallback)");
     return true;
 }
 
@@ -211,7 +276,13 @@ bool VideoPlayerService::openVideo(const char* videoPath, const char* wavPath, i
     // Đọc và vẽ ngay frame đầu tiên (Frame 0) tại y=20 (tâm màn hình), sau đó dừng ở trạng thái PAUSED
     size_t frameSize = 0;
     if (readNextFrame(frameSize)) {
-        TJpgDec.drawJpg(0, 30, m_frameBuffer, frameSize);
+        // Render frame đầu tiên: decode vào render buffer + 1 pushImage
+        if (s_renderBuffer) {
+            TJpgDec.drawJpg(0, 0, m_frameBuffer, frameSize);
+            m_tft.pushImage(0, 30, kVideoW, kVideoH, s_renderBuffer);
+        } else {
+            TJpgDec.drawJpg(0, 30, m_frameBuffer, frameSize);
+        }
         m_isFirstFrameRendered = true;
     }
 
@@ -282,18 +353,18 @@ bool VideoPlayerService::readNextFrameAvi(size_t& frameSize, bool skipVideo) {
             frameSize = chunkSize;
             return true;
         }
-        // 2. Chunk Audio: 01wb (PCM WAV audio)
+        // 2. Chunk Audio: 01wb (PCM WAV audio) — Đọc toàn bộ trong 1 SD transaction
         else if (chunkHdr[2] == 'w' && chunkHdr[3] == 'b') {
-            static uint8_t audioChunkBuf[1024];
             uint32_t remaining = chunkSize;
             while (remaining > 0) {
-                size_t toRead = (remaining > sizeof(audioChunkBuf)) ? sizeof(audioChunkBuf) : remaining;
+                size_t toRead = (remaining > m_audioReadBufSize) ? m_audioReadBufSize : remaining;
+                // Một lần lock duy nhất cho toàn bộ khối dữ liệu cần đọc
                 if (!StorageService::lock(pdMS_TO_TICKS(50))) break;
-                size_t bytesRead = m_videoFile.read(audioChunkBuf, toRead);
+                size_t bytesRead = m_videoFile.read(m_audioReadBuf, toRead);
                 StorageService::unlock();
                 if (bytesRead == 0) break;
                 if (m_state == VideoState::PLAYING) {
-                    m_audioService.writePcmChunk(audioChunkBuf, bytesRead);
+                    m_audioService.writePcmChunk(m_audioReadBuf, bytesRead);
                 }
                 remaining -= bytesRead;
             }
@@ -421,7 +492,12 @@ void VideoPlayerService::reset() {
     // Vẽ lại frame 0 tại y=30 và cập nhật UI về 00:00
     size_t frameSize = 0;
     if (readNextFrame(frameSize)) {
-        TJpgDec.drawJpg(0, 30, m_frameBuffer, frameSize);
+        if (s_renderBuffer) {
+            TJpgDec.drawJpg(0, 0, m_frameBuffer, frameSize);
+            m_tft.pushImage(0, 30, kVideoW, kVideoH, s_renderBuffer);
+        } else {
+            TJpgDec.drawJpg(0, 30, m_frameBuffer, frameSize);
+        }
     }
     m_ui.forceShowOverlay();
     m_ui.drawHeader();
@@ -455,9 +531,60 @@ void VideoPlayerService::update() {
     bool shouldSkip = (targetFrame > m_currentFrame + 2);
 
     size_t frameSize = 0;
-    if (readNextFrame(frameSize, shouldSkip)) {
+
+    uint32_t t0 = micros();
+    bool ok = readNextFrame(frameSize, shouldSkip);
+    uint32_t t1 = micros();
+
+    if (ok) {
         if (!shouldSkip && frameSize > 0) {
-            TJpgDec.drawJpg(0, 30, m_frameBuffer, frameSize);
+            uint32_t t2 = 0, t3 = 0;
+            // Render: decode vào PSRAM render buffer rồi push toàn bộ trong 1 SPI transaction
+            if (s_renderBuffer) {
+                TJpgDec.drawJpg(0, 0, m_frameBuffer, frameSize);
+                t2 = micros();
+                // startWrite/endWrite giữ SPI CS LOW liên tục trong suốt pushImage → không bị overhead CS toggle
+                m_tft.startWrite();
+                m_tft.setAddrWindow(0, 30, kVideoW, kVideoH);
+                m_tft.pushPixels(s_renderBuffer, (uint32_t)kVideoW * kVideoH);
+                m_tft.endWrite();
+                t3 = micros();
+            } else {
+                // Fallback tile-by-tile với startWrite/endWrite wrapper
+                m_tft.startWrite();
+                TJpgDec.drawJpg(0, 30, m_frameBuffer, frameSize);
+                m_tft.endWrite();
+                t2 = t3 = micros();
+            }
+
+            // FPS + Profiling: đo thực tế từng giai đoạn (chỉ đếm frame được render)
+            static uint32_t s_fpsFrameCount = 0;
+            static uint32_t s_fpsStartMs    = 0;
+            static uint32_t s_sumSdUs       = 0;
+            static uint32_t s_sumDecodeUs   = 0;
+            static uint32_t s_sumPushUs     = 0;
+
+            if (++s_fpsFrameCount == 1) {
+                s_fpsStartMs  = millis();
+                s_sumSdUs = s_sumDecodeUs = s_sumPushUs = 0;
+            }
+            s_sumSdUs     += (t1 - t0);
+            s_sumDecodeUs += (t2 - t1);
+            s_sumPushUs   += (t3 - t2);
+
+            if (s_fpsFrameCount >= 61) {
+                uint32_t elapsed = millis() - s_fpsStartMs;
+                if (elapsed > 0) {
+                    LOG_I(TAG, "[FPS] 60 rendered / %u ms = %.1f fps | skip=%s",
+                          elapsed, 60000.0f / (float)elapsed,
+                          (targetFrame > m_currentFrame) ? "YES" : "no");
+                    LOG_I(TAG, "[Profile/frame] SD=%ums  Decode=%ums  Push=%ums",
+                          s_sumSdUs / 60000,
+                          s_sumDecodeUs / 60000,
+                          s_sumPushUs / 60000);
+                }
+                s_fpsFrameCount = 0;
+            }
         }
         m_currentFrame++;
     } else {
@@ -470,7 +597,7 @@ void VideoPlayerService::update() {
     // Cập nhật timer ẩn/hiện của giao diện Cinema Mode
     m_ui.update(true);
 
-    // Nếu đang trong thời gian hiển thị overlay: chỉ vẽ Header và Footer trong dải viền đen (không đè lên video)
+    // Nếu đang trong thời gian hiển thị overlay: chỉ vẽ Header và Footer trong dải viền đen
     if (m_ui.isOverlayVisible()) {
         m_ui.drawHeader();
         m_ui.drawFooter(elapsedMs, m_totalDurationMs);
