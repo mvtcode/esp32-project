@@ -1,0 +1,18 @@
+{
+  "author": "Mạc Tân",
+  "tel": "0964335688",
+  "email": "macvantan@gmail.com",
+  "facebook": "https://facebook.com/mvt.hp.star",
+  "telegram": "@tanmac",
+  "homepage": "https://start-iot.tanhp.com/esp32",
+  "project": "esp32",
+  "target": "esp32dev",
+  "hardware": "esp32dev",
+  "version": "v1.0.0",
+  "version_code": 20260906,
+  "release_date": "06/09/2026",
+  "firmware_url": "https://iot.tanhp.com/esp32/v1.0.0/firmware.bin",
+  "clearNvs": true,
+  "clearNvsBelow": "v0.0.0",
+  "changelog": "Esp32 test update firmware OTA"
+}
