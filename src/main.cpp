@@ -13,6 +13,7 @@
 #include "services/market_service.h"
 #include "services/audio_player_service.h"
 #include "log.h"
+#include "version.h"
 
 // --- 1. Hardware Initialization ---
 TFT_eSPI tft = TFT_eSPI();
@@ -186,10 +187,7 @@ void setup() {
 
 
         // Set initial values on Settings Screen
-#ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v1.0.0"
-#endif
-        SettingsDeviceInfo info = {"ESP32 CYD 3.5\" 480x320", "ESP32-3248S035", FIRMWARE_VERSION, "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
+        SettingsDeviceInfo info = {"ESP32 CYD 3.5\" 480x320", "ESP32-3248S035", FIRMWARE_VERSION, FIRMWARE_RELEASE_DATE, "FreeRTOS", "CYD-35-ESP32"};
         ui->updateDeviceInfo(info);
         ui->updateSettingsTelemetry(SystemTelemetry::getFreeHeap(), SystemTelemetry::getUptimeFormatted().c_str(), WifiService::getIPAddress().c_str(), WifiService::getMacAddress().c_str());
         ui->updateWifiSettings(WifiService::getStateString(), WifiService::getConnectedSSID().c_str(), WifiService::getIPAddress().c_str(), WifiService::getRSSI());

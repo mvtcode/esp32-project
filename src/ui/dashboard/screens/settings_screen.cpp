@@ -9,8 +9,13 @@
 #include "../../../services/weather_service.h"
 #include "../../../services/market_service.h"
 #include "../../../services/time_service.h"
+#include "../../../services/ota_service.h"
 #include "log.h"
+#include "version.h"
 #include <stdio.h>
+
+static String s_pendingOtaUrl = "";
+static lv_timer_t* s_otaMonitorTimer = nullptr;
 
 SettingsScreen::SettingsScreen(lv_obj_t* parent) :
     currentMenuIndex(-1),
@@ -18,11 +23,12 @@ SettingsScreen::SettingsScreen(lv_obj_t* parent) :
     lblDevName(nullptr), lblDevModel(nullptr), lblDevFw(nullptr), lblDevBuild(nullptr),
     lblDevOs(nullptr), lblDevSerial(nullptr), lblDevUptime(nullptr), lblDevRam(nullptr),
     lblDevWifi(nullptr), lblDevIp(nullptr), lblDevMac(nullptr),
-    btnRestart(nullptr), btnFactoryReset(nullptr),
+    btnOtaCheck(nullptr), btnRestart(nullptr), btnFactoryReset(nullptr),
     lblWifiCurrentState(nullptr), lblWifiCurrentInfo(nullptr), btnWifiScan(nullptr),
     lblBtnScan(nullptr), wifiListContainer(nullptr),
     modalBackdrop(nullptr), modalCard(nullptr), modalSsidLabel(nullptr),
     taPassword(nullptr), keyboard(nullptr),
+
     lblSdStatus(nullptr), lblSdBusInfo(nullptr), barSdUsage(nullptr),
     lblSdCapacity(nullptr), lblSdPercent(nullptr), btnRefreshSd(nullptr),
     btnFormatSd(nullptr), lblSdActionMsg(nullptr),
@@ -34,9 +40,7 @@ SettingsScreen::SettingsScreen(lv_obj_t* parent) :
 {
     strncpy(cachedDevName, "ESP32 CYD 3.5\" 480x320", sizeof(cachedDevName) - 1);
     strncpy(cachedDevModel, "ESP32-3248S035", sizeof(cachedDevModel) - 1);
-#ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v1.0.0"
-#endif
+
     strncpy(cachedDevFw, FIRMWARE_VERSION, sizeof(cachedDevFw) - 1);
     strncpy(cachedAuthor, "Mạc Tân - 0964335688", sizeof(cachedAuthor) - 1);
     strncpy(cachedEmail, "macvantan@gmail.com", sizeof(cachedEmail) - 1);
@@ -149,6 +153,10 @@ void SettingsScreen::destroyCurrentPane() {
         lv_timer_del(syncTimer);
         syncTimer = nullptr;
     }
+    if (s_otaMonitorTimer) {
+        lv_timer_del(s_otaMonitorTimer);
+        s_otaMonitorTimer = nullptr;
+    }
     DialogManager::dismissModal();
     if (rightPane) {
         lv_obj_clean(rightPane);
@@ -168,8 +176,10 @@ void SettingsScreen::destroyCurrentPane() {
     lblDevWifi = nullptr;
     lblDevIp = nullptr;
     lblDevMac = nullptr;
+    btnOtaCheck = nullptr;
     btnRestart = nullptr;
     btnFactoryReset = nullptr;
+
 
     lblWifiCurrentState = nullptr;
     lblWifiCurrentInfo = nullptr;
@@ -220,7 +230,7 @@ void SettingsScreen::buildDevicePane() {
     if (strstr(cachedDevName, cachedDevFw) != nullptr) {
         snprintf(titleBuf, sizeof(titleBuf), "%s", cachedDevName);
     } else {
-        snprintf(titleBuf, sizeof(titleBuf), "%s (%s)", cachedDevName, cachedDevFw);
+        snprintf(titleBuf, sizeof(titleBuf), "%s (%s - %s)", cachedDevName, cachedDevFw, FIRMWARE_RELEASE_DATE);
     }
 
     lblDevName = lv_label_create(cardInfo);
@@ -285,28 +295,40 @@ void SettingsScreen::buildDevicePane() {
     CydTheme::applyTextFont(lblDevMac, CydTheme::getFont12(), CydTheme::getTextMuted());
     lv_obj_align(lblDevMac, LV_ALIGN_TOP_LEFT, 0, 154);
 
-    // Bottom Action Row
+    // Bottom Action Row (3 nút: Cập nhật OTA, Khởi động lại, Khôi phục gốc)
+    btnOtaCheck = lv_btn_create(rightPane);
+    lv_obj_set_size(btnOtaCheck, 112, 38);
+    lv_obj_align(btnOtaCheck, LV_ALIGN_BOTTOM_LEFT, 0, -4);
+    lv_obj_set_style_bg_color(btnOtaCheck, lv_color_make(20, 110, 80), 0);
+    lv_obj_set_style_radius(btnOtaCheck, 6, 0);
+    lv_obj_add_event_cb(btnOtaCheck, ota_check_click_cb, LV_EVENT_CLICKED, this);
+
+    lv_obj_t* lblBtnOta = lv_label_create(btnOtaCheck);
+    lv_label_set_text(lblBtnOta, LV_SYMBOL_DOWNLOAD " Cập Nhật");
+    CydTheme::applyTextFont(lblBtnOta, CydTheme::getFont12(), CydTheme::getWhiteColor());
+    lv_obj_center(lblBtnOta);
+
     btnRestart = lv_btn_create(rightPane);
-    lv_obj_set_size(btnRestart, 168, 38);
-    lv_obj_align(btnRestart, LV_ALIGN_BOTTOM_LEFT, 0, -4);
+    lv_obj_set_size(btnRestart, 112, 38);
+    lv_obj_align(btnRestart, LV_ALIGN_BOTTOM_MID, 0, -4);
     lv_obj_set_style_bg_color(btnRestart, lv_color_make(30, 60, 110), 0);
     lv_obj_set_style_radius(btnRestart, 6, 0);
     lv_obj_add_event_cb(btnRestart, restart_click_cb, LV_EVENT_CLICKED, this);
 
     lv_obj_t* lblBtnRst = lv_label_create(btnRestart);
-    lv_label_set_text(lblBtnRst, LV_SYMBOL_REFRESH " Khởi Động Lại");
+    lv_label_set_text(lblBtnRst, LV_SYMBOL_REFRESH " Khởi Động");
     CydTheme::applyTextFont(lblBtnRst, CydTheme::getFont12(), CydTheme::getWhiteColor());
     lv_obj_center(lblBtnRst);
 
     btnFactoryReset = lv_btn_create(rightPane);
-    lv_obj_set_size(btnFactoryReset, 168, 38);
+    lv_obj_set_size(btnFactoryReset, 112, 38);
     lv_obj_align(btnFactoryReset, LV_ALIGN_BOTTOM_RIGHT, 0, -4);
     lv_obj_set_style_bg_color(btnFactoryReset, lv_color_make(100, 30, 40), 0);
     lv_obj_set_style_radius(btnFactoryReset, 6, 0);
     lv_obj_add_event_cb(btnFactoryReset, factory_reset_click_cb, LV_EVENT_CLICKED, this);
 
     lv_obj_t* lblBtnFac = lv_label_create(btnFactoryReset);
-    lv_label_set_text(lblBtnFac, LV_SYMBOL_TRASH " Khôi Phục Gốc");
+    lv_label_set_text(lblBtnFac, LV_SYMBOL_TRASH " Khôi Phục");
     CydTheme::applyTextFont(lblBtnFac, CydTheme::getFont12(), CydTheme::getWhiteColor());
     lv_obj_center(lblBtnFac);
 }
@@ -880,7 +902,7 @@ void SettingsScreen::updateDeviceInfo(const SettingsDeviceInfo& info) {
         if (strstr(cachedDevName, cachedDevFw) != nullptr) {
             snprintf(titleBuf, sizeof(titleBuf), "%s", cachedDevName);
         } else {
-            snprintf(titleBuf, sizeof(titleBuf), "%s (%s)", cachedDevName, cachedDevFw);
+            snprintf(titleBuf, sizeof(titleBuf), "%s (%s - %s)", cachedDevName, cachedDevFw, FIRMWARE_RELEASE_DATE);
         }
         lv_label_set_text(lblDevName, titleBuf);
     }
@@ -1314,7 +1336,134 @@ void SettingsScreen::volume_changed_cb(lv_event_t* e) {
     if (self->lblVolumeVal) lv_label_set_text(self->lblVolumeVal, buf);
 }
 
+static void ota_monitor_timer_cb(lv_timer_t* t) {
+    OtaState state = OtaService::getState();
+    int pct = OtaService::getProgressPercent();
+    size_t dl = OtaService::getDownloadedBytes();
+    size_t tot = OtaService::getTotalBytes();
+
+    if (state == OtaState::DOWNLOADING) {
+        char msg[128];
+        char hint[64];
+        snprintf(msg, sizeof(msg), "Đang tải và ghi Flash (%d%%)...\nVui lòng tuyệt đối KHÔNG tắt nguồn!", pct);
+        snprintf(hint, sizeof(hint), "Tiến trình: %d%% (%u / %u KB)", pct, (uint32_t)(dl / 1024), (uint32_t)(tot / 1024));
+        DialogManager::showLockOverlay("ĐANG NẠP FIRMWARE OTA...", msg, hint, LV_SYMBOL_DOWNLOAD, lv_color_make(20, 140, 80));
+    } else if (state == OtaState::SUCCESS) {
+        DialogManager::showLockOverlay(
+            "CẬP NHẬT THÀNH CÔNG!",
+            "Firmware mới đã nạp hoàn tất.\nThiết bị sẽ tự khởi động lại sau giây lát...",
+            "Đang khởi động lại...",
+            LV_SYMBOL_OK,
+            lv_color_make(40, 160, 60)
+        );
+        if (s_otaMonitorTimer) {
+            lv_timer_del(s_otaMonitorTimer);
+            s_otaMonitorTimer = nullptr;
+        }
+    } else if (state == OtaState::ERROR) {
+        DialogManager::hideLockOverlay();
+        DialogManager::showAlert(
+            LV_SYMBOL_WARNING " LỖI CẬP NHẬT",
+            OtaService::getErrorMessage(),
+            "Đóng",
+            nullptr,
+            nullptr,
+            lv_color_make(180, 40, 50)
+        );
+        if (s_otaMonitorTimer) {
+            lv_timer_del(s_otaMonitorTimer);
+            s_otaMonitorTimer = nullptr;
+        }
+    }
+}
+
+void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
+    if (WiFi.status() != WL_CONNECTED) {
+        DialogManager::showAlert(
+            LV_SYMBOL_WARNING " CẬP NHẬT OTA",
+            "Vui lòng kết nối mạng WiFi trước khi\nkiểm tra bản cập nhật mới!",
+            "Đã Hiểu"
+        );
+        return;
+    }
+
+    DialogManager::showToast("Đang kiểm tra bản cập nhật từ máy chủ...", 3000);
+
+    OtaInfo info;
+    bool ok = OtaService::checkUpdate(info);
+
+    if (!ok) {
+        DialogManager::showAlert(
+            LV_SYMBOL_WARNING " LỖI KIỂM TRA",
+            OtaService::getErrorMessage(),
+            "Đóng",
+            nullptr,
+            nullptr,
+            lv_color_make(180, 40, 50)
+        );
+        return;
+    }
+
+    if (!info.hasUpdate) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Thiết bị đang sử dụng phiên bản mới nhất (%s).\nKhông có bản cập nhật nào cần nạp.", info.version.c_str());
+        DialogManager::showAlert(
+            LV_SYMBOL_OK " PHIÊN BẢN MỚI NHẤT",
+            buf,
+            "Đóng",
+            nullptr,
+            nullptr,
+            lv_color_make(40, 150, 60)
+        );
+        return;
+    }
+
+    s_pendingOtaUrl = info.firmwareUrl;
+
+    String body = "Đã có bản cập nhật: " + info.version;
+    if (info.releaseDate.length() > 0) {
+        body += " (" + info.releaseDate + ")";
+    }
+    body += "\n";
+    if (info.changelog.length() > 0) {
+        body += "Nội dung: " + info.changelog + "\n";
+    }
+    body += "\nBạn có muốn tải và nạp ngay bây giờ?";
+
+
+    DialogManager::showConfirm(
+        LV_SYMBOL_DOWNLOAD " NÂNG CẤP FIRMWARE",
+        body.c_str(),
+        LV_SYMBOL_DOWNLOAD " Nâng Cấp",
+        ota_confirm_click_cb,
+        nullptr,
+        LV_SYMBOL_CLOSE " Để Sau",
+        nullptr,
+        lv_color_make(20, 140, 80)
+    );
+}
+
+void SettingsScreen::ota_confirm_click_cb(lv_event_t* e) {
+    DialogManager::dismissModal();
+    DialogManager::showLockOverlay(
+        "ĐANG NẠP FIRMWARE OTA...",
+        "Đang chuẩn bị kết nối và nạp Flash...\nVui lòng tuyệt đối KHÔNG tắt nguồn!",
+        "Tiến trình: 0%",
+        LV_SYMBOL_DOWNLOAD,
+        lv_color_make(20, 140, 80)
+    );
+
+    LOG_I("OTA", "User confirmed OTA update from: %s", s_pendingOtaUrl.c_str());
+    OtaService::startUpdate(s_pendingOtaUrl, nullptr, nullptr);
+
+    if (s_otaMonitorTimer) {
+        lv_timer_del(s_otaMonitorTimer);
+    }
+    s_otaMonitorTimer = lv_timer_create(ota_monitor_timer_cb, 150, nullptr);
+}
+
 void SettingsScreen::restart_click_cb(lv_event_t* e) {
+
     DialogManager::showLockOverlay(
         "ĐANG KHỞI ĐỘNG LẠI...",
         "Hệ thống đang chuẩn bị khởi động lại...\nVui lòng chờ giây lát!",

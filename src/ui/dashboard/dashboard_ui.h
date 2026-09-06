@@ -9,9 +9,7 @@
 #include "screens/settings_screen.h"
 #include "dev_hud.h"
 
-#ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v1.0.0"
-#endif
+#include "version.h"
 
 class DashboardUI {
 public:
@@ -147,7 +145,7 @@ private:
 
     struct SettingsCache {
 
-        SettingsDeviceInfo info = {"ESP32 CYD 3.5\" 480x320", "ESP32-3248S035", FIRMWARE_VERSION, "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
+        SettingsDeviceInfo info = {"ESP32 CYD 3.5\" 480x320", "ESP32-3248S035", FIRMWARE_VERSION, FIRMWARE_RELEASE_DATE, "FreeRTOS", "CYD-35-ESP32"};
         uint32_t freeHeap = 160000;
         char uptimeStr[32] = "00:00:00";
         char ipStr[32] = "0.0.0.0";

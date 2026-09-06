@@ -1,6 +1,9 @@
 # ESP32 CYD 3.5" Smart Dashboard & Audio Player - Release v1.0.0
 
 🎉 **Bản phát hành chính thức đầu tiên (Production Release)** dành cho mạch **ESP32-3248S035 (CYD 3.5" TFT ST7796 + Cảm ứng điện trở XPT2046)**.
+- **Ngày phát hành (Release Date):** `06/09/2026`
+- **Phiên bản (Version):** `v1.0.0`
+
 
 Phiên bản này nâng cấp toàn diện từ giao diện mẫu sang hệ thống thời gian thực hoàn chỉnh với đầy đủ các tính năng thông minh, giao diện mượt mà và tối ưu hóa phần cứng vượt trội.
 

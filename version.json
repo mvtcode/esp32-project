@@ -1,0 +1,16 @@
+{
+  "author": "Mạc Tân",
+  "tel": "0964335688",
+  "email": "macvantan@gmail.com",
+  "facebook": "https://facebook.com/mvt.hp.star",
+  "telegram": "@tanmac",
+  "homepage": "https://start-iot.tanhp.com/cyd35smart",
+  "project": "CYD-35-ESP32",
+  "target": "esp32-kit3.5",
+  "hardware": "ESP32-3248S035",
+  "version": "v1.0.0",
+  "version_code": 100,
+  "release_date": "06/09/2026",
+  "firmware_url": "https://iot.tanhp.com/cyd35smart/v1.0.0/firmware.bin",
+  "changelog": "Bản phát hành chính thức v1.0.0: Đồng hồ NTP, Lịch Âm Việt Nam, Thời tiết, Giá vàng xăng dầu, Trình phát nhạc MP3/WAV, Quản lý NVS chống mòn Flash."
+}

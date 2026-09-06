@@ -60,8 +60,10 @@ private:
     lv_obj_t* lblDevWifi;
     lv_obj_t* lblDevIp;
     lv_obj_t* lblDevMac;
+    lv_obj_t* btnOtaCheck;
     lv_obj_t* btnRestart;
     lv_obj_t* btnFactoryReset;
+
 
     // --- Tab 1: WiFi Widgets ---
     lv_obj_t* lblWifiCurrentState;
@@ -156,8 +158,11 @@ private:
     static void sleep_timeout_changed_cb(lv_event_t* e);
     static void dev_mode_toggle_cb(lv_event_t* e);
     static void volume_changed_cb(lv_event_t* e);
+    static void ota_check_click_cb(lv_event_t* e);
+    static void ota_confirm_click_cb(lv_event_t* e);
     static void restart_click_cb(lv_event_t* e);
     static void factory_reset_click_cb(lv_event_t* e);
     static void factory_reset_confirm_cb(lv_event_t* e);
 };
+
 
