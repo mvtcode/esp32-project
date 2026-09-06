@@ -44,6 +44,7 @@ public:
     static bool resume();
     static bool togglePlay();
     static void stop();
+    static void releaseForOta();
     static void next();
     static void prev();
     static bool seekToPercent(int percent);

@@ -351,7 +351,9 @@ void AudioPlayerService::init() {
 
     audioLogger = &Serial;
 
-    audioMutex = xSemaphoreCreateMutex();
+    if (!audioMutex) {
+        audioMutex = xSemaphoreCreateMutex();
+    }
     volume = ConfigManager::getDefaultVolume();
     if (volume == 0) volume = 50;
 
@@ -364,20 +366,24 @@ void AudioPlayerService::init() {
     }
 
     // Initialize Audio Output (CYD Onboard DAC on GPIO 26 / DAC channel 2, 16 DMA buffers)
-    audioOut = new SafeAudioOutputDAC(16);
-    audioOut->SetOutputModeMono(true);
-    audioOut->SetGain(((float)volume / 100.0f) * 1.4f);
-    audioOut->begin(); // Cài đặt I2S DMA buffers 1 lần duy nhất
+    if (!audioOut) {
+        audioOut = new SafeAudioOutputDAC(16);
+        audioOut->SetOutputModeMono(true);
+        audioOut->SetGain(((float)volume / 100.0f) * 1.4f);
+        audioOut->begin(); // Cài đặt I2S DMA buffers 1 lần duy nhất
+    }
 
-    xTaskCreatePinnedToCore(
-        audioTask,
-        "AudioTask",
-        6144,
-        NULL,
-        3, // Priority 3: trên IDLE0 nhưng có vTaskDelay nhường CPU hợp lý
-        &audioTaskHandle,
-        0
-    );
+    if (audioTaskHandle == nullptr) {
+        xTaskCreatePinnedToCore(
+            audioTask,
+            "AudioTask",
+            6144,
+            NULL,
+            3, // Priority 3: trên IDLE0 nhưng có vTaskDelay nhường CPU hợp lý
+            &audioTaskHandle,
+            0
+        );
+    }
 
     initialized = true;
     LOG_I("AudioPlayer", "Audio Engine initialized on Core 0 (DAC Output, Helix Preallocated)");
@@ -791,6 +797,34 @@ void AudioPlayerService::stop() {
         pausedElapsedMillis = 0;
         seekOffsetSec = 0;
         xSemaphoreGive(audioMutex);
+    }
+}
+
+void AudioPlayerService::releaseForOta() {
+    stop();
+    if (audioMutex && xSemaphoreTake(audioMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+        cleanupCurrentPlayback();
+        if (audioTaskHandle != nullptr) {
+            TaskHandle_t h = audioTaskHandle;
+            audioTaskHandle = nullptr;
+            vTaskDelete(h);
+        }
+        if (mp3Decoder) {
+            delete mp3Decoder;
+            mp3Decoder = nullptr;
+        }
+        if (wavDecoder) {
+            delete wavDecoder;
+            wavDecoder = nullptr;
+        }
+        if (audioOut) {
+            audioOut->stop();
+            delete audioOut;
+            audioOut = nullptr;
+        }
+        initialized = false;
+        xSemaphoreGive(audioMutex);
+        LOG_I("AudioPlayer", "Audio resources completely released for OTA (>40KB DRAM freed)");
     }
 }
 

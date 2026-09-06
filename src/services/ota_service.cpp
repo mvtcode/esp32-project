@@ -266,15 +266,15 @@ bool OtaService::startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgre
     s_statusMsg[0] = '\0';
     s_state = OtaState::DOWNLOADING;
 
-    // Tạm dừng phát nhạc và giải phóng tài nguyên I2S DMA/SD buffer để nhường RAM cho HTTPS TLS
+    // Giải phóng hoàn toàn AudioPlayer (Task, Decoders, I2S DMA) để giải phóng >40KB DRAM cho HTTPS TLS & OTA buffer
     if (AudioPlayerService::isInitialized()) {
-        AudioPlayerService::stop();
+        AudioPlayerService::releaseForOta();
     }
 
     BaseType_t res = xTaskCreatePinnedToCore(
         otaTask,
         "otaTask",
-        10240, // 10KB Stack an toàn cho TLS handshake
+        8192, // 8KB Stack an toàn cho TLS handshake (tiết kiệm 2KB DRAM)
         NULL,
         1,     // Priority 1
         &s_otaTaskHandle,
@@ -294,18 +294,20 @@ bool OtaService::startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgre
 }
 
 void OtaService::otaTask(void* param) {
-    LOG_E(TAG, "OTA Task started. FreeHeap: %u, MaxBlock: %u", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    size_t freeDram = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+    size_t maxDram = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+    LOG_I(TAG, "OTA Task started. FreeDRAM: %u bytes, MaxBlockDRAM: %u bytes", freeDram, maxDram);
     if (s_statusCb) s_statusCb(OtaState::DOWNLOADING, "Đang kết nối máy chủ tải firmware...");
 
     // Kiểm tra phân vùng OTA hiện tại và phân vùng đích
     const esp_partition_t* runningPart = esp_ota_get_running_partition();
     const esp_partition_t* nextPart = esp_ota_get_next_update_partition(NULL);
 
-    LOG_E(TAG, "Running partition: %s (offset 0x%06x, size %u KB)", 
+    LOG_I(TAG, "Running partition: %s (offset 0x%06x, size %u KB)", 
           runningPart ? runningPart->label : "NULL", 
           runningPart ? runningPart->address : 0, 
           runningPart ? (uint32_t)(runningPart->size / 1024) : 0);
-    LOG_E(TAG, "Next partition: %s (offset 0x%06x, size %u KB)", 
+    LOG_I(TAG, "Next partition: %s (offset 0x%06x, size %u KB)", 
           nextPart ? nextPart->label : "NULL", 
           nextPart ? nextPart->address : 0, 
           nextPart ? (uint32_t)(nextPart->size / 1024) : 0);
@@ -316,6 +318,7 @@ void OtaService::otaTask(void* param) {
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
         vTaskDelete(NULL);
         return;
     }
@@ -335,6 +338,7 @@ void OtaService::otaTask(void* param) {
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
         vTaskDelete(NULL);
         return;
     }
@@ -347,12 +351,13 @@ void OtaService::otaTask(void* param) {
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
         vTaskDelete(NULL);
         return;
     }
 
     int contentLength = http.getSize();
-    LOG_E(TAG, "Firmware size: %d bytes (~%.2f MB), Partition size: %u bytes", 
+    LOG_I(TAG, "Firmware size: %d bytes (~%.2f MB), Partition size: %u bytes", 
           contentLength, (float)contentLength / (1024.0f * 1024.0f), nextPart->size);
 
     if (contentLength <= 0) {
@@ -362,6 +367,7 @@ void OtaService::otaTask(void* param) {
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
         vTaskDelete(NULL);
         return;
     }
@@ -374,6 +380,7 @@ void OtaService::otaTask(void* param) {
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
         vTaskDelete(NULL);
         return;
     }
@@ -384,14 +391,19 @@ void OtaService::otaTask(void* param) {
     Update.abort();
     Update.clearError();
 
+    size_t preAllocDram = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+    LOG_I(TAG, "DRAM before Update.begin(): %u bytes", preAllocDram);
+
     if (!Update.begin(contentLength, U_FLASH)) {
-        snprintf(s_errorMsg, sizeof(s_errorMsg), "Khởi tạo OTA lỗi (Mã %d: %s, MaxBlock=%u)", 
-                 Update.getError(), Update.errorString(), ESP.getMaxAllocHeap());
+        snprintf(s_errorMsg, sizeof(s_errorMsg), "Khởi tạo OTA lỗi (Mã %d: %s, MaxBlockDRAM=%u)", 
+                 Update.getError(), Update.errorString(), 
+                 (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL));
         LOG_E(TAG, "%s", s_errorMsg);
         http.end();
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
         vTaskDelete(NULL);
         return;
     }
@@ -424,16 +436,17 @@ void OtaService::otaTask(void* param) {
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
         vTaskDelete(NULL);
         return;
     }
 
     if (Update.end(true)) {
         if (Update.isFinished()) {
-            LOG_E(TAG, "OTA update SUCCESSFUL! (%u bytes written)", written);
+            LOG_I(TAG, "OTA update SUCCESSFUL! (%u bytes written)", written);
             
             if (s_clearNvs) {
-                LOG_E(TAG, "clearNvs is TRUE -> Resetting NVS Flash to factory defaults before reboot...");
+                LOG_I(TAG, "clearNvs is TRUE -> Resetting NVS Flash to factory defaults before reboot...");
                 ConfigManager::resetToDefaults();
                 vTaskDelay(pdMS_TO_TICKS(500));
             }
@@ -451,6 +464,7 @@ void OtaService::otaTask(void* param) {
             s_state = OtaState::ERROR;
             s_isUpdating = false;
             if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+            AudioPlayerService::init();
         }
     } else {
         snprintf(s_errorMsg, sizeof(s_errorMsg), "Lỗi kết thúc OTA: %s (Mã %d)", Update.errorString(), Update.getError());
@@ -458,6 +472,7 @@ void OtaService::otaTask(void* param) {
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
     }
 
     vTaskDelete(NULL);
