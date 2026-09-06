@@ -20,6 +20,8 @@ TaskHandle_t OtaService::s_otaTaskHandle = nullptr;
 OtaProgressCallback OtaService::s_progressCb = nullptr;
 OtaStatusCallback OtaService::s_statusCb = nullptr;
 String OtaService::s_downloadUrl = "";
+String OtaService::s_pendingChangelog = "";
+String OtaService::s_pendingReleaseDate = "";
 
 void OtaService::init() {
     s_state = OtaState::IDLE;
@@ -30,6 +32,8 @@ void OtaService::init() {
     s_totalBytes = 0;
     s_errorMsg[0] = '\0';
     s_statusMsg[0] = '\0';
+    s_pendingChangelog = "";
+    s_pendingReleaseDate = "";
 }
 
 bool OtaService::isUpdating() {
@@ -227,12 +231,20 @@ bool OtaService::checkUpdate(OtaInfo& info) {
         info.hasUpdate = false;
         s_state = OtaState::UP_TO_DATE;
         LOG_I(TAG, "Device is up to date: %s", currentVersion.c_str());
+
+        // Đồng bộ changelog và ngày phát hành vào NVS khi thiết bị đang ở phiên bản mới nhất
+        if (info.changelog.length() > 0) {
+            ConfigManager::setChangelog(info.changelog);
+        }
+        if (info.releaseDate.length() > 0) {
+            ConfigManager::setReleaseDate(info.releaseDate);
+        }
     }
 
     return true;
 }
 
-bool OtaService::startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgressCallback progressCb, OtaStatusCallback statusCb) {
+bool OtaService::startUpdate(const String& firmwareUrl, bool clearNvs, const String& changelog, const String& releaseDate, OtaProgressCallback progressCb, OtaStatusCallback statusCb) {
     if (s_isUpdating) {
         LOG_W(TAG, "OTA update already in progress.");
         return false;
@@ -256,6 +268,8 @@ bool OtaService::startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgre
     Update.clearError();
     s_downloadUrl = firmwareUrl;
     s_clearNvs = clearNvs;
+    s_pendingChangelog = changelog;
+    s_pendingReleaseDate = releaseDate;
     s_progressCb = progressCb;
     s_statusCb = statusCb;
     s_isUpdating = true;
@@ -274,7 +288,7 @@ bool OtaService::startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgre
     BaseType_t res = xTaskCreatePinnedToCore(
         otaTask,
         "otaTask",
-        8192, // 8KB Stack an toàn cho TLS handshake (tiết kiệm 2KB DRAM)
+        8192,  // 8KB Stack an toan va tiet kiem DRAM cho TLS handshake
         NULL,
         1,     // Priority 1
         &s_otaTaskHandle,
@@ -324,14 +338,15 @@ void OtaService::otaTask(void* param) {
     }
 
     WiFiClientSecure client;
-    client.setInsecure();
-    client.setTimeout(15000); // 15s timeout
+    client.setInsecure(); // Cloudflare CDN HTTPS với SSL/TLS tự động bỏ qua kiểm tra chứng chỉ lỗi thời
+    client.setTimeout(20000); // 20s timeout per Rule 9
 
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setUserAgent("ESP32-CYD-Updater");
-    http.setReuse(true);
+    http.setTimeout(20000); // 20s timeout per Rule 9
 
+    LOG_I(TAG, "Connecting to firmware URL: %s", s_downloadUrl.c_str());
     if (!http.begin(client, s_downloadUrl)) {
         snprintf(s_errorMsg, sizeof(s_errorMsg), "Kết nối URL firmware thất bại.");
         LOG_E(TAG, "%s", s_errorMsg);
@@ -357,7 +372,7 @@ void OtaService::otaTask(void* param) {
     }
 
     int contentLength = http.getSize();
-    LOG_I(TAG, "Firmware size: %d bytes (~%.2f MB), Partition size: %u bytes", 
+    LOG_I(TAG, "Firmware size from server: %d bytes (~%.2f MB), Partition size: %u bytes", 
           contentLength, (float)contentLength / (1024.0f * 1024.0f), nextPart->size);
 
     if (contentLength <= 0) {
@@ -385,21 +400,13 @@ void OtaService::otaTask(void* param) {
         return;
     }
 
-    if (Update.isRunning()) {
-        Update.end(false);
-    }
-    Update.abort();
-    Update.clearError();
-
-    size_t preAllocDram = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
-    LOG_I(TAG, "DRAM before Update.begin(): %u bytes", preAllocDram);
-
-    if (!Update.begin(contentLength, U_FLASH)) {
-        snprintf(s_errorMsg, sizeof(s_errorMsg), "Khởi tạo OTA lỗi (Mã %d: %s, MaxBlockDRAM=%u)", 
-                 Update.getError(), Update.errorString(), 
-                 (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL));
+    esp_ota_handle_t otaHandle = 0;
+    esp_err_t otaErr = esp_ota_begin(nextPart, contentLength, &otaHandle);
+    if (otaErr != ESP_OK) {
+        snprintf(s_errorMsg, sizeof(s_errorMsg), "Khởi tạo Flash OTA thất bại (Mã 0x%x)", otaErr);
         LOG_E(TAG, "%s", s_errorMsg);
         http.end();
+        client.stop();
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
@@ -409,30 +416,12 @@ void OtaService::otaTask(void* param) {
     }
 
     WiFiClient* stream = http.getStreamPtr();
-
-    // Lắng nghe tiến trình nạp trực tiếp qua Update.onProgress
-    Update.onProgress([](size_t current, size_t total) {
-        s_downloadedBytes = current;
-        s_totalBytes = total;
-        int currentPercent = (int)((current * 100) / total);
-        s_progressPercent = currentPercent;
-        snprintf(s_statusMsg, sizeof(s_statusMsg), "Đang nạp: %d%% (%u / %u KB)", 
-                 currentPercent, (uint32_t)(current / 1024), (uint32_t)(total / 1024));
-        if (s_progressCb) {
-            s_progressCb(currentPercent, current, total);
-        }
-        vTaskDelay(pdMS_TO_TICKS(1)); // Nhường tick cho watchdog reset
-    });
-
-    size_t written = Update.writeStream(*stream);
-    http.end();
-
-    if (written != (size_t)contentLength) {
-        snprintf(s_errorMsg, sizeof(s_errorMsg), "Ghi Flash lỗi (%u / %u KB): %s (Mã %d)", 
-                 (uint32_t)(written / 1024), (uint32_t)(contentLength / 1024), 
-                 Update.errorString(), Update.getError());
+    if (!stream) {
+        snprintf(s_errorMsg, sizeof(s_errorMsg), "Không thể lấy luồng dữ liệu mạng.");
         LOG_E(TAG, "%s", s_errorMsg);
-        Update.abort();
+        esp_ota_abort(otaHandle);
+        http.end();
+        client.stop();
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
@@ -441,39 +430,150 @@ void OtaService::otaTask(void* param) {
         return;
     }
 
-    if (Update.end(true)) {
-        if (Update.isFinished()) {
-            LOG_I(TAG, "OTA update SUCCESSFUL! (%u bytes written)", written);
-            
-            if (s_clearNvs) {
-                LOG_I(TAG, "clearNvs is TRUE -> Resetting NVS Flash to factory defaults before reboot...");
-                ConfigManager::resetToDefaults();
-                vTaskDelay(pdMS_TO_TICKS(500));
+    const size_t bufSize = 2048; // 2KB buffer nhỏ gọn, an toàn tuyệt đối cho DRAM
+    uint8_t* buffer = (uint8_t*)malloc(bufSize);
+    if (!buffer) {
+        snprintf(s_errorMsg, sizeof(s_errorMsg), "Không đủ RAM cho buffer OTA.");
+        LOG_E(TAG, "%s", s_errorMsg);
+        esp_ota_abort(otaHandle);
+        http.end();
+        client.stop();
+        s_state = OtaState::ERROR;
+        s_isUpdating = false;
+        if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
+        vTaskDelete(NULL);
+        return;
+    }
+
+    size_t totalWritten = 0;
+    int lastPercent = -1;
+    unsigned long lastActivity = millis();
+    bool writeError = false;
+
+    while (totalWritten < (size_t)contentLength) {
+        size_t remaining = (size_t)contentLength - totalWritten;
+        size_t toRead = (remaining < bufSize) ? remaining : bufSize;
+
+        // Đọc trực tiếp từ stream (blocking an toàn với timeout từ socket, không phụ thuộc available())
+        int bytesRead = stream->read(buffer, toRead);
+
+        if (bytesRead > 0) {
+            esp_err_t err = esp_ota_write(otaHandle, buffer, bytesRead);
+            if (err != ESP_OK) {
+                snprintf(s_errorMsg, sizeof(s_errorMsg), "Ghi Flash lỗi (%u / %u KB, Mã 0x%x)", 
+                         (uint32_t)(totalWritten / 1024), (uint32_t)(contentLength / 1024), err);
+                LOG_E(TAG, "%s", s_errorMsg);
+                writeError = true;
+                break;
             }
 
-            s_state = OtaState::SUCCESS;
-            s_isUpdating = false;
-            if (s_statusCb) s_statusCb(OtaState::SUCCESS, "Cập nhật thành công! Đang khởi động lại...");
-            
-            // Chờ 1.5s để UI hiển thị thông báo trước khi reboot
-            vTaskDelay(pdMS_TO_TICKS(1500));
-            ESP.restart();
+            totalWritten += bytesRead;
+            lastActivity = millis();
+            s_downloadedBytes = totalWritten;
+            s_totalBytes = contentLength;
+
+            int currentPercent = (int)(((int64_t)totalWritten * 100) / contentLength);
+            if (currentPercent != lastPercent) {
+                lastPercent = currentPercent;
+                s_progressPercent = currentPercent;
+                snprintf(s_statusMsg, sizeof(s_statusMsg), "Đang nạp: %d%% (%u / %u KB)", 
+                         currentPercent, (uint32_t)(totalWritten / 1024), (uint32_t)(contentLength / 1024));
+                if (s_progressCb) {
+                    s_progressCb(currentPercent, totalWritten, contentLength);
+                }
+            }
+        } else if (bytesRead == 0) {
+            // Socket tạm thời chưa có dữ liệu mới, chờ tối đa 25s
+            if (millis() - lastActivity > 25000) {
+                snprintf(s_errorMsg, sizeof(s_errorMsg), "Quá thời gian tải dữ liệu OTA (Timeout 25s).");
+                LOG_E(TAG, "%s", s_errorMsg);
+                writeError = true;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
         } else {
-            snprintf(s_errorMsg, sizeof(s_errorMsg), "OTA chưa hoàn tất toàn vẹn.");
-            LOG_E(TAG, "%s", s_errorMsg);
-            s_state = OtaState::ERROR;
-            s_isUpdating = false;
-            if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
-            AudioPlayerService::init();
+            // bytesRead < 0: Socket bị ngắt kết nối
+            if (!http.connected() && totalWritten < (size_t)contentLength) {
+                snprintf(s_errorMsg, sizeof(s_errorMsg), "Mất kết nối máy chủ OTA (%u / %u KB).", 
+                         (uint32_t)(totalWritten / 1024), (uint32_t)(contentLength / 1024));
+                LOG_E(TAG, "%s", s_errorMsg);
+                writeError = true;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
-    } else {
-        snprintf(s_errorMsg, sizeof(s_errorMsg), "Lỗi kết thúc OTA: %s (Mã %d)", Update.errorString(), Update.getError());
+
+        // Nhường 1 tick cho FreeRTOS IDLE task reset Watchdog Timer (Rule 8)
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+
+    free(buffer);
+    http.end();
+    client.stop(); // Giải phóng hoàn toàn kết nối TLS để giải phóng >35KB DRAM trước khi init AudioPlayer
+
+    if (writeError || totalWritten != (size_t)contentLength) {
+        if (!writeError) {
+            snprintf(s_errorMsg, sizeof(s_errorMsg), "Tải firmware không đủ (%u / %u KB).", 
+                     (uint32_t)(totalWritten / 1024), (uint32_t)(contentLength / 1024));
+            LOG_E(TAG, "%s", s_errorMsg);
+        }
+        esp_ota_abort(otaHandle);
+        s_state = OtaState::ERROR;
+        s_isUpdating = false;
+        if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
+        vTaskDelete(NULL);
+        return;
+    }
+
+    esp_err_t finishErr = esp_ota_end(otaHandle);
+    if (finishErr != ESP_OK) {
+        snprintf(s_errorMsg, sizeof(s_errorMsg), "Xác thực OTA thất bại (Mã 0x%x)", finishErr);
         LOG_E(TAG, "%s", s_errorMsg);
         s_state = OtaState::ERROR;
         s_isUpdating = false;
         if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
         AudioPlayerService::init();
+        vTaskDelete(NULL);
+        return;
     }
 
+    esp_err_t bootErr = esp_ota_set_boot_partition(nextPart);
+    if (bootErr != ESP_OK) {
+        snprintf(s_errorMsg, sizeof(s_errorMsg), "Thiết lập phân vùng boot thất bại (Mã 0x%x)", bootErr);
+        LOG_E(TAG, "%s", s_errorMsg);
+        s_state = OtaState::ERROR;
+        s_isUpdating = false;
+        if (s_statusCb) s_statusCb(OtaState::ERROR, s_errorMsg);
+        AudioPlayerService::init();
+        vTaskDelete(NULL);
+        return;
+    }
+
+    LOG_I(TAG, "OTA update SUCCESSFUL! (%u bytes written)", totalWritten);
+
+    if (s_clearNvs) {
+        LOG_I(TAG, "clearNvs is TRUE -> Resetting NVS Flash to factory defaults before reboot...");
+        ConfigManager::resetToDefaults();
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+
+    // Ghi changelog và releaseDate của bản firmware mới vào NVS trước khi reboot
+    if (s_pendingChangelog.length() > 0) {
+        ConfigManager::setChangelog(s_pendingChangelog);
+    }
+    if (s_pendingReleaseDate.length() > 0) {
+        ConfigManager::setReleaseDate(s_pendingReleaseDate);
+    }
+    ConfigManager::flush();
+
+    s_state = OtaState::SUCCESS;
+    s_isUpdating = false;
+    if (s_statusCb) s_statusCb(OtaState::SUCCESS, "Cập nhật thành công! Đang khởi động lại...");
+
+    // Chờ 1.5s để UI hiển thị thông báo trước khi reboot
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    ESP.restart();
     vTaskDelete(NULL);
 }

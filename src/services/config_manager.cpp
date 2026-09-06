@@ -1,5 +1,6 @@
 #include "config_manager.h"
 #include "log.h"
+#include "version.h"
 
 static const char* TAG = "Config";
 
@@ -237,6 +238,34 @@ void ConfigManager::setDevModeEnabled(bool enabled) {
     init();
     if (isDevModeEnabled() != enabled) {
         prefs.putBool("dev_mode", enabled);
+    }
+}
+
+static const char* DEFAULT_CHANGELOG = "Đồng hồ NTP, Lịch Âm Việt Nam, Thời tiết, Giá vàng xăng dầu, Trình phát nhạc MP3/WAV, Quản lý NVS chống mòn Flash.";
+
+String ConfigManager::getChangelog() {
+    init();
+    return prefs.getString("changelog", DEFAULT_CHANGELOG);
+}
+
+void ConfigManager::setChangelog(const String& changelog) {
+    init();
+    if (changelog.length() > 0 && getChangelog() != changelog) {
+        prefs.putString("changelog", changelog);
+        LOG_I(TAG, "Changelog updated in NVS: %s", changelog.c_str());
+    }
+}
+
+String ConfigManager::getReleaseDate() {
+    init();
+    return prefs.getString("rel_date", FIRMWARE_RELEASE_DATE);
+}
+
+void ConfigManager::setReleaseDate(const String& date) {
+    init();
+    if (date.length() > 0 && getReleaseDate() != date) {
+        prefs.putString("rel_date", date);
+        LOG_I(TAG, "Release date updated in NVS: %s", date.c_str());
     }
 }
 

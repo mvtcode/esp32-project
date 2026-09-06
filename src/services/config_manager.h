@@ -78,6 +78,12 @@ public:
     static bool isDevModeEnabled();
     static void setDevModeEnabled(bool enabled);
 
+    // Firmware Changelog & Release Date in NVS
+    static String getChangelog();
+    static void setChangelog(const String& changelog);
+    static String getReleaseDate();
+    static void setReleaseDate(const String& date);
+
     // Factory Reset
     static void resetToDefaults();
 

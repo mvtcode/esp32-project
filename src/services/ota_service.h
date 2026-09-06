@@ -58,9 +58,12 @@ public:
      * @param statusCb Callback báo trạng thái (hoàn thành hoặc lỗi)
      * @return true nếu bắt đầu thành công
      */
-    static bool startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgressCallback progressCb, OtaStatusCallback statusCb);
+    static bool startUpdate(const String& firmwareUrl, bool clearNvs, const String& changelog, const String& releaseDate, OtaProgressCallback progressCb, OtaStatusCallback statusCb);
+    static bool startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgressCallback progressCb, OtaStatusCallback statusCb) {
+        return startUpdate(firmwareUrl, clearNvs, "", "", progressCb, statusCb);
+    }
     static bool startUpdate(const String& firmwareUrl, OtaProgressCallback progressCb, OtaStatusCallback statusCb) {
-        return startUpdate(firmwareUrl, false, progressCb, statusCb);
+        return startUpdate(firmwareUrl, false, "", "", progressCb, statusCb);
     }
 
     static bool isUpdating();
@@ -91,6 +94,8 @@ private:
     static OtaProgressCallback s_progressCb;
     static OtaStatusCallback s_statusCb;
     static String s_downloadUrl;
+    static String s_pendingChangelog;
+    static String s_pendingReleaseDate;
 
     static void otaTask(void* param);
     static String extractJsonString(const String& json, const char* key);

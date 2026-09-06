@@ -25,6 +25,10 @@ Dự án đã được nâng cấp toàn diện từ giao diện mẫu (Mock UI)
   - **Vị trí & Đồng bộ**: Chọn Tỉnh/TP, tùy chỉnh chu kỳ đồng bộ dữ liệu (15p, 30p, 1h, 2h), nút "Đồng bộ ngay".
   - **Màn hình & Nguồn**: Điều chỉnh độ sáng PWM (LEDC), thời gian tự động tắt màn hình (Sleep Timeout), tự động sáng theo cảm biến quang trở (LDR).
   - **Hệ thống & Âm thanh**: Chỉnh âm lượng mặc định, bật/tắt âm thanh phản hồi chạm và kích hoạt Developer HUD.
+- 🔄 **Cập nhật Firmware Không Dây (OTA Update)**:
+  - Tự động kiểm tra bản cập nhật từ xa qua HTTPS (hỗ trợ SSL/TLS linh hoạt với CDN Cloudflare).
+  - Sử dụng cơ chế phân vùng kép A/B an toàn (`app0` / `app1`), nạp trực tiếp qua ESP-IDF `esp_ota_ops` không lo tràn RAM.
+  - Đồng bộ tự động **Changelog & Ngày phát hành** vào NVS Flash và hỗ trợ cơ chế dọn NVS linh hoạt theo phiên bản (`clearNvsBelow`).
 
 ### 2. Tối ưu Hiệu năng & Ổn định Hệ thống
 
@@ -237,6 +241,72 @@ build_flags =
 3. **Lỗi Upload code**:
    - Nhấn giữ nút **BOOT** trên ESP32 trong lúc phần mềm hiển thị `Connecting...`.
    - Đảm bảo đã cài driver USB UART (CH340 / CP2102).
+
+---
+
+## 🔄 Cập Nhật Firmware Không Dây (OTA Update)
+
+Hệ thống tích hợp giải pháp nâng cấp firmware từ xa **(Over-The-Air - OTA)** mạnh mẽ, an toàn và tối ưu tài nguyên cho dòng vi điều khiển ESP32:
+
+### 1. Kiến trúc Kỹ thuật OTA
+- **Phân vùng kép A/B an toàn (`min_spiffs.csv`)**: Bộ nhớ Flash 4MB được chia thành 2 phân vùng ứng dụng đối xứng `app0` (1920 KB) và `app1` (1920 KB). Khi đang chạy từ `app0`, bản cập nhật mới sẽ được nạp vào `app1` (và ngược lại). Nếu nạp lỗi hoặc mất nguồn giữa chừng, thiết bị vẫn khởi động an toàn từ phân vùng hiện tại.
+- **Chuẩn nạp gốc ESP-IDF (`esp_ota_ops`)**: Sử dụng trực tiếp các API cấp thấp của ESP-IDF (`esp_ota_begin`, `esp_ota_write`, `esp_ota_end`, `esp_ota_set_boot_partition`) với buffer 2KB thay vì `UpdateClass`. Giảm thiểu tối đa việc chiếm dụng heap và loại bỏ hoàn toàn nguy cơ phân mảnh RAM (`std::bad_alloc`).
+- **Hỗ trợ HTTPS / CDN Cloudflare**: Tích hợp `WiFiClientSecure` với chế độ `setInsecure()` bỏ qua kiểm tra chuỗi Root CA lỗi thời trên ESP32, đảm bảo tương thích 100% với các máy chủ đám mây hiện đại (Cloudflare, Google Trust Services, Let's Encrypt).
+- **Tự động giải phóng bộ nhớ khi nạp**: Trước khi khởi chạy task OTA, hệ thống chủ động gọi `AudioPlayerService::releaseForOta()` để giải phóng toàn bộ Decoder, Task và DMA I2S (>40KB DRAM), dành trọn bộ nhớ cho kết nối TLS/SSL.
+
+### 2. Cấu trúc Tệp Cấu hình `version.json`
+Thiết bị kiểm tra phiên bản mới thông qua tệp manifest JSON đặt tại máy chủ từ xa:
+
+```json
+{
+  "author": "Mạc Tân",
+  "tel": "0964335688",
+  "email": "macvantan@gmail.com",
+  "project": "CYD-35-ESP32",
+  "target": "esp32-kit3.5",
+  "hardware": "ESP32-3248S035",
+  "version": "v1.0.1",
+  "version_code": 20260907,
+  "release_date": "06/09/2026",
+  "firmware_url": "https://iot.tanhp.com/cyd35smart/v1.0.1/firmware.bin",
+  "clearNvs": false,
+  "clearNvsBelow": "v0.0.0",
+  "changelog": "Đồng hồ NTP, Lịch Âm Việt Nam, Thời tiết, Giá vàng xăng dầu, Trình phát nhạc MP3/WAV"
+}
+```
+
+#### Giải thích các trường quan trọng:
+| Trường | Kiểu | Mô tả |
+| :--- | :--- | :--- |
+| `version` | String | Chuỗi định danh phiên bản mới (ví dụ: `v1.0.1`). |
+| `version_code` | Integer | Mã số phiên bản dạng số nguyên (YYYYMMDD) dùng để so sánh. |
+| `firmware_url` | String | Đường dẫn trực tiếp đến file `firmware.bin` mới. |
+| `changelog` | String | Nhật ký thay đổi. Được tự động lưu vào NVS Flash và hiển thị lên màn hình. |
+| `clearNvs` | Boolean | Nếu `true`, thiết bị sẽ khôi phục cài đặt gốc sau khi nâng cấp thành công. |
+| `clearNvsBelow`| String | Chỉ xóa NVS nếu phiên bản hiện tại trên thiết bị nhỏ hơn mốc này (ví dụ: `< v1.0.0`). |
+
+### 3. Cấu hình trong `platformio.ini`
+Đường dẫn file manifest được khai báo qua cờ biên dịch:
+```ini
+build_flags =
+    -DFIRMWARE_VERSION=\"v1.0.0\"
+    -DFIRMWARE_RELEASE_DATE=\"06/09/2026\"
+    -DOTA_MANIFEST_URL=\"https://iot.tanhp.com/cyd35smart/version.json\"
+```
+
+### 4. Quy trình Phát hành Bản Cập nhật Mới (Release Workflow)
+1. **Thay đổi phiên bản**: Sửa `-DFIRMWARE_VERSION` trong `platformio.ini` (ví dụ từ `v1.0.0` $\rightarrow$ `v1.0.1`).
+2. **Biên dịch firmware**:
+   ```bash
+   pio run
+   ```
+   Tệp binary sinh ra tại: `.pio/build/esp32dev/firmware.bin`.
+3. **Upload file lên Server**: Đưa file `firmware.bin` lên CDN/Host (ví dụ: `https://iot.tanhp.com/cyd35smart/v1.0.1/firmware.bin`).
+4. **Cập nhật `version.json`**: Cập nhật phiên bản mới, link tải và changelog trên máy chủ.
+5. **Thực hiện cập nhật trên thiết bị**:
+   - Truy cập **Cài đặt** $\rightarrow$ chọn **Kiểm Tra**.
+   - Màn hình hiển thị hộp thoại xác nhận kèm Changelog phiên bản mới.
+   - Nhấn **Nâng Cấp** $\rightarrow$ Thiết bị tải firmware, hiển thị % tiến trình và tự khởi động lại khi hoàn tất.
 
 ---
 

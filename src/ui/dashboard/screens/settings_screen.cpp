@@ -16,6 +16,8 @@
 
 static String s_pendingOtaUrl = "";
 static bool s_pendingClearNvs = false;
+static String s_pendingChangelog = "";
+static String s_pendingReleaseDate = "";
 static lv_timer_t* s_otaMonitorTimer = nullptr;
 
 static lv_timer_t* s_otaCheckPollTimer = nullptr;
@@ -731,13 +733,16 @@ void SettingsScreen::buildSystemPane() {
 
     lblOtaVer = lv_label_create(cardOta);
     char otaVerBuf[96];
-    snprintf(otaVerBuf, sizeof(otaVerBuf), "Phiên bản hiện tại: %s (%s)", FIRMWARE_VERSION, FIRMWARE_RELEASE_DATE);
+    String relDate = ConfigManager::getReleaseDate();
+    if (relDate.length() == 0) relDate = FIRMWARE_RELEASE_DATE;
+    snprintf(otaVerBuf, sizeof(otaVerBuf), "Phiên bản hiện tại: %s (%s)", FIRMWARE_VERSION, relDate.c_str());
     lv_label_set_text(lblOtaVer, otaVerBuf);
     CydTheme::applyTextFont(lblOtaVer, CydTheme::getFont12(), CydTheme::getWhiteColor());
     lv_obj_align(lblOtaVer, LV_ALIGN_TOP_LEFT, 0, 18);
 
     lblOtaChangelog = lv_label_create(cardOta);
-    lv_label_set_text(lblOtaChangelog, "Nhật ký: Đồng hồ NTP, Lịch Âm Việt Nam, Thời tiết, Giá vàng xăng dầu, Trình phát nhạc MP3/WAV, Quản lý NVS chống mòn Flash.");
+    String clStr = "Nhật ký: " + ConfigManager::getChangelog();
+    lv_label_set_text(lblOtaChangelog, clStr.c_str());
     CydTheme::applyTextFont(lblOtaChangelog, CydTheme::getFont12(), CydTheme::getTextSecondary());
     lv_label_set_long_mode(lblOtaChangelog, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(lblOtaChangelog, 334);
@@ -1428,13 +1433,23 @@ void SettingsScreen::ota_check_poll_timer_cb(lv_timer_t* t) {
         return;
     }
 
-    // Cập nhật hiển thị Changelog trên UI
-    if (self && self->lblOtaChangelog && s_asyncOtaInfo.changelog.length() > 0) {
-        String logText = "Nhật ký: " + s_asyncOtaInfo.changelog;
-        lv_label_set_text(self->lblOtaChangelog, logText.c_str());
-    }
-
     if (!s_asyncOtaInfo.hasUpdate) {
+        if (s_asyncOtaInfo.changelog.length() > 0) {
+            ConfigManager::setChangelog(s_asyncOtaInfo.changelog);
+        }
+        if (s_asyncOtaInfo.releaseDate.length() > 0) {
+            ConfigManager::setReleaseDate(s_asyncOtaInfo.releaseDate);
+        }
+        if (self && self->lblOtaChangelog) {
+            String clStr = "Nhật ký: " + ConfigManager::getChangelog();
+            lv_label_set_text(self->lblOtaChangelog, clStr.c_str());
+        }
+        if (self && self->lblOtaVer) {
+            char otaVerBuf[96];
+            snprintf(otaVerBuf, sizeof(otaVerBuf), "Phiên bản hiện tại: %s (%s)", FIRMWARE_VERSION, ConfigManager::getReleaseDate().c_str());
+            lv_label_set_text(self->lblOtaVer, otaVerBuf);
+        }
+
         char buf[128];
         snprintf(buf, sizeof(buf), "Thiết bị đang sử dụng phiên bản mới nhất (%s).\nKhông có bản cập nhật nào cần nạp.", s_asyncOtaInfo.version.c_str());
         DialogManager::showAlert(
@@ -1448,14 +1463,10 @@ void SettingsScreen::ota_check_poll_timer_cb(lv_timer_t* t) {
         return;
     }
 
-    if (self && self->lblOtaVer) {
-        char buf[96];
-        snprintf(buf, sizeof(buf), "Bản mới: %s (%s)", s_asyncOtaInfo.version.c_str(), s_asyncOtaInfo.releaseDate.c_str());
-        lv_label_set_text(self->lblOtaVer, buf);
-    }
-
     s_pendingOtaUrl = s_asyncOtaInfo.firmwareUrl;
     s_pendingClearNvs = s_asyncOtaInfo.clearNvs;
+    s_pendingChangelog = s_asyncOtaInfo.changelog;
+    s_pendingReleaseDate = s_asyncOtaInfo.releaseDate;
 
     String body = "Đã có bản cập nhật: " + s_asyncOtaInfo.version;
     if (s_asyncOtaInfo.releaseDate.length() > 0) {
@@ -1550,7 +1561,7 @@ void SettingsScreen::ota_confirm_click_cb(lv_event_t* e) {
     );
 
     LOG_I("OTA", "User confirmed OTA update from: %s (clearNvs=%d)", s_pendingOtaUrl.c_str(), s_pendingClearNvs);
-    OtaService::startUpdate(s_pendingOtaUrl, s_pendingClearNvs, nullptr, nullptr);
+    OtaService::startUpdate(s_pendingOtaUrl, s_pendingClearNvs, s_pendingChangelog, s_pendingReleaseDate, nullptr, nullptr);
 
     if (s_otaMonitorTimer) {
         lv_timer_del(s_otaMonitorTimer);
