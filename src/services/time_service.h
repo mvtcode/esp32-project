@@ -1,5 +1,5 @@
-#ifndef TIME_SERVICE_H
-#define TIME_SERVICE_H
+#pragma once
+
 
 #include <Arduino.h>
 #include <time.h>
@@ -35,4 +35,3 @@ private:
     static uint32_t lastSyncAttempt;
 };
 
-#endif // TIME_SERVICE_H

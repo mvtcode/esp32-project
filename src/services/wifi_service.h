@@ -1,5 +1,5 @@
-#ifndef WIFI_SERVICE_H
-#define WIFI_SERVICE_H
+#pragma once
+
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -57,4 +57,3 @@ private:
     static void connectTask(void* param);
 };
 
-#endif // WIFI_SERVICE_H

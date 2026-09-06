@@ -1,5 +1,5 @@
-#ifndef CALENDAR_SCREEN_H
-#define CALENDAR_SCREEN_H
+#pragma once
+
 
 #include <lvgl.h>
 #include "../../../services/lunar_calendar.h"
@@ -79,4 +79,3 @@ private:
     static int getFirstDayOfWeek(int year, int month);
 };
 
-#endif // CALENDAR_SCREEN_H

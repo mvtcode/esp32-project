@@ -1,5 +1,5 @@
-#ifndef WEATHER_SERVICE_H
-#define WEATHER_SERVICE_H
+#pragma once
+
 
 #include <Arduino.h>
 
@@ -37,4 +37,3 @@ public:
     static const char *getWeatherDescription(int code);
 };
 
-#endif // WEATHER_SERVICE_H

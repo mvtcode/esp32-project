@@ -1,5 +1,5 @@
-#ifndef DASHBOARD_UI_H
-#define DASHBOARD_UI_H
+#pragma once
+
 
 #include <lvgl.h>
 #include <string.h>
@@ -168,4 +168,3 @@ private:
     static void tab_click_event_cb(lv_event_t* e);
 };
 
-#endif // DASHBOARD_UI_H

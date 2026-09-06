@@ -1,5 +1,5 @@
-#ifndef LUNAR_CALENDAR_H
-#define LUNAR_CALENDAR_H
+#pragma once
+
 
 #include <stdint.h>
 #include <Arduino.h>
@@ -49,4 +49,3 @@ const char* getHolidayName(int solarDay, int solarMonth, int lunarDay, int lunar
 bool isNgayHoangDao(int solarYear, int solarMonth, int solarDay, int lunarMonth);
 const char* getHoangDaoName(int solarYear, int solarMonth, int solarDay, int lunarMonth);
 
-#endif // LUNAR_CALENDAR_H

@@ -1,5 +1,5 @@
-#ifndef SETTINGS_SCREEN_H
-#define SETTINGS_SCREEN_H
+#pragma once
+
 
 #include <lvgl.h>
 #include <vector>
@@ -161,4 +161,3 @@ private:
     static void factory_reset_confirm_cb(lv_event_t* e);
 };
 
-#endif // SETTINGS_SCREEN_H

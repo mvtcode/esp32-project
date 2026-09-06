@@ -1,5 +1,5 @@
-#ifndef DEV_HUD_H
-#define DEV_HUD_H
+#pragma once
+
 
 #include <lvgl.h>
 #include <Arduino.h>
@@ -22,4 +22,3 @@ private:
     bool visible;
 };
 
-#endif // DEV_HUD_H

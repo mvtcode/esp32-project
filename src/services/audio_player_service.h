@@ -1,7 +1,8 @@
-#ifndef AUDIO_PLAYER_SERVICE_H
-#define AUDIO_PLAYER_SERVICE_H
+#pragma once
 
 #include <Arduino.h>
+#include "pin_config.h"
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
@@ -97,4 +98,3 @@ private:
     static volatile bool trackJustFinished;
 };
 
-#endif // AUDIO_PLAYER_SERVICE_H

@@ -1,5 +1,5 @@
-#ifndef PLAYER_SCREEN_H
-#define PLAYER_SCREEN_H
+#pragma once
+
 
 #include <lvgl.h>
 
@@ -103,4 +103,3 @@ private:
     bool isSeeking;
 };
 
-#endif // PLAYER_SCREEN_H

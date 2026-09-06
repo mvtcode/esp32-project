@@ -1,5 +1,5 @@
-#ifndef HOME_SCREEN_H
-#define HOME_SCREEN_H
+#pragma once
+
 
 #include <lvgl.h>
 
@@ -75,4 +75,3 @@ private:
     void createFuelCard(lv_obj_t* parent);
 };
 
-#endif // HOME_SCREEN_H

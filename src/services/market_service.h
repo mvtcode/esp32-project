@@ -1,5 +1,5 @@
-#ifndef MARKET_SERVICE_H
-#define MARKET_SERVICE_H
+#pragma once
+
 
 #include <Arduino.h>
 
@@ -41,4 +41,3 @@ public:
     static bool isFetching() { return is_fetching; }
 };
 
-#endif // MARKET_SERVICE_H

@@ -1,5 +1,5 @@
-#ifndef CYD_THEME_H
-#define CYD_THEME_H
+#pragma once
+
 
 #include <lvgl.h>
 
@@ -88,4 +88,3 @@ public:
     }
 };
 
-#endif // CYD_THEME_H

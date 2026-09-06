@@ -1,5 +1,5 @@
-#ifndef SYSTEM_TELEMETRY_H
-#define SYSTEM_TELEMETRY_H
+#pragma once
+
 
 #include <Arduino.h>
 
@@ -26,4 +26,3 @@ private:
     static uint8_t cpuUsage;
 };
 
-#endif // SYSTEM_TELEMETRY_H

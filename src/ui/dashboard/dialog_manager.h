@@ -1,5 +1,5 @@
-#ifndef DIALOG_MANAGER_H
-#define DIALOG_MANAGER_H
+#pragma once
+
 
 #include <lvgl.h>
 #include <Arduino.h>
@@ -48,4 +48,3 @@ private:
     static void default_dismiss_cb(lv_event_t* e);
 };
 
-#endif // DIALOG_MANAGER_H
