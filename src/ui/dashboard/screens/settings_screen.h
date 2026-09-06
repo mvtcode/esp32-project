@@ -161,6 +161,7 @@ private:
     static void dev_mode_toggle_cb(lv_event_t* e);
     static void volume_changed_cb(lv_event_t* e);
     static void ota_check_click_cb(lv_event_t* e);
+    static void ota_check_poll_timer_cb(lv_timer_t* t);
     static void ota_confirm_click_cb(lv_event_t* e);
     static void restart_click_cb(lv_event_t* e);
     static void factory_reset_click_cb(lv_event_t* e);

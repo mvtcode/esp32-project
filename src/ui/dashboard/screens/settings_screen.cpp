@@ -18,6 +18,13 @@ static String s_pendingOtaUrl = "";
 static bool s_pendingClearNvs = false;
 static lv_timer_t* s_otaMonitorTimer = nullptr;
 
+static lv_timer_t* s_otaCheckPollTimer = nullptr;
+static TaskHandle_t s_otaCheckTaskHandle = nullptr;
+static volatile bool s_otaCheckDone = false;
+static bool s_otaCheckSuccess = false;
+static OtaInfo s_asyncOtaInfo;
+static SettingsScreen* s_otaCheckScreen = nullptr;
+
 SettingsScreen::SettingsScreen(lv_obj_t* parent) :
     currentMenuIndex(-1),
     rightPane(nullptr),
@@ -87,6 +94,18 @@ SettingsScreen::~SettingsScreen() {
     hideWifiPasswordModal();
     DialogManager::dismissModal();
     DialogManager::hideLockOverlay();
+
+    if (s_otaCheckPollTimer) {
+        lv_timer_del(s_otaCheckPollTimer);
+        s_otaCheckPollTimer = nullptr;
+    }
+    if (s_otaCheckTaskHandle) {
+        vTaskDelete(s_otaCheckTaskHandle);
+        s_otaCheckTaskHandle = nullptr;
+    }
+    if (s_otaCheckScreen == this) {
+        s_otaCheckScreen = nullptr;
+    }
 
     // Xóa modal backdrop (các child objects bị xóa theo cây LVGL)
     if (modalBackdrop) {
@@ -1352,11 +1371,9 @@ static void ota_monitor_timer_cb(lv_timer_t* t) {
     size_t tot = OtaService::getTotalBytes();
 
     if (state == OtaState::DOWNLOADING) {
-        char msg[128];
         char hint[64];
-        snprintf(msg, sizeof(msg), "Đang nạp Flash (%d%%)... Vui lòng không ngắt nguồn!", pct);
         snprintf(hint, sizeof(hint), "Đã nạp: %d%% (%u / %u KB)", pct, (uint32_t)(dl / 1024), (uint32_t)(tot / 1024));
-        DialogManager::updateLockProgress(pct, msg, hint);
+        DialogManager::updateLockProgress(pct, "Vui lòng không ngắt nguồn!", hint);
     } else if (state == OtaState::SUCCESS) {
         DialogManager::updateLockProgress(100, "Cập nhật thành công! Đang khởi động lại...", "Hoàn tất 100%");
         if (s_otaMonitorTimer) {
@@ -1380,24 +1397,26 @@ static void ota_monitor_timer_cb(lv_timer_t* t) {
     }
 }
 
-void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
-    SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
+static void otaCheckTask(void* param) {
+    s_otaCheckSuccess = OtaService::checkUpdate(s_asyncOtaInfo);
+    s_otaCheckDone = true;
+    s_otaCheckTaskHandle = nullptr;
+    vTaskDelete(NULL);
+}
 
-    if (WiFi.status() != WL_CONNECTED) {
-        DialogManager::showAlert(
-            LV_SYMBOL_WARNING " CẬP NHẬT OTA",
-            "Vui lòng kết nối mạng WiFi trước khi\nkiểm tra bản cập nhật mới!",
-            "Đã Hiểu"
-        );
+void SettingsScreen::ota_check_poll_timer_cb(lv_timer_t* t) {
+    if (!s_otaCheckDone) {
         return;
     }
 
-    DialogManager::showToast("Đang kiểm tra bản cập nhật từ máy chủ...", 3000);
+    lv_timer_del(t);
+    s_otaCheckPollTimer = nullptr;
 
-    OtaInfo info;
-    bool ok = OtaService::checkUpdate(info);
+    DialogManager::hideLockOverlay();
 
-    if (!ok) {
+    SettingsScreen* self = s_otaCheckScreen;
+
+    if (!s_otaCheckSuccess) {
         DialogManager::showAlert(
             LV_SYMBOL_WARNING " LỖI KIỂM TRA",
             OtaService::getErrorMessage(),
@@ -1410,14 +1429,14 @@ void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
     }
 
     // Cập nhật hiển thị Changelog trên UI
-    if (self && self->lblOtaChangelog && info.changelog.length() > 0) {
-        String logText = "Nhật ký: " + info.changelog;
+    if (self && self->lblOtaChangelog && s_asyncOtaInfo.changelog.length() > 0) {
+        String logText = "Nhật ký: " + s_asyncOtaInfo.changelog;
         lv_label_set_text(self->lblOtaChangelog, logText.c_str());
     }
 
-    if (!info.hasUpdate) {
+    if (!s_asyncOtaInfo.hasUpdate) {
         char buf[128];
-        snprintf(buf, sizeof(buf), "Thiết bị đang sử dụng phiên bản mới nhất (%s).\nKhông có bản cập nhật nào cần nạp.", info.version.c_str());
+        snprintf(buf, sizeof(buf), "Thiết bị đang sử dụng phiên bản mới nhất (%s).\nKhông có bản cập nhật nào cần nạp.", s_asyncOtaInfo.version.c_str());
         DialogManager::showAlert(
             LV_SYMBOL_OK " PHIÊN BẢN MỚI NHẤT",
             buf,
@@ -1431,24 +1450,24 @@ void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
 
     if (self && self->lblOtaVer) {
         char buf[96];
-        snprintf(buf, sizeof(buf), "Bản mới: %s (%s)", info.version.c_str(), info.releaseDate.c_str());
+        snprintf(buf, sizeof(buf), "Bản mới: %s (%s)", s_asyncOtaInfo.version.c_str(), s_asyncOtaInfo.releaseDate.c_str());
         lv_label_set_text(self->lblOtaVer, buf);
     }
 
-    s_pendingOtaUrl = info.firmwareUrl;
-    s_pendingClearNvs = info.clearNvs;
+    s_pendingOtaUrl = s_asyncOtaInfo.firmwareUrl;
+    s_pendingClearNvs = s_asyncOtaInfo.clearNvs;
 
-    String body = "Đã có bản cập nhật: " + info.version;
-    if (info.releaseDate.length() > 0) {
-        body += " (" + info.releaseDate + ")";
+    String body = "Đã có bản cập nhật: " + s_asyncOtaInfo.version;
+    if (s_asyncOtaInfo.releaseDate.length() > 0) {
+        body += " (" + s_asyncOtaInfo.releaseDate + ")";
     }
     body += "\n";
-    if (info.changelog.length() > 0) {
-        body += "Nội dung: " + info.changelog + "\n";
+    if (s_asyncOtaInfo.changelog.length() > 0) {
+        body += "Nội dung: " + s_asyncOtaInfo.changelog + "\n";
     }
-    if (info.clearNvs) {
-        if (info.clearNvsBelow.length() > 0 && OtaService::parseVersion(info.clearNvsBelow) > 0) {
-            body += "\n⚠️ Lưu ý: Phiên bản < " + info.clearNvsBelow + " sẽ xóa NVS (Khôi phục gốc)!";
+    if (s_asyncOtaInfo.clearNvs) {
+        if (s_asyncOtaInfo.clearNvsBelow.length() > 0 && OtaService::parseVersion(s_asyncOtaInfo.clearNvsBelow) > 0) {
+            body += "\n⚠️ Lưu ý: Phiên bản < " + s_asyncOtaInfo.clearNvsBelow + " sẽ xóa NVS (Khôi phục gốc)!";
         } else {
             body += "\n⚠️ Lưu ý: Bản cập nhật này sẽ xóa cấu hình NVS (Khôi phục gốc)!";
         }
@@ -1459,7 +1478,7 @@ void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
         LV_SYMBOL_DOWNLOAD " NÂNG CẤP FIRMWARE",
         body.c_str(),
         LV_SYMBOL_DOWNLOAD " Nâng Cấp",
-        ota_confirm_click_cb,
+        SettingsScreen::ota_confirm_click_cb,
         nullptr,
         LV_SYMBOL_CLOSE " Để Sau",
         nullptr,
@@ -1467,12 +1486,65 @@ void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
     );
 }
 
+void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
+    SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
+
+    if (WiFi.status() != WL_CONNECTED) {
+        DialogManager::showAlert(
+            LV_SYMBOL_WARNING " CẬP NHẬT OTA",
+            "Vui lòng kết nối mạng WiFi trước khi\nkiểm tra bản cập nhật mới!",
+            "Đã Hiểu"
+        );
+        return;
+    }
+
+    // Chặn click nhiều lần liên tiếp khi task đang chạy
+    if (s_otaCheckTaskHandle != nullptr || s_otaCheckPollTimer != nullptr) {
+        return;
+    }
+
+    // Phản hồi tức thì trên UI để người dùng thấy ngay trạng thái đang xử lý
+    DialogManager::showLockOverlay(
+        "KIỂM TRA BẢN MỚI...",
+        "Đang kết nối máy chủ kiểm tra phiên bản...",
+        "Vui lòng chờ giây lát...",
+        LV_SYMBOL_REFRESH,
+        lv_color_make(30, 100, 180)
+    );
+
+    s_otaCheckDone = false;
+    s_otaCheckSuccess = false;
+    s_otaCheckScreen = self;
+
+    BaseType_t res = xTaskCreatePinnedToCore(
+        otaCheckTask,
+        "otaCheckTask",
+        6144,
+        NULL,
+        1,
+        &s_otaCheckTaskHandle,
+        0 // Chạy trên Core 0 để Core 1 giữ UI và animation mượt mà
+    );
+
+    if (res != pdPASS) {
+        DialogManager::hideLockOverlay();
+        DialogManager::showAlert(
+            LV_SYMBOL_WARNING " LỖI",
+            "Không thể tạo tác vụ kiểm tra bản cập nhật.",
+            "Đóng"
+        );
+        return;
+    }
+
+    s_otaCheckPollTimer = lv_timer_create(ota_check_poll_timer_cb, 100, nullptr);
+}
+
 void SettingsScreen::ota_confirm_click_cb(lv_event_t* e) {
     DialogManager::dismissModal();
     DialogManager::showLockOverlay(
         "ĐANG NẠP FIRMWARE OTA...",
-        "Đang chuẩn bị kết nối và nạp Flash...\nVui lòng tuyệt đối KHÔNG tắt nguồn!",
-        "Tiến trình: 0%",
+        "Vui lòng không ngắt nguồn!",
+        "Đang chuẩn bị kết nối máy chủ...",
         LV_SYMBOL_DOWNLOAD,
         lv_color_make(20, 140, 80)
     );
