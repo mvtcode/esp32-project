@@ -15,6 +15,7 @@
 #include <stdio.h>
 
 static String s_pendingOtaUrl = "";
+static bool s_pendingClearNvs = false;
 static lv_timer_t* s_otaMonitorTimer = nullptr;
 
 SettingsScreen::SettingsScreen(lv_obj_t* parent) :
@@ -35,6 +36,7 @@ SettingsScreen::SettingsScreen(lv_obj_t* parent) :
     ddCity(nullptr), ddSyncInterval(nullptr), btnSyncNow(nullptr), lblSyncStatus(nullptr),
     sliderBrightness(nullptr), lblBrightnessVal(nullptr), ddSleepTimeout(nullptr), swAutoBrightness(nullptr),
     swDevMode(nullptr), sliderVolume(nullptr), lblVolumeVal(nullptr), swTouchBeep(nullptr),
+    lblOtaVer(nullptr), lblOtaChangelog(nullptr),
     cachedFreeHeap(160000), cachedWifiRssi(-100),
     pendingCityIdx(-1), syncTimer(nullptr), syncCheckCount(0)
 {
@@ -210,6 +212,11 @@ void SettingsScreen::destroyCurrentPane() {
     sliderVolume = nullptr;
     lblVolumeVal = nullptr;
     swTouchBeep = nullptr;
+    btnOtaCheck = nullptr;
+    btnRestart = nullptr;
+    btnFactoryReset = nullptr;
+    lblOtaVer = nullptr;
+    lblOtaChangelog = nullptr;
 }
 
 // -------------------------------------------------------------
@@ -217,7 +224,7 @@ void SettingsScreen::destroyCurrentPane() {
 // -------------------------------------------------------------
 void SettingsScreen::buildDevicePane() {
     lv_obj_t* cardInfo = lv_obj_create(rightPane);
-    lv_obj_set_size(cardInfo, 354, 195);
+    lv_obj_set_size(cardInfo, 354, 252);
     lv_obj_align(cardInfo, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(cardInfo, lv_color_make(10, 16, 30), 0);
     lv_obj_set_style_border_color(cardInfo, CydTheme::getCardBorderColor(), 0);
@@ -252,19 +259,26 @@ void SettingsScreen::buildDevicePane() {
     CydTheme::applyTextFont(lblDevEmail, CydTheme::getFont12(), CydTheme::getAccentGlowColor());
     lv_obj_align(lblDevEmail, LV_ALIGN_TOP_LEFT, 0, 44);
 
+    lblDevModel = lv_label_create(cardInfo);
+    char modelBuf[96];
+    snprintf(modelBuf, sizeof(modelBuf), "Phần cứng: %s (Flash 4MB)", cachedDevModel);
+    lv_label_set_text(lblDevModel, modelBuf);
+    CydTheme::applyTextFont(lblDevModel, CydTheme::getFont12(), CydTheme::getGoldColor());
+    lv_obj_align(lblDevModel, LV_ALIGN_TOP_LEFT, 0, 66);
+
     lblDevRam = lv_label_create(cardInfo);
     char ramBuf[64];
     snprintf(ramBuf, sizeof(ramBuf), "RAM Trống: %u KB (%.1f%%)", cachedFreeHeap / 1024, SystemTelemetry::getHeapUsagePercent());
     lv_label_set_text(lblDevRam, ramBuf);
     CydTheme::applyTextFont(lblDevRam, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblDevRam, LV_ALIGN_TOP_LEFT, 0, 66);
+    lv_obj_align(lblDevRam, LV_ALIGN_TOP_LEFT, 0, 88);
 
     lblDevUptime = lv_label_create(cardInfo);
     char upBuf[64];
     snprintf(upBuf, sizeof(upBuf), "Thời gian chạy: %s", cachedUptime);
     lv_label_set_text(lblDevUptime, upBuf);
     CydTheme::applyTextFont(lblDevUptime, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblDevUptime, LV_ALIGN_TOP_LEFT, 0, 88);
+    lv_obj_align(lblDevUptime, LV_ALIGN_TOP_LEFT, 0, 110);
 
     lblDevWifi = lv_label_create(cardInfo);
     char wifiBuf[64];
@@ -279,58 +293,21 @@ void SettingsScreen::buildDevicePane() {
     }
     lv_label_set_text(lblDevWifi, wifiBuf);
     CydTheme::applyTextFont(lblDevWifi, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblDevWifi, LV_ALIGN_TOP_LEFT, 0, 110);
+    lv_obj_align(lblDevWifi, LV_ALIGN_TOP_LEFT, 0, 132);
 
     lblDevIp = lv_label_create(cardInfo);
     char ipBuf[64];
     snprintf(ipBuf, sizeof(ipBuf), "Địa chỉ IP: %s", cachedIp);
     lv_label_set_text(lblDevIp, ipBuf);
     CydTheme::applyTextFont(lblDevIp, CydTheme::getFont12(), CydTheme::getTextMuted());
-    lv_obj_align(lblDevIp, LV_ALIGN_TOP_LEFT, 0, 132);
+    lv_obj_align(lblDevIp, LV_ALIGN_TOP_LEFT, 0, 154);
 
     lblDevMac = lv_label_create(cardInfo);
     char macBuf[64];
     snprintf(macBuf, sizeof(macBuf), "Địa chỉ MAC: %s", cachedMac);
     lv_label_set_text(lblDevMac, macBuf);
     CydTheme::applyTextFont(lblDevMac, CydTheme::getFont12(), CydTheme::getTextMuted());
-    lv_obj_align(lblDevMac, LV_ALIGN_TOP_LEFT, 0, 154);
-
-    // Bottom Action Row (3 nút: Cập nhật OTA, Khởi động lại, Khôi phục gốc)
-    btnOtaCheck = lv_btn_create(rightPane);
-    lv_obj_set_size(btnOtaCheck, 112, 38);
-    lv_obj_align(btnOtaCheck, LV_ALIGN_BOTTOM_LEFT, 0, -4);
-    lv_obj_set_style_bg_color(btnOtaCheck, lv_color_make(20, 110, 80), 0);
-    lv_obj_set_style_radius(btnOtaCheck, 6, 0);
-    lv_obj_add_event_cb(btnOtaCheck, ota_check_click_cb, LV_EVENT_CLICKED, this);
-
-    lv_obj_t* lblBtnOta = lv_label_create(btnOtaCheck);
-    lv_label_set_text(lblBtnOta, LV_SYMBOL_DOWNLOAD " Cập Nhật");
-    CydTheme::applyTextFont(lblBtnOta, CydTheme::getFont12(), CydTheme::getWhiteColor());
-    lv_obj_center(lblBtnOta);
-
-    btnRestart = lv_btn_create(rightPane);
-    lv_obj_set_size(btnRestart, 112, 38);
-    lv_obj_align(btnRestart, LV_ALIGN_BOTTOM_MID, 0, -4);
-    lv_obj_set_style_bg_color(btnRestart, lv_color_make(30, 60, 110), 0);
-    lv_obj_set_style_radius(btnRestart, 6, 0);
-    lv_obj_add_event_cb(btnRestart, restart_click_cb, LV_EVENT_CLICKED, this);
-
-    lv_obj_t* lblBtnRst = lv_label_create(btnRestart);
-    lv_label_set_text(lblBtnRst, LV_SYMBOL_REFRESH " Khởi Động");
-    CydTheme::applyTextFont(lblBtnRst, CydTheme::getFont12(), CydTheme::getWhiteColor());
-    lv_obj_center(lblBtnRst);
-
-    btnFactoryReset = lv_btn_create(rightPane);
-    lv_obj_set_size(btnFactoryReset, 112, 38);
-    lv_obj_align(btnFactoryReset, LV_ALIGN_BOTTOM_RIGHT, 0, -4);
-    lv_obj_set_style_bg_color(btnFactoryReset, lv_color_make(100, 30, 40), 0);
-    lv_obj_set_style_radius(btnFactoryReset, 6, 0);
-    lv_obj_add_event_cb(btnFactoryReset, factory_reset_click_cb, LV_EVENT_CLICKED, this);
-
-    lv_obj_t* lblBtnFac = lv_label_create(btnFactoryReset);
-    lv_label_set_text(lblBtnFac, LV_SYMBOL_TRASH " Khôi Phục");
-    CydTheme::applyTextFont(lblBtnFac, CydTheme::getFont12(), CydTheme::getWhiteColor());
-    lv_obj_center(lblBtnFac);
+    lv_obj_align(lblDevMac, LV_ALIGN_TOP_LEFT, 0, 176);
 }
 
 // -------------------------------------------------------------
@@ -693,22 +670,23 @@ void SettingsScreen::buildDisplayPane() {
 // TAB 5: SYSTEM & DEVELOPER MODE PANE
 // -------------------------------------------------------------
 void SettingsScreen::buildSystemPane() {
-    // 1. Development Mode Switch Card
+    // 1. Development Mode Switch Card (y: 0, height: 46)
     lv_obj_t* cardDev = lv_obj_create(rightPane);
-    lv_obj_set_size(cardDev, 354, 76);
+    lv_obj_set_size(cardDev, 354, 46);
     lv_obj_align(cardDev, LV_ALIGN_TOP_MID, 0, 0);
     CydTheme::applyCardStyle(cardDev);
-    lv_obj_set_style_pad_all(cardDev, 8, 0);
+    lv_obj_set_style_pad_all(cardDev, 6, 0);
+    lv_obj_clear_flag(cardDev, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* lblDevTitle = lv_label_create(cardDev);
-    lv_label_set_text(lblDevTitle, LV_SYMBOL_SETTINGS " Chế Độ Nhà Phát Triển (HUD):");
+    lv_label_set_text(lblDevTitle, LV_SYMBOL_SETTINGS " Chế Độ Nhà Phát Triển (HUD)");
     CydTheme::applyTextFont(lblDevTitle, CydTheme::getFont12(), CydTheme::getAccentGlowColor());
-    lv_obj_align(lblDevTitle, LV_ALIGN_TOP_LEFT, 0, 4);
+    lv_obj_align(lblDevTitle, LV_ALIGN_TOP_LEFT, 0, 0);
 
     lv_obj_t* lblDevSub = lv_label_create(cardDev);
     lv_label_set_text(lblDevSub, "Hiển thị FPS, RAM, CPU & WiFi nổi");
     CydTheme::applyTextFont(lblDevSub, CydTheme::getFont12(), CydTheme::getTextMuted());
-    lv_obj_align(lblDevSub, LV_ALIGN_BOTTOM_LEFT, 0, -4);
+    lv_obj_align(lblDevSub, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
     swDevMode = lv_switch_create(cardDev);
     lv_obj_align(swDevMode, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -719,48 +697,79 @@ void SettingsScreen::buildSystemPane() {
     }
     lv_obj_add_event_cb(swDevMode, dev_mode_toggle_cb, LV_EVENT_VALUE_CHANGED, this);
 
-    // 2. Default Volume Card
-    lv_obj_t* cardVol = lv_obj_create(rightPane);
-    lv_obj_set_size(cardVol, 354, 82);
-    lv_obj_align(cardVol, LV_ALIGN_TOP_MID, 0, 84);
-    CydTheme::applyCardStyle(cardVol);
-    lv_obj_set_style_pad_all(cardVol, 8, 0);
+    // 2. Firmware Version & Changelog Card (y: 52, height: 140)
+    lv_obj_t* cardOta = lv_obj_create(rightPane);
+    lv_obj_set_size(cardOta, 354, 140);
+    lv_obj_align(cardOta, LV_ALIGN_TOP_MID, 0, 52);
+    CydTheme::applyCardStyle(cardOta);
+    lv_obj_set_style_pad_all(cardOta, 8, 0);
+    lv_obj_clear_flag(cardOta, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* lblVolTitle = lv_label_create(cardVol);
-    lv_label_set_text(lblVolTitle, LV_SYMBOL_VOLUME_MAX " Âm Lượng Khởi Động:");
-    CydTheme::applyTextFont(lblVolTitle, CydTheme::getFont12(), CydTheme::getWhiteColor());
-    lv_obj_align(lblVolTitle, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t* lblOtaTitle = lv_label_create(cardOta);
+    lv_label_set_text(lblOtaTitle, LV_SYMBOL_DOWNLOAD " Thông Tin Phiên Bản & Changelog:");
+    CydTheme::applyTextFont(lblOtaTitle, CydTheme::getFont12(), CydTheme::getAccentGlowColor());
+    lv_obj_align(lblOtaTitle, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    lblVolumeVal = lv_label_create(cardVol);
-    char volBuf[16];
-    snprintf(volBuf, sizeof(volBuf), "%d%%", ConfigManager::getDefaultVolume());
-    lv_label_set_text(lblVolumeVal, volBuf);
-    CydTheme::applyTextFont(lblVolumeVal, CydTheme::getFont12(), CydTheme::getAccentGlowColor());
-    lv_obj_align(lblVolumeVal, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lblOtaVer = lv_label_create(cardOta);
+    char otaVerBuf[96];
+    snprintf(otaVerBuf, sizeof(otaVerBuf), "Phiên bản hiện tại: %s (%s)", FIRMWARE_VERSION, FIRMWARE_RELEASE_DATE);
+    lv_label_set_text(lblOtaVer, otaVerBuf);
+    CydTheme::applyTextFont(lblOtaVer, CydTheme::getFont12(), CydTheme::getWhiteColor());
+    lv_obj_align(lblOtaVer, LV_ALIGN_TOP_LEFT, 0, 18);
 
-    sliderVolume = lv_slider_create(cardVol);
-    lv_obj_set_size(sliderVolume, 334, 14);
-    lv_obj_align(sliderVolume, LV_ALIGN_BOTTOM_MID, 0, -4);
-    lv_slider_set_range(sliderVolume, 0, 100);
-    lv_slider_set_value(sliderVolume, ConfigManager::getDefaultVolume(), LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(sliderVolume, lv_color_make(20, 30, 50), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(sliderVolume, CydTheme::getGoldColor(), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(sliderVolume, CydTheme::getWhiteColor(), LV_PART_KNOB);
-    lv_obj_add_event_cb(sliderVolume, volume_changed_cb, LV_EVENT_VALUE_CHANGED, this);
+    lblOtaChangelog = lv_label_create(cardOta);
+    lv_label_set_text(lblOtaChangelog, "Nhật ký: Đồng hồ NTP, Lịch Âm Việt Nam, Thời tiết, Giá vàng xăng dầu, Trình phát nhạc MP3/WAV, Quản lý NVS chống mòn Flash.");
+    CydTheme::applyTextFont(lblOtaChangelog, CydTheme::getFont12(), CydTheme::getTextSecondary());
+    lv_label_set_long_mode(lblOtaChangelog, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(lblOtaChangelog, 334);
+    lv_obj_align(lblOtaChangelog, LV_ALIGN_TOP_LEFT, 0, 38);
 
-    // 3. System Info Hint
-    lv_obj_t* cardSysHint = lv_obj_create(rightPane);
-    lv_obj_set_size(cardSysHint, 354, 66);
-    lv_obj_align(cardSysHint, LV_ALIGN_BOTTOM_MID, 0, 0);
-    CydTheme::applyCardStyle(cardSysHint);
-    lv_obj_set_style_pad_all(cardSysHint, 8, 0);
+    // 3. System Action Buttons Card (y: 198, height: 48)
+    lv_obj_t* cardActions = lv_obj_create(rightPane);
+    lv_obj_set_size(cardActions, 354, 48);
+    lv_obj_align(cardActions, LV_ALIGN_TOP_MID, 0, 198);
+    CydTheme::applyCardStyle(cardActions);
+    lv_obj_set_style_pad_all(cardActions, 5, 0);
+    lv_obj_clear_flag(cardActions, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* lblSysHint = lv_label_create(cardSysHint);
-    lv_label_set_text(lblSysHint, LV_SYMBOL_OK " Cấu hình được lưu tự động vào NVS Flash và không bị mất khi khởi động lại.");
-    CydTheme::applyTextFont(lblSysHint, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_label_set_long_mode(lblSysHint, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(lblSysHint, 334);
-    lv_obj_center(lblSysHint);
+    // Nút 1: "Kiểm Tra" (Kiểm tra cập nhật OTA)
+    btnOtaCheck = lv_btn_create(cardActions);
+    lv_obj_set_size(btnOtaCheck, 108, 36);
+    lv_obj_align(btnOtaCheck, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_bg_color(btnOtaCheck, lv_color_make(20, 120, 80), 0);
+    lv_obj_set_style_radius(btnOtaCheck, 6, 0);
+    lv_obj_add_event_cb(btnOtaCheck, ota_check_click_cb, LV_EVENT_CLICKED, this);
+
+    lv_obj_t* lblBtnOta = lv_label_create(btnOtaCheck);
+    lv_label_set_text(lblBtnOta, LV_SYMBOL_REFRESH " Kiểm Tra");
+    CydTheme::applyTextFont(lblBtnOta, CydTheme::getFont12(), CydTheme::getWhiteColor());
+    lv_obj_center(lblBtnOta);
+
+    // Nút 2: "Khởi Động" (Reboot)
+    btnRestart = lv_btn_create(cardActions);
+    lv_obj_set_size(btnRestart, 108, 36);
+    lv_obj_align(btnRestart, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(btnRestart, lv_color_make(30, 60, 110), 0);
+    lv_obj_set_style_radius(btnRestart, 6, 0);
+    lv_obj_add_event_cb(btnRestart, restart_click_cb, LV_EVENT_CLICKED, this);
+
+    lv_obj_t* lblBtnRst = lv_label_create(btnRestart);
+    lv_label_set_text(lblBtnRst, LV_SYMBOL_REFRESH " Khởi Động");
+    CydTheme::applyTextFont(lblBtnRst, CydTheme::getFont12(), CydTheme::getWhiteColor());
+    lv_obj_center(lblBtnRst);
+
+    // Nút 3: "Khôi Phục" (Factory Reset)
+    btnFactoryReset = lv_btn_create(cardActions);
+    lv_obj_set_size(btnFactoryReset, 108, 36);
+    lv_obj_align(btnFactoryReset, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_set_style_bg_color(btnFactoryReset, lv_color_make(100, 30, 40), 0);
+    lv_obj_set_style_radius(btnFactoryReset, 6, 0);
+    lv_obj_add_event_cb(btnFactoryReset, factory_reset_click_cb, LV_EVENT_CLICKED, this);
+
+    lv_obj_t* lblBtnFac = lv_label_create(btnFactoryReset);
+    lv_label_set_text(lblBtnFac, LV_SYMBOL_TRASH " Khôi Phục");
+    CydTheme::applyTextFont(lblBtnFac, CydTheme::getFont12(), CydTheme::getWhiteColor());
+    lv_obj_center(lblBtnFac);
 }
 
 // -------------------------------------------------------------
@@ -1378,6 +1387,8 @@ static void ota_monitor_timer_cb(lv_timer_t* t) {
 }
 
 void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
+    SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
+
     if (WiFi.status() != WL_CONNECTED) {
         DialogManager::showAlert(
             LV_SYMBOL_WARNING " CẬP NHẬT OTA",
@@ -1404,6 +1415,12 @@ void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
         return;
     }
 
+    // Cập nhật hiển thị Changelog trên UI
+    if (self && self->lblOtaChangelog && info.changelog.length() > 0) {
+        String logText = "Nhật ký: " + info.changelog;
+        lv_label_set_text(self->lblOtaChangelog, logText.c_str());
+    }
+
     if (!info.hasUpdate) {
         char buf[128];
         snprintf(buf, sizeof(buf), "Thiết bị đang sử dụng phiên bản mới nhất (%s).\nKhông có bản cập nhật nào cần nạp.", info.version.c_str());
@@ -1418,7 +1435,14 @@ void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
         return;
     }
 
+    if (self && self->lblOtaVer) {
+        char buf[96];
+        snprintf(buf, sizeof(buf), "Bản mới: %s (%s)", info.version.c_str(), info.releaseDate.c_str());
+        lv_label_set_text(self->lblOtaVer, buf);
+    }
+
     s_pendingOtaUrl = info.firmwareUrl;
+    s_pendingClearNvs = info.clearNvs;
 
     String body = "Đã có bản cập nhật: " + info.version;
     if (info.releaseDate.length() > 0) {
@@ -1428,8 +1452,14 @@ void SettingsScreen::ota_check_click_cb(lv_event_t* e) {
     if (info.changelog.length() > 0) {
         body += "Nội dung: " + info.changelog + "\n";
     }
+    if (info.clearNvs) {
+        if (info.clearNvsBelow.length() > 0 && OtaService::parseVersion(info.clearNvsBelow) > 0) {
+            body += "\n⚠️ Lưu ý: Phiên bản < " + info.clearNvsBelow + " sẽ xóa NVS (Khôi phục gốc)!";
+        } else {
+            body += "\n⚠️ Lưu ý: Bản cập nhật này sẽ xóa cấu hình NVS (Khôi phục gốc)!";
+        }
+    }
     body += "\nBạn có muốn tải và nạp ngay bây giờ?";
-
 
     DialogManager::showConfirm(
         LV_SYMBOL_DOWNLOAD " NÂNG CẤP FIRMWARE",
@@ -1453,8 +1483,8 @@ void SettingsScreen::ota_confirm_click_cb(lv_event_t* e) {
         lv_color_make(20, 140, 80)
     );
 
-    LOG_I("OTA", "User confirmed OTA update from: %s", s_pendingOtaUrl.c_str());
-    OtaService::startUpdate(s_pendingOtaUrl, nullptr, nullptr);
+    LOG_I("OTA", "User confirmed OTA update from: %s (clearNvs=%d)", s_pendingOtaUrl.c_str(), s_pendingClearNvs);
+    OtaService::startUpdate(s_pendingOtaUrl, s_pendingClearNvs, nullptr, nullptr);
 
     if (s_otaMonitorTimer) {
         lv_timer_del(s_otaMonitorTimer);

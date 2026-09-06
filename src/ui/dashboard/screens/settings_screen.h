@@ -107,6 +107,8 @@ private:
     lv_obj_t* sliderVolume;
     lv_obj_t* lblVolumeVal;
     lv_obj_t* swTouchBeep;
+    lv_obj_t* lblOtaVer;
+    lv_obj_t* lblOtaChangelog;
 
     // Cached telemetry & device info for on-demand rendering
     char cachedDevName[64];

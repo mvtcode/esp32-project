@@ -17,6 +17,8 @@ struct OtaInfo {
     int versionCode = 0;
     String releaseDate;
     String firmwareUrl;
+    bool clearNvs = false;
+    String clearNvsBelow;
     String changelog;
     String author;
     String email;
@@ -51,11 +53,15 @@ public:
     /**
      * @brief Bắt đầu quá trình tải và ghi firmware OTA trên Task riêng
      * @param firmwareUrl Đường dẫn tải file firmware.bin
+     * @param clearNvs Xóa sạch NVS Flash (reset gốc) sau khi nạp thành công
      * @param progressCb Callback báo tiến trình tải %
      * @param statusCb Callback báo trạng thái (hoàn thành hoặc lỗi)
      * @return true nếu bắt đầu thành công
      */
-    static bool startUpdate(const String& firmwareUrl, OtaProgressCallback progressCb, OtaStatusCallback statusCb);
+    static bool startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgressCallback progressCb, OtaStatusCallback statusCb);
+    static bool startUpdate(const String& firmwareUrl, OtaProgressCallback progressCb, OtaStatusCallback statusCb) {
+        return startUpdate(firmwareUrl, false, progressCb, statusCb);
+    }
 
     static bool isUpdating();
     static OtaState getState();
@@ -64,6 +70,11 @@ public:
     static size_t getTotalBytes();
     static const char* getStatusMessage();
     static const char* getErrorMessage();
+
+    /**
+     * @brief Quy đổi chuỗi phiên bản dạng vX.Y.Z thành số nguyên để so sánh (Major*10^6 + Minor*10^3 + Patch)
+     */
+    static uint32_t parseVersion(const String& verStr);
 
 
 private:
@@ -74,6 +85,7 @@ private:
     static volatile size_t s_downloadedBytes;
     static volatile size_t s_totalBytes;
     static bool s_isUpdating;
+    static bool s_clearNvs;
     static TaskHandle_t s_otaTaskHandle;
 
     static OtaProgressCallback s_progressCb;
@@ -83,5 +95,6 @@ private:
     static void otaTask(void* param);
     static String extractJsonString(const String& json, const char* key);
     static int extractJsonInt(const String& json, const char* key);
+    static bool extractJsonBool(const String& json, const char* key);
 };
 

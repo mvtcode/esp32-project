@@ -1,6 +1,7 @@
 #include "ota_service.h"
 #include "log.h"
 #include "audio_player_service.h"
+#include "config_manager.h"
 
 static const char* TAG = "OTA";
 
@@ -11,6 +12,7 @@ volatile int OtaService::s_progressPercent = 0;
 volatile size_t OtaService::s_downloadedBytes = 0;
 volatile size_t OtaService::s_totalBytes = 0;
 bool OtaService::s_isUpdating = false;
+bool OtaService::s_clearNvs = false;
 TaskHandle_t OtaService::s_otaTaskHandle = nullptr;
 
 OtaProgressCallback OtaService::s_progressCb = nullptr;
@@ -20,6 +22,7 @@ String OtaService::s_downloadUrl = "";
 void OtaService::init() {
     s_state = OtaState::IDLE;
     s_isUpdating = false;
+    s_clearNvs = false;
     s_progressPercent = 0;
     s_downloadedBytes = 0;
     s_totalBytes = 0;
@@ -91,6 +94,50 @@ int OtaService::extractJsonInt(const String& json, const char* key) {
     return 0;
 }
 
+bool OtaService::extractJsonBool(const String& json, const char* key) {
+    String searchKey = "\"" + String(key) + "\":";
+    int keyIdx = json.indexOf(searchKey);
+    if (keyIdx == -1) return false;
+
+    int valStart = keyIdx + searchKey.length();
+    while (valStart < (int)json.length() && (json[valStart] == ' ' || json[valStart] == '\t')) {
+        valStart++;
+    }
+
+    if (valStart < (int)json.length()) {
+        if (json.substring(valStart).startsWith("true") || json.substring(valStart).startsWith("1")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+uint32_t OtaService::parseVersion(const String& verStr) {
+    if (verStr.length() == 0) return 0;
+
+    int start = 0;
+    if (verStr[0] == 'v' || verStr[0] == 'V') {
+        start = 1;
+    }
+
+    int major = 0, minor = 0, patch = 0;
+    int firstDot = verStr.indexOf('.', start);
+    if (firstDot != -1) {
+        major = verStr.substring(start, firstDot).toInt();
+        int secondDot = verStr.indexOf('.', firstDot + 1);
+        if (secondDot != -1) {
+            minor = verStr.substring(firstDot + 1, secondDot).toInt();
+            patch = verStr.substring(secondDot + 1).toInt();
+        } else {
+            minor = verStr.substring(firstDot + 1).toInt();
+        }
+    } else {
+        major = verStr.substring(start).toInt();
+    }
+
+    return (uint32_t)(major * 1000000 + minor * 1000 + patch);
+}
+
 bool OtaService::checkUpdate(OtaInfo& info) {
     if (WiFi.status() != WL_CONNECTED) {
         snprintf(s_errorMsg, sizeof(s_errorMsg), "Chưa kết nối WiFi.");
@@ -136,6 +183,25 @@ bool OtaService::checkUpdate(OtaInfo& info) {
     info.versionCode = extractJsonInt(payload, "version_code");
     info.releaseDate = extractJsonString(payload, "release_date");
     info.firmwareUrl = extractJsonString(payload, "firmware_url");
+
+    bool explicitClear = extractJsonBool(payload, "clearNvs") || extractJsonBool(payload, "clear_nvs");
+    String clearBelow = extractJsonString(payload, "clearNvsBelow");
+    if (clearBelow.length() == 0) {
+        clearBelow = extractJsonString(payload, "clear_nvs_below");
+    }
+    info.clearNvsBelow = clearBelow;
+
+    bool belowClear = false;
+    if (clearBelow.length() > 0) {
+        uint32_t currentVerNum = parseVersion(FIRMWARE_VERSION);
+        uint32_t clearBelowNum = parseVersion(clearBelow);
+        if (clearBelowNum > 0 && currentVerNum < clearBelowNum) {
+            belowClear = true;
+            LOG_W(TAG, "Current version (%s) < clearNvsBelow (%s) -> clearNvs triggered!", FIRMWARE_VERSION, clearBelow.c_str());
+        }
+    }
+    info.clearNvs = explicitClear || belowClear;
+
     info.changelog = extractJsonString(payload, "changelog");
     info.author = extractJsonString(payload, "author");
     info.email = extractJsonString(payload, "email");
@@ -164,7 +230,7 @@ bool OtaService::checkUpdate(OtaInfo& info) {
     return true;
 }
 
-bool OtaService::startUpdate(const String& firmwareUrl, OtaProgressCallback progressCb, OtaStatusCallback statusCb) {
+bool OtaService::startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgressCallback progressCb, OtaStatusCallback statusCb) {
     if (s_isUpdating) {
         LOG_W(TAG, "OTA update already in progress.");
         return false;
@@ -177,6 +243,7 @@ bool OtaService::startUpdate(const String& firmwareUrl, OtaProgressCallback prog
     }
 
     s_downloadUrl = firmwareUrl;
+    s_clearNvs = clearNvs;
     s_progressCb = progressCb;
     s_statusCb = statusCb;
     s_isUpdating = true;
@@ -354,6 +421,13 @@ void OtaService::otaTask(void* param) {
     if (Update.end(true)) {
         if (Update.isFinished()) {
             LOG_I(TAG, "OTA update SUCCESSFUL! (%u bytes written)", totalDownloaded);
+            
+            if (s_clearNvs) {
+                LOG_W(TAG, "clearNvs flag is TRUE -> Resetting NVS Flash to factory defaults before reboot...");
+                ConfigManager::resetToDefaults();
+                vTaskDelay(pdMS_TO_TICKS(500));
+            }
+
             s_state = OtaState::SUCCESS;
             s_isUpdating = false;
             if (s_statusCb) s_statusCb(OtaState::SUCCESS, "Cập nhật thành công! Đang khởi động lại...");
