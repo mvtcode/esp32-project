@@ -4,6 +4,11 @@
 
 lv_obj_t* DialogManager::modalBackdrop = nullptr;
 lv_obj_t* DialogManager::lockBackdrop = nullptr;
+lv_obj_t* DialogManager::lockCard = nullptr;
+lv_obj_t* DialogManager::lockLblTitle = nullptr;
+lv_obj_t* DialogManager::lockLblSub = nullptr;
+lv_obj_t* DialogManager::lockLblHint = nullptr;
+lv_obj_t* DialogManager::lockBar = nullptr;
 lv_obj_t* DialogManager::toastContainer = nullptr;
 lv_timer_t* DialogManager::toastTimer = nullptr;
 
@@ -190,19 +195,19 @@ void DialogManager::showLockOverlay(const char* title, const char* message,
     lv_obj_add_flag(lockBackdrop, LV_OBJ_FLAG_CLICKABLE); // Chặn hoàn toàn tất cả sự kiện chạm!
     lv_obj_clear_flag(lockBackdrop, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* card = lv_obj_create(lockBackdrop);
-    lv_obj_set_size(card, 360, 135);
-    lv_obj_align(card, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(card, lv_color_make(18, 24, 40), 0);
-    lv_obj_set_style_border_color(card, badgeColor, 0);
-    lv_obj_set_style_border_width(card, 2, 0);
-    lv_obj_set_style_radius(card, 10, 0);
-    lv_obj_set_style_pad_all(card, 14, 0);
-    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lockCard = lv_obj_create(lockBackdrop);
+    lv_obj_set_size(lockCard, 370, 115);
+    lv_obj_align(lockCard, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(lockCard, lv_color_make(18, 24, 40), 0);
+    lv_obj_set_style_border_color(lockCard, badgeColor, 0);
+    lv_obj_set_style_border_width(lockCard, 2, 0);
+    lv_obj_set_style_radius(lockCard, 10, 0);
+    lv_obj_set_style_pad_all(lockCard, 12, 0);
+    lv_obj_clear_flag(lockCard, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* iconBox = lv_obj_create(card);
-    lv_obj_set_size(iconBox, 44, 44);
-    lv_obj_align(iconBox, LV_ALIGN_LEFT_MID, 6, 0);
+    lv_obj_t* iconBox = lv_obj_create(lockCard);
+    lv_obj_set_size(iconBox, 42, 42);
+    lv_obj_align(iconBox, LV_ALIGN_LEFT_MID, 4, 0);
     lv_obj_set_style_bg_color(iconBox, badgeColor, 0);
     lv_obj_set_style_border_width(iconBox, 0, 0);
     lv_obj_set_style_radius(iconBox, LV_RADIUS_CIRCLE, 0);
@@ -213,32 +218,58 @@ void DialogManager::showLockOverlay(const char* title, const char* message,
     CydTheme::applyTextFont(icon, CydTheme::getFont14(), CydTheme::getWhiteColor());
     lv_obj_center(icon);
 
-    lv_obj_t* lblTitle = lv_label_create(card);
-    lv_label_set_text(lblTitle, title);
-    CydTheme::applyTextFont(lblTitle, CydTheme::getFont14(), badgeColor);
-    lv_obj_align(lblTitle, LV_ALIGN_TOP_LEFT, 58, 8);
+    lockLblTitle = lv_label_create(lockCard);
+    lv_label_set_text(lockLblTitle, title);
+    CydTheme::applyTextFont(lockLblTitle, CydTheme::getFont14(), badgeColor);
+    lv_obj_align(lockLblTitle, LV_ALIGN_TOP_LEFT, 56, 4);
 
-    lv_obj_t* lblSub = lv_label_create(card);
-    lv_label_set_text(lblSub, message);
-    CydTheme::applyTextFont(lblSub, CydTheme::getFont12(), CydTheme::getWhiteColor());
-    lv_obj_align(lblSub, LV_ALIGN_TOP_LEFT, 58, 34);
+    lockLblSub = lv_label_create(lockCard);
+    lv_label_set_text(lockLblSub, message);
+    CydTheme::applyTextFont(lockLblSub, CydTheme::getFont12(), CydTheme::getWhiteColor());
+    lv_obj_align(lockLblSub, LV_ALIGN_TOP_LEFT, 56, 26);
 
-    if (hint) {
-        lv_obj_t* lblHint = lv_label_create(card);
-        lv_label_set_text(lblHint, hint);
-        CydTheme::applyTextFont(lblHint, CydTheme::getFont12(), CydTheme::getTextMuted());
-        lv_obj_align(lblHint, LV_ALIGN_BOTTOM_LEFT, 58, 0);
-    }
+    lockBar = lv_bar_create(lockCard);
+    lv_obj_set_size(lockBar, 280, 8);
+    lv_obj_align(lockBar, LV_ALIGN_TOP_LEFT, 56, 50);
+    lv_obj_set_style_bg_color(lockBar, lv_color_make(35, 45, 65), 0);
+    lv_obj_set_style_bg_color(lockBar, badgeColor, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(lockBar, 4, 0);
+    lv_obj_set_style_radius(lockBar, 4, LV_PART_INDICATOR);
+    lv_bar_set_range(lockBar, 0, 100);
+    lv_bar_set_value(lockBar, 0, LV_ANIM_OFF);
 
-    // Ép LVGL vẽ ngay màn hình khóa lên LCD trước khi bắt đầu tác vụ chặn CPU
-    lv_timer_handler();
+    lockLblHint = lv_label_create(lockCard);
+    lv_label_set_text(lockLblHint, hint ? hint : "");
+    CydTheme::applyTextFont(lockLblHint, CydTheme::getFont12(), CydTheme::getTextMuted());
+    lv_obj_align(lockLblHint, LV_ALIGN_TOP_LEFT, 56, 66);
+
+    // Refresh ngay màn hình không đệ quy timer handler
     lv_refr_now(NULL);
+}
+
+void DialogManager::updateLockProgress(int percent, const char* message, const char* hint) {
+    if (!lockBackdrop) return;
+    if (message && lockLblSub) {
+        lv_label_set_text(lockLblSub, message);
+    }
+    if (hint && lockLblHint) {
+        lv_label_set_text(lockLblHint, hint);
+    }
+    if (lockBar && percent >= 0) {
+        if (percent > 100) percent = 100;
+        lv_bar_set_value(lockBar, percent, LV_ANIM_OFF);
+    }
 }
 
 void DialogManager::hideLockOverlay() {
     if (lockBackdrop) {
         lv_obj_del(lockBackdrop);
         lockBackdrop = nullptr;
+        lockCard = nullptr;
+        lockLblTitle = nullptr;
+        lockLblSub = nullptr;
+        lockLblHint = nullptr;
+        lockBar = nullptr;
     }
 }
 

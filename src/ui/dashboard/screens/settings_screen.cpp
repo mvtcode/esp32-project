@@ -1354,17 +1354,11 @@ static void ota_monitor_timer_cb(lv_timer_t* t) {
     if (state == OtaState::DOWNLOADING) {
         char msg[128];
         char hint[64];
-        snprintf(msg, sizeof(msg), "Đang tải và ghi Flash (%d%%)...\nVui lòng tuyệt đối KHÔNG tắt nguồn!", pct);
-        snprintf(hint, sizeof(hint), "Tiến trình: %d%% (%u / %u KB)", pct, (uint32_t)(dl / 1024), (uint32_t)(tot / 1024));
-        DialogManager::showLockOverlay("ĐANG NẠP FIRMWARE OTA...", msg, hint, LV_SYMBOL_DOWNLOAD, lv_color_make(20, 140, 80));
+        snprintf(msg, sizeof(msg), "Đang nạp Flash (%d%%)... Vui lòng không ngắt nguồn!", pct);
+        snprintf(hint, sizeof(hint), "Đã nạp: %d%% (%u / %u KB)", pct, (uint32_t)(dl / 1024), (uint32_t)(tot / 1024));
+        DialogManager::updateLockProgress(pct, msg, hint);
     } else if (state == OtaState::SUCCESS) {
-        DialogManager::showLockOverlay(
-            "CẬP NHẬT THÀNH CÔNG!",
-            "Firmware mới đã nạp hoàn tất.\nThiết bị sẽ tự khởi động lại sau giây lát...",
-            "Đang khởi động lại...",
-            LV_SYMBOL_OK,
-            lv_color_make(40, 160, 60)
-        );
+        DialogManager::updateLockProgress(100, "Cập nhật thành công! Đang khởi động lại...", "Hoàn tất 100%");
         if (s_otaMonitorTimer) {
             lv_timer_del(s_otaMonitorTimer);
             s_otaMonitorTimer = nullptr;
@@ -1489,7 +1483,7 @@ void SettingsScreen::ota_confirm_click_cb(lv_event_t* e) {
     if (s_otaMonitorTimer) {
         lv_timer_del(s_otaMonitorTimer);
     }
-    s_otaMonitorTimer = lv_timer_create(ota_monitor_timer_cb, 150, nullptr);
+    s_otaMonitorTimer = lv_timer_create(ota_monitor_timer_cb, 250, nullptr);
 }
 
 void SettingsScreen::restart_click_cb(lv_event_t* e) {

@@ -30,6 +30,7 @@ public:
                                 const char* hint = "Màn hình tạm khóa cho đến khi xong...",
                                 const char* symbol = LV_SYMBOL_TRASH,
                                 lv_color_t badgeColor = lv_color_make(180, 40, 50));
+    static void updateLockProgress(int percent, const char* message = nullptr, const char* hint = nullptr);
     static void hideLockOverlay();
 
     // 5. Quản lý trạng thái & Dọn dẹp
@@ -41,6 +42,11 @@ public:
 private:
     static lv_obj_t* modalBackdrop;
     static lv_obj_t* lockBackdrop;
+    static lv_obj_t* lockCard;
+    static lv_obj_t* lockLblTitle;
+    static lv_obj_t* lockLblSub;
+    static lv_obj_t* lockLblHint;
+    static lv_obj_t* lockBar;
     static lv_obj_t* toastContainer;
     static lv_timer_t* toastTimer;
 
