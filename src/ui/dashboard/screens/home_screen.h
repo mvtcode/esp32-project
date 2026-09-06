@@ -11,10 +11,10 @@ public:
     
     // Setters for dynamic updates
     void updateTime(const char* timeStr, const char* secondsStr, const char* dateStr, bool isAm);
-    void updateLunarCalendar(const char* lunarDayStr, const char* lunarInfoStr);
+    void updateLunarCalendar(const char* lunarDayStr, const char* lunarInfoStr, bool isHoangDao = false);
     void updateCalendarRibbon(int activeDayIndex, const int* dayNumbers);
     void updateWeather(int temp, const char* condition, int feelsLike, int humidity, int windSpeed, int uvIndex, const char* cityName = nullptr);
-    void updateGoldPrices(const char* buySJC, const char* sellSJC);
+    void updateGoldPrices(const char* buySJC, const char* sellSJC, const char* worldBuy = nullptr, const char* worldSell = nullptr);
     void updateFuelPrices(int ron95, int ron92, int diesel, int mazut, int ron95Delta, int ron92Delta, int dieselDelta, int mazutDelta);
 
     lv_obj_t* getRoot() { return rootContainer; }
@@ -37,6 +37,7 @@ private:
 
     // Lunar calendar widgets
     lv_obj_t* lblLunarDate;
+    lv_obj_t* boxLunarBadge;
     lv_obj_t* lblLunarInfo;
 
     // Weather widgets
@@ -53,6 +54,7 @@ private:
     // Gold widgets (clean without mock delta)
     lv_obj_t* lblGoldBuy;
     lv_obj_t* lblGoldSell;
+    lv_obj_t* lblGoldStatus;
     lv_obj_t* lblGoldBuyDelta;
     lv_obj_t* lblGoldSellDelta;
 

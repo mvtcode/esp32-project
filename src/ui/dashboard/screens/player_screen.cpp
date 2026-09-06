@@ -7,6 +7,8 @@
 #include <esp_heap_caps.h>
 
 
+static bool s_spectrumModeActive = false; // Lưu trạng thái hiển thị: false = Text Info, true = Sóng nhạc
+
 PlayerScreen::PlayerScreen(lv_obj_t* parent)
     : rootContainer(nullptr),
       lblSongTitle(nullptr),
@@ -18,6 +20,7 @@ PlayerScreen::PlayerScreen(lv_obj_t* parent)
       lblAudioFileSize(nullptr),
       spectrumCanvas(nullptr),
       canvasBuf(nullptr),
+      showSpectrum(false),
       seekSlider(nullptr),
       lblCurrentTime(nullptr),
       lblTotalTime(nullptr),
@@ -43,16 +46,13 @@ PlayerScreen::PlayerScreen(lv_obj_t* parent)
     lv_obj_set_style_pad_all(rootContainer, 0, 0);
     lv_obj_clear_flag(rootContainer, LV_OBJ_FLAG_SCROLLABLE);
 
-    // 2. Khởi tạo dữ liệu Spectrum nếu được bật
-#if ENABLE_SPECTRUM_CANVAS
+    // 2. Khởi tạo dữ liệu buffer cho Spectrum Canvas
     static lv_color_t s_spectrum_canvas_buf[200 * 24];
     canvasBuf = s_spectrum_canvas_buf;
     for (int i = 0; i < 24; i++) {
         barHeights[i] = 2 + (rand() % 10);
     }
-#else
-    canvasBuf = nullptr;
-#endif
+    showSpectrum = s_spectrumModeActive;
 
     // 3. Build left and right layout panes
     createPlayerControlsPane(rootContainer);
@@ -80,6 +80,7 @@ void PlayerScreen::createPlayerControlsPane(lv_obj_t* parent) {
     CydTheme::applyCardStyle(leftCard);
 
     // 1. Simulated Album Cover Container (Glowing Card Frame) - 136px height
+    // Cho phép click vào vùng này để chuyển đổi lần lượt sóng nhạc và thông tin text
     imgAlbumCover = lv_obj_create(leftCard);
     lv_obj_set_size(imgAlbumCover, 210, 136);
     lv_obj_align(imgAlbumCover, LV_ALIGN_TOP_MID, 0, 0);
@@ -90,6 +91,9 @@ void PlayerScreen::createPlayerControlsPane(lv_obj_t* parent) {
     lv_obj_set_style_radius(imgAlbumCover, 8, 0);
     lv_obj_set_style_pad_all(imgAlbumCover, 4, 0);
     lv_obj_clear_flag(imgAlbumCover, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(imgAlbumCover, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_border_color(imgAlbumCover, CydTheme::getAccentGlowColor(), LV_STATE_PRESSED);
+    lv_obj_add_event_cb(imgAlbumCover, track_info_click_cb, LV_EVENT_CLICKED, this);
 
     // Dòng 1: Tên bài hát (Font 14 Trắng, Marquee cuộn tròn nếu tên dài)
     lblSongTitle = lv_label_create(imgAlbumCover);
@@ -98,18 +102,19 @@ void PlayerScreen::createPlayerControlsPane(lv_obj_t* parent) {
     lv_obj_align(lblSongTitle, LV_ALIGN_TOP_LEFT, 6, 6);
     lv_obj_set_width(lblSongTitle, 196);
     lv_label_set_long_mode(lblSongTitle, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_clear_flag(lblSongTitle, LV_OBJ_FLAG_CLICKABLE);
 
     // Dòng 2: Nghệ sĩ (Chỉ hiển thị khi có tên nghệ sĩ THỰC SỰ)
     lblSongArtist = lv_label_create(imgAlbumCover);
     lv_label_set_text(lblSongArtist, "");
     CydTheme::applyTextFont(lblSongArtist, CydTheme::getFont12(), CydTheme::getAccentGlowColor());
     lv_obj_align(lblSongArtist, LV_ALIGN_TOP_LEFT, 6, 30);
+    lv_obj_clear_flag(lblSongArtist, LV_OBJ_FLAG_CLICKABLE);
 
-#if ENABLE_SPECTRUM_CANVAS
-    // [CHẾ ĐỘ SÓNG NHẠC]: 24-Bar Spectrum Visualizer (Kích thước 200x24)
+    // --- CHẾ ĐỘ SÓNG NHẠC (SPECTRUM) ---
     spectrumCanvas = lv_canvas_create(imgAlbumCover);
     lv_obj_set_size(spectrumCanvas, 200, 24);
-    lv_obj_align(spectrumCanvas, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_align(spectrumCanvas, LV_ALIGN_BOTTOM_MID, 0, -4);
     lv_obj_clear_flag(spectrumCanvas, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(spectrumCanvas, LV_OBJ_FLAG_CLICKABLE);
 
@@ -128,27 +133,31 @@ void PlayerScreen::createPlayerControlsPane(lv_obj_t* parent) {
     } else {
         spectrumCanvas = nullptr;
     }
-#else
-    // [CHẾ ĐỘ THÔNG SỐ TEXT THẬT 100%]: Tinh gọn, không chữ thừa, không fake
+
+    // --- CHẾ ĐỘ THÔNG SỐ TEXT THẬT 100% ---
     // Dòng 3: Định dạng chuẩn
     lblAudioCodec = lv_label_create(imgAlbumCover);
     lv_label_set_text(lblAudioCodec, "Định dạng: MP3 (MPEG Layer 3)");
     CydTheme::applyTextFont(lblAudioCodec, CydTheme::getFont12(), CydTheme::getTextSecondary());
     lv_obj_align(lblAudioCodec, LV_ALIGN_TOP_LEFT, 6, 54);
+    lv_obj_clear_flag(lblAudioCodec, LV_OBJ_FLAG_CLICKABLE);
 
     // Dòng 4: Tần số lấy mẫu & Kênh âm thanh
     lblAudioSampleRate = lv_label_create(imgAlbumCover);
     lv_label_set_text(lblAudioSampleRate, "Tần số: 44.1 kHz • Stereo 16-bit");
     CydTheme::applyTextFont(lblAudioSampleRate, CydTheme::getFont12(), CydTheme::getTextSecondary());
     lv_obj_align(lblAudioSampleRate, LV_ALIGN_TOP_LEFT, 6, 78);
+    lv_obj_clear_flag(lblAudioSampleRate, LV_OBJ_FLAG_CLICKABLE);
 
     // Dòng 5: Dung lượng file thực tế trên thẻ nhớ SD
     lblAudioFileSize = lv_label_create(imgAlbumCover);
     lv_label_set_text(lblAudioFileSize, "Dung lượng: -- MB");
     CydTheme::applyTextFont(lblAudioFileSize, CydTheme::getFont12(), CydTheme::getTextSecondary());
     lv_obj_align(lblAudioFileSize, LV_ALIGN_TOP_LEFT, 6, 102);
-#endif
+    lv_obj_clear_flag(lblAudioFileSize, LV_OBJ_FLAG_CLICKABLE);
 
+    // Thiết lập chế độ hiển thị ban đầu
+    setTrackInfoMode(showSpectrum);
 
 
     // 3. Playback progress seek bar (Shifted up with comfortable margin)
@@ -320,7 +329,6 @@ void PlayerScreen::updateTrackInfo(const char* title, const char* artist, const 
     
     if (lblQualityChip) lv_label_set_text(lblQualityChip, qualityStr);
 
-#if !ENABLE_SPECTRUM_CANVAS
     if (lblAudioCodec) {
         AudioTrack cur = AudioPlayerService::getCurrentTrack();
         char buf[48];
@@ -345,7 +353,6 @@ void PlayerScreen::updateTrackInfo(const char* title, const char* artist, const 
             lv_label_set_text(lblAudioFileSize, "Dung lượng: --");
         }
     }
-#endif
 }
 
 void PlayerScreen::updatePlaybackProgress(int currentTimeSecs, int totalTimeSecs) {
@@ -504,10 +511,7 @@ void PlayerScreen::addPlaylistItem(const PlaylistItem& item, int trackIndex) {
 }
 
 void PlayerScreen::tickSpectrumAnimation() {
-#if !ENABLE_SPECTRUM_CANVAS
-    return; // Đã tắt sóng nhạc -> Bỏ qua 100% render load, FPS tối đa 60 mượt mà
-#else
-    if (!spectrumCanvas) return;
+    if (!showSpectrum || !spectrumCanvas) return;
 
     bool isPlaying = AudioPlayerService::isPlaying();
     static int targetHeights[24] = {};
@@ -572,7 +576,6 @@ void PlayerScreen::tickSpectrumAnimation() {
         lv_coord_t y = (lv_coord_t)(24 - barHeights[i]);
         lv_canvas_draw_rect(spectrumCanvas, x, y, 5, barHeights[i], &barDsc);
     }
-#endif
 }
 
 
@@ -745,5 +748,51 @@ void PlayerScreen::playlist_item_click_cb(lv_event_t* e) {
         if (screen) {
             screen->syncCurrentTrackUI();
         }
+    }
+}
+
+void PlayerScreen::setTrackInfoMode(bool spectrumMode) {
+    showSpectrum = spectrumMode;
+    s_spectrumModeActive = spectrumMode;
+
+    if (showSpectrum) {
+        // Ẩn các label thông tin text
+        if (lblAudioCodec) lv_obj_add_flag(lblAudioCodec, LV_OBJ_FLAG_HIDDEN);
+        if (lblAudioSampleRate) lv_obj_add_flag(lblAudioSampleRate, LV_OBJ_FLAG_HIDDEN);
+        if (lblAudioFileSize) lv_obj_add_flag(lblAudioFileSize, LV_OBJ_FLAG_HIDDEN);
+
+        // Hiện sóng nhạc canvas
+        if (spectrumCanvas) {
+            lv_obj_clear_flag(spectrumCanvas, LV_OBJ_FLAG_HIDDEN);
+            lv_canvas_fill_bg(spectrumCanvas, lv_color_make(18, 12, 34), LV_OPA_COVER);
+            lv_draw_rect_dsc_t barDsc;
+            lv_draw_rect_dsc_init(&barDsc);
+            barDsc.bg_color = CydTheme::getAccentGlowColor();
+            barDsc.bg_opa = LV_OPA_COVER;
+            barDsc.radius = 2;
+            barDsc.border_width = 0;
+            for (int i = 0; i < 24; i++) {
+                lv_canvas_draw_rect(spectrumCanvas, i * 8 + 4, 24 - barHeights[i], 5, barHeights[i], &barDsc);
+            }
+        }
+    } else {
+        // Ẩn sóng nhạc canvas
+        if (spectrumCanvas) lv_obj_add_flag(spectrumCanvas, LV_OBJ_FLAG_HIDDEN);
+
+        // Hiện các label thông tin text
+        if (lblAudioCodec) lv_obj_clear_flag(lblAudioCodec, LV_OBJ_FLAG_HIDDEN);
+        if (lblAudioSampleRate) lv_obj_clear_flag(lblAudioSampleRate, LV_OBJ_FLAG_HIDDEN);
+        if (lblAudioFileSize) lv_obj_clear_flag(lblAudioFileSize, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void PlayerScreen::toggleTrackInfoMode() {
+    setTrackInfoMode(!showSpectrum);
+}
+
+void PlayerScreen::track_info_click_cb(lv_event_t* e) {
+    PlayerScreen* screen = (PlayerScreen*)lv_event_get_user_data(e);
+    if (screen) {
+        screen->toggleTrackInfoMode();
     }
 }

@@ -71,20 +71,29 @@ void syncHomeScreenTelemetry() {
     }
 
     char lunarDayStr[64];
-    snprintf(lunarDayStr, sizeof(lunarDayStr), "ÂL: %02d/%02d (%s)", t.lunar.day, t.lunar.month, t.lunar.dayName);
-    ui->updateLunarCalendar(lunarDayStr, "");
+    if (t.isSynced && t.lunar.day > 0) {
+        snprintf(lunarDayStr, sizeof(lunarDayStr), "ÂL: %02d/%02d (%s)", t.lunar.day, t.lunar.month, t.lunar.dayName);
+        ui->updateLunarCalendar(lunarDayStr, t.lunar.hoangDaoName, t.lunar.isHoangDao);
+    } else {
+        snprintf(lunarDayStr, sizeof(lunarDayStr), "ÂL: Đang đồng bộ...");
+        ui->updateLunarCalendar(lunarDayStr, "--", false);
+    }
 
     // 2. Weather Live Update
     WeatherInfo w = WeatherService::getWeather();
     if (w.is_valid) {
         ui->updateWeather((int)roundf(w.temperature), w.condition_text.c_str(), 
                           (int)roundf(w.feels_like), w.humidity, w.wind_speed, w.uv_index, w.city_name.c_str());
+    } else {
+        const CityLocation& curCity = ConfigManager::getCurrentCity();
+        ui->updateWeather(-999, "Đang tải thời tiết...", -999, -1, -1, -1, curCity.name);
     }
 
     // 3. Market (Gold & Fuel) Live Update
     MarketInfo m = MarketService::getMarket();
     if (m.is_valid) {
-        ui->updateGoldPrices(m.sjc_buy_str.c_str(), m.sjc_sell_str.c_str());
+        ui->updateGoldPrices(m.sjc_buy_str.c_str(), m.sjc_sell_str.c_str(), 
+                             m.world_buy_str.c_str(), m.world_sell_str.c_str());
         ui->updateFuelPrices(m.ron95_price, m.e5_price, m.diesel_price, m.mazut_price, 
                              m.ron95_delta, m.ron92_delta, m.diesel_delta, m.mazut_delta);
     }
@@ -104,8 +113,9 @@ void setup() {
     // 2. Initialize Backlight PWM (LEDC on GPIO 27)
     BacklightManager::init();
 
-    // 3. Initialize Audio Player Service FIRST (Preallocates Helix DSP buffers on pristine heap)
-    AudioPlayerService::init();
+    // 3. Audio Player Service được lazy-load khi người dùng thực sự vào Tab 2 (Player),
+    // giúp giữ nguyên vẹn >80KB RAM Heap cho kết nối HTTPS/TLS ban đầu không bị tràn bộ nhớ.
+    // AudioPlayerService::init();
 
     // 4. Initialize WiFi Service (auto-reconnects if saved)
     WifiService::init();
@@ -176,7 +186,10 @@ void setup() {
 
 
         // Set initial values on Settings Screen
-        SettingsDeviceInfo info = {"CYD 3.5 Controller", "ESP32-3248S035", "v2.5.0", "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION "v1.0.0"
+#endif
+        SettingsDeviceInfo info = {"ESP32 CYD 3.5\" 480x320", "ESP32-3248S035", FIRMWARE_VERSION, "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
         ui->updateDeviceInfo(info);
         ui->updateSettingsTelemetry(SystemTelemetry::getFreeHeap(), SystemTelemetry::getUptimeFormatted().c_str(), WifiService::getIPAddress().c_str(), WifiService::getMacAddress().c_str());
         ui->updateWifiSettings(WifiService::getStateString(), WifiService::getConnectedSSID().c_str(), WifiService::getIPAddress().c_str(), WifiService::getRSSI());

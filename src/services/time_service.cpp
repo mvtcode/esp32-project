@@ -64,6 +64,8 @@ TimeInfo TimeService::getTimeInfo() {
         info.lunar.dayName = "Đang tải";
         info.lunar.yearName = "Đang tải";
         info.lunar.holiday = nullptr;
+        info.lunar.isHoangDao = false;
+        info.lunar.hoangDaoName = "--";
         return info;
     }
 

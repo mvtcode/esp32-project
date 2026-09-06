@@ -1,7 +1,11 @@
 #include "dashboard_ui.h"
 #include "cyd_theme.h"
+#include "dialog_manager.h"
 #include "../../services/audio_player_service.h"
 #include "../../services/storage_service.h"
+#include "../../services/config_manager.h"
+#include "../../services/wifi_service.h"
+#include "../../services/time_service.h"
 #include "log.h"
 #include <stdio.h>
 #include <string.h>
@@ -15,6 +19,9 @@ DashboardUI::DashboardUI() :
     settingsScreen(nullptr),
     devHud(nullptr)
 {
+    const CityLocation& curCity = ConfigManager::getCurrentCity();
+    strncpy(homeCache.cityName, curCity.name, sizeof(homeCache.cityName) - 1);
+
     // 1. Create Master Container (Whole screen: 480x320)
     masterContainer = lv_obj_create(lv_scr_act());
     lv_obj_set_size(masterContainer, 480, 320);
@@ -53,11 +60,19 @@ DashboardUI::DashboardUI() :
     // 5. Create Developer HUD
     devHud = new DevHud();
 
-    // 6. Make Home screen active by default
-    setTabActive(0);
+    // 6. Check WiFi configuration: nếu chưa cấu hình WiFi, mở thẳng Settings -> Mạng WiFi
+    if (!ConfigManager::hasWifiCredentials()) {
+        LOG_I("UI", "No WiFi credentials in NVS. Launching Settings -> Mạng Wifi directly.");
+        settingsCache.activeMenuItem = 1; // Tab 1: Mạng Wifi
+        setTabActive(3);                  // Settings Mode
+        WifiService::startScan();          // Tự động quét mạng WiFi xung quanh
+    } else {
+        setTabActive(0); // Home Screen
+    }
 }
 
 DashboardUI::~DashboardUI() {
+    DialogManager::cleanupAll();
     if (devHud) delete devHud;
     if (homeScreen) delete homeScreen;
     if (calendarScreen) delete calendarScreen;
@@ -158,19 +173,28 @@ void DashboardUI::setTabActive(int index) {
     // 3. Tạo screen mới theo yêu cầu và khôi phục dữ liệu cache
     switch (activeTabIndex) {
         case 0: {
+            const CityLocation& curCity = ConfigManager::getCurrentCity();
+            strncpy(homeCache.cityName, curCity.name, sizeof(homeCache.cityName) - 1);
             homeScreen = new HomeScreen(activeViewArea);
             homeScreen->updateTime(homeCache.timeStr, homeCache.secStr, homeCache.dateStr, homeCache.isAm);
-            homeScreen->updateLunarCalendar(homeCache.lunarDayStr, homeCache.lunarInfoStr);
+            homeScreen->updateLunarCalendar(homeCache.lunarDayStr, homeCache.lunarInfoStr, homeCache.isHoangDao);
             homeScreen->updateCalendarRibbon(homeCache.activeDayIndex, homeCache.dayNumbers);
-            homeScreen->updateWeather(homeCache.temp, homeCache.condition, homeCache.feelsLike, homeCache.humidity, homeCache.windSpeed, homeCache.uvIndex);
-            homeScreen->updateGoldPrices(homeCache.goldBuy, homeCache.goldSell);
+            homeScreen->updateWeather(homeCache.temp, homeCache.condition, homeCache.feelsLike, homeCache.humidity, homeCache.windSpeed, homeCache.uvIndex, homeCache.cityName);
+            homeScreen->updateGoldPrices(homeCache.goldBuy, homeCache.goldSell, homeCache.goldWorldBuy, homeCache.goldWorldSell);
             homeScreen->updateFuelPrices(homeCache.fuelRon95, homeCache.fuelRon92, homeCache.fuelDiesel, homeCache.fuelMazut,
                                         homeCache.fuelRon95Delta, homeCache.fuelRon92Delta, homeCache.fuelDieselDelta, homeCache.fuelMazutDelta);
             break;
         }
         case 1: {
-            calendarScreen = new CalendarScreen(activeViewArea);
-            calendarScreen->setToday(calCache.year, calCache.month, calCache.day);
+            if (calCache.year == 0) {
+                TimeInfo t = TimeService::getTimeInfo();
+                if (t.isSynced && t.year >= 2024) {
+                    calCache.year = t.year;
+                    calCache.month = t.month;
+                    calCache.day = t.day;
+                }
+            }
+            calendarScreen = new CalendarScreen(activeViewArea, calCache.year, calCache.month, calCache.day);
             break;
         }
         case 2: {
@@ -220,11 +244,13 @@ void DashboardUI::setTabActive(int index) {
             break;
         }
         case 3: {
+            int targetMenu = settingsCache.activeMenuItem;
             settingsScreen = new SettingsScreen(activeViewArea);
             settingsScreen->updateDeviceInfo(settingsCache.info);
             settingsScreen->updateTelemetry(settingsCache.freeHeap, settingsCache.uptimeStr, settingsCache.ipStr, settingsCache.macStr);
             settingsScreen->updateWifiStatus(settingsCache.wifiState, settingsCache.wifiSsid, settingsCache.ipStr, settingsCache.wifiRssi);
-            settingsScreen->setActiveMenuItem(settingsCache.activeMenuItem);
+            settingsScreen->setActiveMenuItem(targetMenu);
+            settingsCache.activeMenuItem = 0; // Sau khi mở xong thì trả về mặc định 0 (Thiết Bị) cho các lần bấm sau
             break;
         }
     }
@@ -239,7 +265,45 @@ void DashboardUI::tab_click_event_cb(lv_event_t* e) {
     DashboardUI* self = (DashboardUI*)lv_event_get_user_data(e);
     lv_obj_t* target = lv_event_get_current_target(e);
     int tabIdx = (int)(intptr_t)lv_obj_get_user_data(target);
+
+    // Khi không có WiFi mà cố tình quay lại màn Home (0) hoặc Calendar (1)
+    if ((tabIdx == 0 || tabIdx == 1) && !WifiService::isConnected()) {
+        LOG_W("UI", "User attempted to open Tab %d without WiFi. Showing Alert modal.", tabIdx);
+        self->showWifiRequiredAlert();
+        return; // Chặn không cho chuyển tab!
+    }
+
+    if (tabIdx == 3) {
+        self->settingsCache.activeMenuItem = 0; // Khi user chạm nút Settings ở thanh điều hướng, luôn vào Thiết Bị
+    }
     self->setTabActive(tabIdx);
+}
+
+void DashboardUI::showWifiRequiredAlert() {
+    DialogManager::showAlert(
+        LV_SYMBOL_WARNING "  YÊU CẦU KẾT NỐI WIFI",
+        "Màn hình Trang Chủ và Lịch yêu cầu kết nối Internet để đồng bộ thời gian và dữ liệu trực tuyến.\n\nVui lòng kết nối WiFi để tiếp tục sử dụng!",
+        LV_SYMBOL_WIFI " Cài Đặt WiFi Ngay",
+        wifi_alert_goto_wifi_cb,
+        this,
+        lv_color_make(255, 170, 40)
+    );
+}
+
+void DashboardUI::hideWifiRequiredAlert() {
+    DialogManager::dismissModal();
+}
+
+void DashboardUI::wifi_alert_goto_wifi_cb(lv_event_t* e) {
+    DashboardUI* self = (DashboardUI*)lv_event_get_user_data(e);
+    if (!self) return;
+    DialogManager::dismissModal();
+    self->settingsCache.activeMenuItem = 1; // Tab Mạng Wifi
+    self->setTabActive(3);                 // Chuyển sang Settings Mode
+    if (self->settingsScreen) {
+        self->settingsScreen->setActiveMenuItem(1);
+    }
+    WifiService::startScan();
 }
 
 // --- Home Screen Setters ---
@@ -251,10 +315,11 @@ void DashboardUI::updateTime(const char* timeStr, const char* secondsStr, const 
     if (homeScreen) homeScreen->updateTime(timeStr, secondsStr, dateStr, isAm);
 }
 
-void DashboardUI::updateLunarCalendar(const char* lunarDayStr, const char* lunarInfoStr) {
-    strncpy(homeCache.lunarDayStr, lunarDayStr, sizeof(homeCache.lunarDayStr) - 1);
-    strncpy(homeCache.lunarInfoStr, lunarInfoStr, sizeof(homeCache.lunarInfoStr) - 1);
-    if (homeScreen) homeScreen->updateLunarCalendar(lunarDayStr, lunarInfoStr);
+void DashboardUI::updateLunarCalendar(const char* lunarDayStr, const char* lunarInfoStr, bool isHoangDao) {
+    if (lunarDayStr) strncpy(homeCache.lunarDayStr, lunarDayStr, sizeof(homeCache.lunarDayStr) - 1);
+    if (lunarInfoStr) strncpy(homeCache.lunarInfoStr, lunarInfoStr, sizeof(homeCache.lunarInfoStr) - 1);
+    homeCache.isHoangDao = isHoangDao;
+    if (homeScreen) homeScreen->updateLunarCalendar(lunarDayStr, lunarInfoStr, isHoangDao);
 }
 
 void DashboardUI::updateCalendarRibbon(int activeDayIndex, const int* dayNumbers) {
@@ -265,18 +330,26 @@ void DashboardUI::updateCalendarRibbon(int activeDayIndex, const int* dayNumbers
 
 void DashboardUI::updateWeather(int temp, const char* condition, int feelsLike, int humidity, int windSpeed, int uvIndex, const char* cityName) {
     homeCache.temp = temp;
-    strncpy(homeCache.condition, condition, sizeof(homeCache.condition) - 1);
+    if (condition) strncpy(homeCache.condition, condition, sizeof(homeCache.condition) - 1);
     homeCache.feelsLike = feelsLike;
     homeCache.humidity = humidity;
     homeCache.windSpeed = windSpeed;
     homeCache.uvIndex = uvIndex;
-    if (homeScreen) homeScreen->updateWeather(temp, condition, feelsLike, humidity, windSpeed, uvIndex, cityName);
+    if (cityName && strlen(cityName) > 0) {
+        strncpy(homeCache.cityName, cityName, sizeof(homeCache.cityName) - 1);
+    } else {
+        const CityLocation& curCity = ConfigManager::getCurrentCity();
+        strncpy(homeCache.cityName, curCity.name, sizeof(homeCache.cityName) - 1);
+    }
+    if (homeScreen) homeScreen->updateWeather(temp, condition, feelsLike, humidity, windSpeed, uvIndex, homeCache.cityName);
 }
 
-void DashboardUI::updateGoldPrices(const char* buySJC, const char* sellSJC) {
+void DashboardUI::updateGoldPrices(const char* buySJC, const char* sellSJC, const char* worldBuy, const char* worldSell) {
     if (buySJC) strncpy(homeCache.goldBuy, buySJC, sizeof(homeCache.goldBuy) - 1);
     if (sellSJC) strncpy(homeCache.goldSell, sellSJC, sizeof(homeCache.goldSell) - 1);
-    if (homeScreen) homeScreen->updateGoldPrices(buySJC, sellSJC);
+    if (worldBuy) strncpy(homeCache.goldWorldBuy, worldBuy, sizeof(homeCache.goldWorldBuy) - 1);
+    if (worldSell) strncpy(homeCache.goldWorldSell, worldSell, sizeof(homeCache.goldWorldSell) - 1);
+    if (homeScreen) homeScreen->updateGoldPrices(buySJC, sellSJC, worldBuy, worldSell);
 }
 
 void DashboardUI::updateFuelPrices(int ron95, int ron92, int diesel, int mazut, int ron95Delta, int ron92Delta, int dieselDelta, int mazutDelta) {

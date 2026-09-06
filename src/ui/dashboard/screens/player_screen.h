@@ -10,12 +10,6 @@ struct PlaylistItem {
     bool isPlaying;
 };
 
-// ==============================================================================
-// CẤU HÌNH HIỆU ỨNG SÓNG NHẠC (SPECTRUM VISUALIZER)
-// - Đặt 0 (MẶC ĐỊNH): Tắt sóng nhạc Canvas, dùng Badge Hi-Fi Audio (FPS 60 mượt mà, siêu ổn định, tiết kiệm 10KB RAM)
-// - Đặt 1: Bật lại sóng nhạc Canvas 24 cột động
-// ==============================================================================
-#define ENABLE_SPECTRUM_CANVAS 0
 
 class PlayerScreen {
 public:
@@ -38,6 +32,11 @@ public:
     // Micro-animation for spectrum wave
     void tickSpectrumAnimation();
 
+    // Chuyển đổi giữa chế độ hiển thị thông tin text và sóng nhạc spectrum
+    void toggleTrackInfoMode();
+    void setTrackInfoMode(bool spectrumMode);
+    bool isSpectrumMode() const { return showSpectrum; }
+
     lv_obj_t* getRoot() { return rootContainer; }
 
 private:
@@ -47,17 +46,18 @@ private:
     lv_obj_t* lblSongTitle;
     lv_obj_t* lblSongArtist;
     lv_obj_t* lblQualityChip;
-    lv_obj_t* imgAlbumCover; // simulated cover art
+    lv_obj_t* imgAlbumCover; // simulated cover art (khung thông tin bài hát có thể click)
 
     // Pure Text Info widgets (Chỉ hiển thị thông số THẬT 100% & hữu ích)
     lv_obj_t* lblAudioCodec;
     lv_obj_t* lblAudioSampleRate;
     lv_obj_t* lblAudioFileSize;
 
-    // Spectrum Visualizer
+    // Spectrum Visualizer widgets
     lv_obj_t* spectrumCanvas;
     lv_color_t* canvasBuf;
     int barHeights[24];
+    bool showSpectrum;
 
 
     // Playback slider & times
@@ -98,6 +98,7 @@ private:
     static void volume_slider_cb(lv_event_t* e);
     static void seek_slider_cb(lv_event_t* e);
     static void playlist_item_click_cb(lv_event_t* e);
+    static void track_info_click_cb(lv_event_t* e);
 
     bool isSeeking;
 };

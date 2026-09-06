@@ -9,6 +9,10 @@
 #include "screens/settings_screen.h"
 #include "dev_hud.h"
 
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION "v1.0.0"
+#endif
+
 class DashboardUI {
 public:
     DashboardUI();
@@ -27,10 +31,10 @@ public:
     // --- High-Performance MVC Telemetry Setters ---
     // HomeScreen Setters
     void updateTime(const char* timeStr, const char* secondsStr, const char* dateStr, bool isAm);
-    void updateLunarCalendar(const char* lunarDayStr, const char* lunarInfoStr);
+    void updateLunarCalendar(const char* lunarDayStr, const char* lunarInfoStr, bool isHoangDao = false);
     void updateCalendarRibbon(int activeDayIndex, const int* dayNumbers);
     void updateWeather(int temp, const char* condition, int feelsLike, int humidity, int windSpeed, int uvIndex, const char* cityName = nullptr);
-    void updateGoldPrices(const char* buySJC, const char* sellSJC);
+    void updateGoldPrices(const char* buySJC, const char* sellSJC, const char* worldBuy = nullptr, const char* worldSell = nullptr);
     void updateFuelPrices(int ron95, int ron92, int diesel, int mazut, int ron95Delta, int ron92Delta, int dieselDelta, int mazutDelta);
 
     // CalendarScreen Setters
@@ -92,32 +96,36 @@ private:
         char secStr[6] = "--";
         char dateStr[48] = "Đang đồng bộ NTP...";
         bool isAm = false;
-        char lunarDayStr[32] = "ÂL: Đang đồng bộ...";
+        char lunarDayStr[48] = "ÂL: Đang đồng bộ...";
         char lunarInfoStr[48] = "";
+        bool isHoangDao = false;
         int activeDayIndex = 0;
         int dayNumbers[7] = {1, 2, 3, 4, 5, 6, 7};
-        int temp = 28;
+        int temp = -999;
         char condition[64] = "Đang tải thời tiết...";
-        int feelsLike = 28;
-        int humidity = 70;
-        int windSpeed = 10;
-        int uvIndex = 5;
-        char goldBuy[16] = "145,7";
-        char goldSell[16] = "148,7";
-        int fuelRon95 = 22600;
-        int fuelRon92 = 21760;
-        int fuelDiesel = 28080;
-        int fuelMazut = 18140;
-        int fuelRon95Delta = -60;
-        int fuelRon92Delta = -70;
-        int fuelDieselDelta = -460;
-        int fuelMazutDelta = 460;
+        char cityName[64] = "";
+        int feelsLike = -999;
+        int humidity = -1;
+        int windSpeed = -1;
+        int uvIndex = -1;
+        char goldBuy[16] = "-----";
+        char goldSell[16] = "-----";
+        char goldWorldBuy[16] = "-----";
+        char goldWorldSell[16] = "-----";
+        int fuelRon95 = 0;
+        int fuelRon92 = 0;
+        int fuelDiesel = 0;
+        int fuelMazut = 0;
+        int fuelRon95Delta = 0;
+        int fuelRon92Delta = 0;
+        int fuelDieselDelta = 0;
+        int fuelMazutDelta = 0;
     } homeCache;
 
     struct CalendarCache {
-        int year = 2026;
-        int month = 8;
-        int day = 30;
+        int year = 0;
+        int month = 0;
+        int day = 0;
     } calCache;
 
     struct PlayerCache {
@@ -139,7 +147,7 @@ private:
 
     struct SettingsCache {
 
-        SettingsDeviceInfo info = {"ESP32 Dashboard", "CYD 3.5 ST7796", "v2.5.0", "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
+        SettingsDeviceInfo info = {"ESP32 CYD 3.5\" 480x320", "ESP32-3248S035", FIRMWARE_VERSION, "19/05/2026", "FreeRTOS", "CYD-35-ESP32"};
         uint32_t freeHeap = 160000;
         char uptimeStr[32] = "00:00:00";
         char ipStr[32] = "0.0.0.0";
@@ -149,6 +157,11 @@ private:
         int wifiRssi = -100;
         int activeMenuItem = 0;
     } settingsCache;
+
+    // WiFi Required Alert Modal
+    void showWifiRequiredAlert();
+    void hideWifiRequiredAlert();
+    static void wifi_alert_goto_wifi_cb(lv_event_t* e);
 
     // Helper functions
     void initTabs();

@@ -33,6 +33,7 @@ public:
     static void setLocation(const char *cityName, float lat, float lon);
     static void update(bool wifiConnected, bool force = false);
     static WeatherInfo getWeather();
+    static bool isFetching() { return is_fetching; }
     static const char *getWeatherDescription(int code);
 };
 

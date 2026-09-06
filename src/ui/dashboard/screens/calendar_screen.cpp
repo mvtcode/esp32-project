@@ -36,14 +36,30 @@ static void cell_click_event_cb(lv_event_t* e) {
     }
 }
 
-CalendarScreen::CalendarScreen(lv_obj_t* parent) :
-    viewYear(2026),
-    viewMonth(8),
-    selectedDay(30),
-    realTodayYear(2026),
-    realTodayMonth(8),
-    realTodayDay(30)
+CalendarScreen::CalendarScreen(lv_obj_t* parent, int todayYear, int todayMonth, int todayDay) :
+    viewYear(0),
+    viewMonth(0),
+    selectedDay(0),
+    realTodayYear(0),
+    realTodayMonth(0),
+    realTodayDay(0)
 {
+    if (todayYear > 0 && todayMonth > 0 && todayDay > 0) {
+        realTodayYear = todayYear;
+        realTodayMonth = todayMonth;
+        realTodayDay = todayDay;
+    } else {
+        struct tm ti;
+        if (getLocalTime(&ti, 20) && ti.tm_year > (2020 - 1900)) {
+            realTodayYear = ti.tm_year + 1900;
+            realTodayMonth = ti.tm_mon + 1;
+            realTodayDay = ti.tm_mday;
+        }
+    }
+
+    viewYear = (realTodayYear > 0) ? realTodayYear : 2026;
+    viewMonth = (realTodayMonth > 0) ? realTodayMonth : 1;
+    selectedDay = (realTodayDay > 0) ? realTodayDay : 1;
     // 1. Create root screen container (480 x 282)
     rootContainer = lv_obj_create(parent);
     lv_obj_set_size(rootContainer, 480, 282);
@@ -219,19 +235,23 @@ void CalendarScreen::createDetailPane(lv_obj_t* parent) {
 
     // Big Solar Day
     lblDetailSolarDay = lv_label_create(card);
-    lv_label_set_text(lblDetailSolarDay, "30");
+    char dBuf[16];
+    snprintf(dBuf, sizeof(dBuf), "%d", selectedDay);
+    lv_label_set_text(lblDetailSolarDay, dBuf);
     CydTheme::applyTextFont(lblDetailSolarDay, CydTheme::getFont40(), CydTheme::getTextPrimary());
     lv_obj_align(lblDetailSolarDay, LV_ALIGN_TOP_MID, 0, 16);
 
     // Weekday name
     lblDetailSolarWeekDay = lv_label_create(card);
-    lv_label_set_text(lblDetailSolarWeekDay, "Chủ Nhật");
+    lv_label_set_text(lblDetailSolarWeekDay, "---");
     CydTheme::applyTextFont(lblDetailSolarWeekDay, CydTheme::getFont14(), CydTheme::getAccentGlowColor());
     lv_obj_align(lblDetailSolarWeekDay, LV_ALIGN_TOP_MID, 0, 58);
 
     // Solar Month & Year
     lblDetailSolarMonthYear = lv_label_create(card);
-    lv_label_set_text(lblDetailSolarMonthYear, "30/08/2026");
+    char myBuf[32];
+    snprintf(myBuf, sizeof(myBuf), "%02d/%02d/%d", selectedDay, viewMonth, viewYear);
+    lv_label_set_text(lblDetailSolarMonthYear, myBuf);
     CydTheme::applyTextFont(lblDetailSolarMonthYear, CydTheme::getFont12(), CydTheme::getTextSecondary());
     lv_obj_align(lblDetailSolarMonthYear, LV_ALIGN_TOP_MID, 0, 76);
 
@@ -272,8 +292,7 @@ void CalendarScreen::createDetailPane(lv_obj_t* parent) {
     lv_obj_align(boxHolidayBadge, LV_ALIGN_BOTTOM_MID, 0, -2);
     lv_obj_set_style_bg_color(boxHolidayBadge, lv_color_make(30, 41, 59), 0);
     lv_obj_set_style_bg_opa(boxHolidayBadge, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getCardBorderColor(), 0);
-    lv_obj_set_style_border_width(boxHolidayBadge, 1, 0);
+    lv_obj_set_style_border_width(boxHolidayBadge, 0, 0);
     lv_obj_set_style_radius(boxHolidayBadge, 6, 0);
     lv_obj_set_style_pad_all(boxHolidayBadge, 2, 0);
     lv_obj_clear_flag(boxHolidayBadge, LV_OBJ_FLAG_SCROLLABLE);
@@ -289,22 +308,21 @@ void CalendarScreen::createDetailPane(lv_obj_t* parent) {
 void CalendarScreen::setToday(int year, int month, int day) {
     if (year <= 0 || month <= 0 || day <= 0) return;
 
-    bool changed = (realTodayYear != year || realTodayMonth != month || realTodayDay != day);
-    if (!changed) return;
+    bool wasUnset = (realTodayYear == 0);
+    bool dayChanged = (realTodayYear != year || realTodayMonth != month || realTodayDay != day);
 
-    bool wasInitial = (realTodayYear == 0);
     realTodayYear = year;
     realTodayMonth = month;
     realTodayDay = day;
 
-    if (wasInitial) {
+    if (wasUnset || viewYear == 0) {
         viewYear = year;
         viewMonth = month;
         selectedDay = day;
         refreshCalendar();
-    } else {
-        // If user is currently looking at the current month, refresh highlighting
-        if (viewYear == realTodayYear && viewMonth == realTodayMonth) {
+    } else if (dayChanged) {
+        // If user is currently viewing the current month, refresh highlighting
+        if (viewYear == year && viewMonth == month) {
             refreshCalendar();
         }
     }
@@ -360,14 +378,20 @@ void CalendarScreen::onNextYear() {
 }
 
 void CalendarScreen::onTodayClick() {
-    if (realTodayYear > 0) {
+    if (realTodayYear > 0 && realTodayMonth > 0 && realTodayDay > 0) {
         viewYear = realTodayYear;
         viewMonth = realTodayMonth;
         selectedDay = realTodayDay;
     } else {
-        viewYear = 2026;
-        viewMonth = 8;
-        selectedDay = 30;
+        struct tm ti;
+        if (getLocalTime(&ti, 20) && ti.tm_year > (2020 - 1900)) {
+            realTodayYear = ti.tm_year + 1900;
+            realTodayMonth = ti.tm_mon + 1;
+            realTodayDay = ti.tm_mday;
+            viewYear = realTodayYear;
+            viewMonth = realTodayMonth;
+            selectedDay = realTodayDay;
+        }
     }
     refreshCalendar();
 }
@@ -542,22 +566,34 @@ void CalendarScreen::updateDetailCard() {
     }
     lv_label_set_text(lblDetailLunarYear, buf);
 
-    // Holiday / Special Event
+    // Holiday / Special Event / Hoàng Đạo - Hắc Đạo (Không dùng border)
     if (ld.holiday && strlen(ld.holiday) > 0) {
         lv_label_set_text(lblDetailHoliday, ld.holiday);
         CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getDangerColor());
-        lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getDangerColor(), 0);
     } else if (ld.day == 15) {
-        lv_label_set_text(lblDetailHoliday, "Ngày Rằm");
-        CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getGoldColor());
-        lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getGoldColor(), 0);
+        char rBuf[32];
+        snprintf(rBuf, sizeof(rBuf), "Rằm • %s", ld.isHoangDao ? "Hoàng Đạo" : "Hắc Đạo");
+        lv_label_set_text(lblDetailHoliday, rBuf);
+        if (ld.isHoangDao) {
+            CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getSuccessColor());
+        } else {
+            CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getDangerColor());
+        }
     } else if (ld.day == 1) {
-        lv_label_set_text(lblDetailHoliday, "Mùng 1 Đầu Tháng");
-        CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getGoldColor());
-        lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getGoldColor(), 0);
+        char mBuf[32];
+        snprintf(mBuf, sizeof(mBuf), "Mùng 1 • %s", ld.isHoangDao ? "Hoàng Đạo" : "Hắc Đạo");
+        lv_label_set_text(lblDetailHoliday, mBuf);
+        if (ld.isHoangDao) {
+            CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getSuccessColor());
+        } else {
+            CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getDangerColor());
+        }
     } else {
-        lv_label_set_text(lblDetailHoliday, "Ngày Hoàng Đạo");
-        CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getSuccessColor());
-        lv_obj_set_style_border_color(boxHolidayBadge, CydTheme::getCardBorderColor(), 0);
+        lv_label_set_text(lblDetailHoliday, ld.hoangDaoName);
+        if (ld.isHoangDao) {
+            CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getSuccessColor());
+        } else {
+            CydTheme::applyTextFont(lblDetailHoliday, CydTheme::getFont12(), CydTheme::getDangerColor());
+        }
     }
 }

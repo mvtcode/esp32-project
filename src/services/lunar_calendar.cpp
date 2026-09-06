@@ -184,6 +184,43 @@ const char* getHolidayName(int solarDay, int solarMonth, int lunarDay, int lunar
     return "";
 }
 
+/* ---------- 12 Thần Hoàng Đạo / Hắc Đạo ---------- */
+static const char* THAN_NAMES[12] = {
+    "Thanh Long", // 0: Hoàng Đạo
+    "Minh Đường", // 1: Hoàng Đạo
+    "Thiên Hình", // 2: Hắc Đạo
+    "Chu Tước",   // 3: Hắc Đạo
+    "Kim Quỹ",    // 4: Hoàng Đạo
+    "Bảo Quang",  // 5: Hoàng Đạo
+    "Bạch Hổ",    // 6: Hắc Đạo
+    "Ngọc Đường", // 7: Hoàng Đạo
+    "Thiên Lao",  // 8: Hắc Đạo
+    "Huyền Vũ",   // 9: Hắc Đạo
+    "Tư Mệnh",    // 10: Hoàng Đạo
+    "Câu Trận"    // 11: Hắc Đạo
+};
+
+bool isNgayHoangDao(int solarYear, int solarMonth, int solarDay, int lunarMonth) {
+    int jd = jdFromDate(solarDay, solarMonth, solarYear);
+    int chiIdx = ((jd + 1) % 12 + 12) % 12;
+    int m = (lunarMonth < 1) ? 1 : ((lunarMonth > 12) ? 12 : lunarMonth);
+    int startChi = ((m - 1) % 6) * 2;
+    int thanIdx = (chiIdx - startChi + 12) % 12;
+    return (thanIdx == 0 || thanIdx == 1 || thanIdx == 4 || thanIdx == 5 || thanIdx == 7 || thanIdx == 10);
+}
+
+const char* getHoangDaoName(int solarYear, int solarMonth, int solarDay, int lunarMonth) {
+    static char buf[48];
+    int jd = jdFromDate(solarDay, solarMonth, solarYear);
+    int chiIdx = ((jd + 1) % 12 + 12) % 12;
+    int m = (lunarMonth < 1) ? 1 : ((lunarMonth > 12) ? 12 : lunarMonth);
+    int startChi = ((m - 1) % 6) * 2;
+    int thanIdx = (chiIdx - startChi + 12) % 12;
+    bool isHD = (thanIdx == 0 || thanIdx == 1 || thanIdx == 4 || thanIdx == 5 || thanIdx == 7 || thanIdx == 10);
+    snprintf(buf, sizeof(buf), "%s (%s)", isHD ? "Hoàng Đạo" : "Hắc Đạo", THAN_NAMES[thanIdx]);
+    return buf;
+}
+
 LunarDate getDetailedLunarDate(int solarYear, int solarMonth, int solarDay) {
     LunarDate result;
     solarToLunar(solarYear, solarMonth, solarDay, result.day, result.month, result.year);
@@ -191,5 +228,7 @@ LunarDate getDetailedLunarDate(int solarYear, int solarMonth, int solarDay) {
     result.yearName = getLunarYearName(result.year);
     result.dayName = getLunarDayName(solarYear, solarMonth, solarDay);
     result.holiday = getHolidayName(solarDay, solarMonth, result.day, result.month);
+    result.isHoangDao = isNgayHoangDao(solarYear, solarMonth, solarDay, result.month);
+    result.hoangDaoName = getHoangDaoName(solarYear, solarMonth, solarDay, result.month);
     return result;
 }

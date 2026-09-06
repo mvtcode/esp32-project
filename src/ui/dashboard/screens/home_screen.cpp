@@ -1,5 +1,6 @@
 #include "home_screen.h"
 #include "../cyd_theme.h"
+#include "../../../services/config_manager.h"
 #include <stdio.h>
 
 HomeScreen::HomeScreen(lv_obj_t* parent) {
@@ -33,8 +34,8 @@ void HomeScreen::createClockCard(lv_obj_t* parent) {
 
     // 1. Digital Clock 24h Inner Container - Perfectly Centered in Card (204px)
     lv_obj_t* clockBox = lv_obj_create(card);
-    lv_obj_set_size(clockBox, 204, 44);
-    lv_obj_align(clockBox, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_set_size(clockBox, 204, 42);
+    lv_obj_align(clockBox, LV_ALIGN_TOP_MID, 0, -3);
     lv_obj_set_style_bg_opa(clockBox, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(clockBox, 0, 0);
     lv_obj_set_style_pad_all(clockBox, 0, 0);
@@ -88,16 +89,23 @@ void HomeScreen::createClockCard(lv_obj_t* parent) {
     lv_label_set_text(lblClockDate, "Đang đồng bộ NTP...");
     CydTheme::applyTextFont(lblClockDate, CydTheme::getFont16(), CydTheme::getTextPrimary());
     lv_obj_set_style_text_align(lblClockDate, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(lblClockDate, LV_ALIGN_TOP_MID, 0, 56);
+    lv_obj_align(lblClockDate, LV_ALIGN_TOP_MID, 0, 43);
 
     // 3. Lunar Date: "ÂL: 18/07 (Bính Tý)" (Căn Giữa)
     lblLunarDate = lv_label_create(card);
     lv_label_set_text(lblLunarDate, "ÂL: Đang đồng bộ...");
     CydTheme::applyTextFont(lblLunarDate, CydTheme::getFont14(), CydTheme::getGoldColor());
     lv_obj_set_style_text_align(lblLunarDate, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(lblLunarDate, LV_ALIGN_TOP_MID, 0, 84);
+    lv_obj_align(lblLunarDate, LV_ALIGN_TOP_MID, 0, 68);
 
-    lblLunarInfo = nullptr;
+    // 4. Hoàng Đạo / Hắc Đạo (Không dùng border)
+    boxLunarBadge = nullptr;
+    lblLunarInfo = lv_label_create(card);
+    lv_label_set_text(lblLunarInfo, "--");
+    CydTheme::applyTextFont(lblLunarInfo, CydTheme::getFont12(), CydTheme::getTextMuted());
+    lv_obj_set_style_text_align(lblLunarInfo, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(lblLunarInfo, LV_ALIGN_TOP_MID, 0, 90);
+
     for (int i = 0; i < 7; i++) {
         ribbonDayContainers[i] = nullptr;
         ribbonDayNumbers[i] = nullptr;
@@ -111,59 +119,77 @@ void HomeScreen::createWeatherCard(lv_obj_t* parent) {
     lv_obj_align(card, LV_ALIGN_TOP_RIGHT, -6, 6);
     CydTheme::applyCardStyle(card);
 
-    // 1. City Title (e.g. "📍 Hà Nội")
-    lblWeatherCity = lv_label_create(card);
-    lv_label_set_text(lblWeatherCity, LV_SYMBOL_GPS " Hà Nội");
-    CydTheme::applyTextFont(lblWeatherCity, CydTheme::getFont12(), CydTheme::getAccentGlowColor());
-    lv_obj_align(lblWeatherCity, LV_ALIGN_TOP_LEFT, 0, 0);
+    // ==========================================
+    // LINE 1: Weather Icon + Temp (Left, Font 24, align-items: center), GPS + City (Right)
+    // LINE 2: Weather Condition (Right, căn phải)
+    // ==========================================
 
-    // 2. Weather Icon using custom Weather Icons font
-    objWeatherIconCanvas = lv_label_create(card);
+    // Flex container cho Icon + Nhiệt độ (align-items: center dọc nhau, to như ban đầu Font 24)
+    lv_obj_t* boxIconTemp = lv_obj_create(card);
+    lv_obj_set_size(boxIconTemp, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_align(boxIconTemp, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_bg_opa(boxIconTemp, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(boxIconTemp, 0, 0);
+    lv_obj_set_style_pad_all(boxIconTemp, 0, 0);
+    lv_obj_set_style_pad_column(boxIconTemp, 6, 0);
+    lv_obj_set_layout(boxIconTemp, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(boxIconTemp, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(boxIconTemp, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(boxIconTemp, LV_OBJ_FLAG_SCROLLABLE);
+
+    // 1. Weather Icon inside boxIconTemp (to ra như cũ: WeatherFont24)
+    objWeatherIconCanvas = lv_label_create(boxIconTemp);
     lv_obj_set_style_text_font(objWeatherIconCanvas, CydTheme::getWeatherFont24(), 0);
     lv_obj_set_style_text_color(objWeatherIconCanvas, CydTheme::getGoldColor(), 0);
     lv_label_set_text(objWeatherIconCanvas, "\uF00D"); // Default to wi-day-sunny
-    lv_obj_align(objWeatherIconCanvas, LV_ALIGN_TOP_LEFT, 2, 22);
 
-    // 3. Dynamic temperature label
-    lblWeatherTemp = lv_label_create(card);
-    lv_label_set_text(lblWeatherTemp, "28°C");
+    // 2. Dynamic temperature label inside boxIconTemp (to như lúc đầu: Font 24, căn giữa dọc cùng icon)
+    lblWeatherTemp = lv_label_create(boxIconTemp);
+    lv_label_set_text(lblWeatherTemp, "--°C");
     CydTheme::applyTextFont(lblWeatherTemp, CydTheme::getFont24(), CydTheme::getTextPrimary());
-    lv_obj_align(lblWeatherTemp, LV_ALIGN_TOP_LEFT, 44, 20);
 
-    // 4. Condition text
+    // 3. City Title (Line 1: bên phải giữ nguyên, căn phải)
+    const CityLocation& curCity = ConfigManager::getCurrentCity();
+    char cBuf[64];
+    snprintf(cBuf, sizeof(cBuf), LV_SYMBOL_GPS " %s", curCity.name);
+    lblWeatherCity = lv_label_create(card);
+    lv_label_set_text(lblWeatherCity, cBuf);
+    CydTheme::applyTextFont(lblWeatherCity, CydTheme::getFont12(), CydTheme::getAccentGlowColor());
+    lv_obj_set_style_text_align(lblWeatherCity, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(lblWeatherCity, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+    // 4. Condition text (Line 2: căn phải text thời tiết ví dụ trời nắng, hạ 3px)
     lblWeatherCond = lv_label_create(card);
-    lv_label_set_text(lblWeatherCond, "Nắng Đẹp / Ít Mây");
+    lv_label_set_text(lblWeatherCond, "Đang tải...");
     CydTheme::applyTextFont(lblWeatherCond, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblWeatherCond, LV_ALIGN_TOP_LEFT, 0, 56);
+    lv_obj_set_width(lblWeatherCond, 120);
+    lv_label_set_long_mode(lblWeatherCond, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(lblWeatherCond, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(lblWeatherCond, LV_ALIGN_TOP_RIGHT, 0, 19);
 
-    // 5. Right-hand 4-row weather details parameters table
-    lv_obj_t* paramTable = lv_obj_create(card);
-    lv_obj_set_size(paramTable, 106, 118);
-    lv_obj_align(paramTable, LV_ALIGN_TOP_RIGHT, 4, -4);
-    lv_obj_set_style_bg_opa(paramTable, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(paramTable, 0, 0);
-    lv_obj_set_style_pad_all(paramTable, 0, 0);
-    lv_obj_clear_flag(paramTable, LV_OBJ_FLAG_SCROLLABLE);
+    // ==========================================
+    // LINE 3-6 (Line khác giữ nguyên): 4 chỉ số (Cảm giác, Độ ẩm, Gió, UV)
+    // Label căn sát bên trái (X=0), Value căn phải (X=0), hạ 3px
+    // ==========================================
+    const char* paramTitles[4] = {"Cảm giác:", "Độ ẩm:", "Gió:", "Chỉ số UV:"};
+    lv_obj_t** paramValLabels[4] = {&lblWeatherFeelsLike, &lblWeatherParamHumid, &lblWeatherParamWind, &lblWeatherParamUv};
+    const char* defaultVals[4] = {"--°", "--%", "-- km/h", "--"};
 
-    lblWeatherFeelsLike = lv_label_create(paramTable);
-    lv_label_set_text(lblWeatherFeelsLike, "Cảm giác: 30°");
-    CydTheme::applyTextFont(lblWeatherFeelsLike, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblWeatherFeelsLike, LV_ALIGN_TOP_LEFT, 0, 6);
+    for (int i = 0; i < 4; i++) {
+        int yOffset = 37 + i * 19;
 
-    lblWeatherParamHumid = lv_label_create(paramTable);
-    lv_label_set_text(lblWeatherParamHumid, "Độ ẩm: 65%");
-    CydTheme::applyTextFont(lblWeatherParamHumid, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblWeatherParamHumid, LV_ALIGN_TOP_LEFT, 0, 28);
+        // Static label on the left (sát mép trái như tên xăng dầu)
+        lv_obj_t* lblTitle = lv_label_create(card);
+        lv_label_set_text(lblTitle, paramTitles[i]);
+        CydTheme::applyTextFont(lblTitle, CydTheme::getFont12(), CydTheme::getTextSecondary());
+        lv_obj_align(lblTitle, LV_ALIGN_TOP_LEFT, 0, yOffset);
 
-    lblWeatherParamWind = lv_label_create(paramTable);
-    lv_label_set_text(lblWeatherParamWind, "Gió: 8 km/h");
-    CydTheme::applyTextFont(lblWeatherParamWind, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblWeatherParamWind, LV_ALIGN_TOP_LEFT, 0, 50);
-
-    lblWeatherParamUv = lv_label_create(paramTable);
-    lv_label_set_text(lblWeatherParamUv, "Chỉ số UV: 6");
-    CydTheme::applyTextFont(lblWeatherParamUv, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblWeatherParamUv, LV_ALIGN_TOP_LEFT, 0, 72);
+        // Dynamic value on the right (căn phải thẳng hàng delta xăng dầu)
+        *paramValLabels[i] = lv_label_create(card);
+        lv_label_set_text(*paramValLabels[i], defaultVals[i]);
+        CydTheme::applyTextFont(*paramValLabels[i], CydTheme::getFont12(), CydTheme::getTextPrimary());
+        lv_obj_align(*paramValLabels[i], LV_ALIGN_TOP_RIGHT, 0, yOffset);
+    }
 }
 
 void HomeScreen::createGoldCard(lv_obj_t* parent) {
@@ -185,8 +211,8 @@ void HomeScreen::createGoldCard(lv_obj_t* parent) {
     lv_obj_align(lblBuyTitle, LV_ALIGN_TOP_LEFT, 4, 26);
 
     lblGoldBuy = lv_label_create(card);
-    lv_label_set_text(lblGoldBuy, "145,7");
-    CydTheme::applyTextFont(lblGoldBuy, CydTheme::getFont24(), CydTheme::getTextPrimary());
+    lv_label_set_text(lblGoldBuy, "-----");
+    CydTheme::applyTextFont(lblGoldBuy, CydTheme::getFont24(), CydTheme::getGoldColor());
     lv_obj_align(lblGoldBuy, LV_ALIGN_TOP_LEFT, 4, 46);
 
     // Right Column: SELL
@@ -196,15 +222,15 @@ void HomeScreen::createGoldCard(lv_obj_t* parent) {
     lv_obj_align(lblSellTitle, LV_ALIGN_TOP_RIGHT, -4, 26);
 
     lblGoldSell = lv_label_create(card);
-    lv_label_set_text(lblGoldSell, "148,7");
+    lv_label_set_text(lblGoldSell, "-----");
     CydTheme::applyTextFont(lblGoldSell, CydTheme::getFont24(), CydTheme::getGoldColor());
     lv_obj_align(lblGoldSell, LV_ALIGN_TOP_RIGHT, -4, 46);
 
-    // Note / Source label
-    lv_obj_t* lblSource = lv_label_create(card);
-    lv_label_set_text(lblSource, "Nguồn: VNExpress Live");
-    CydTheme::applyTextFont(lblSource, CydTheme::getFont12(), CydTheme::getTextMuted());
-    lv_obj_align(lblSource, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    // Note / World gold label
+    lblGoldStatus = lv_label_create(card);
+    lv_label_set_text(lblGoldStatus, "Thế giới: Đang tải...");
+    CydTheme::applyTextFont(lblGoldStatus, CydTheme::getFont12(), CydTheme::getTextPrimary());
+    lv_obj_align(lblGoldStatus, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
     lblGoldBuyDelta = nullptr;
     lblGoldSellDelta = nullptr;
@@ -238,14 +264,14 @@ void HomeScreen::createFuelCard(lv_obj_t* parent) {
 
         // Price
         prices[i] = lv_label_create(card);
-        lv_label_set_text(prices[i], "0");
+        lv_label_set_text(prices[i], "--");
         CydTheme::applyTextFont(prices[i], CydTheme::getFont12(), CydTheme::getTextPrimary());
         lv_obj_align(prices[i], LV_ALIGN_TOP_RIGHT, -56, yOffset);
 
         // Delta
         deltas[i] = lv_label_create(card);
-        lv_label_set_text(deltas[i], "0");
-        CydTheme::applyTextFont(deltas[i], CydTheme::getFont12(), CydTheme::getTextSecondary());
+        lv_label_set_text(deltas[i], "--");
+        CydTheme::applyTextFont(deltas[i], CydTheme::getFont12(), CydTheme::getTextMuted());
         lv_obj_align(deltas[i], LV_ALIGN_TOP_RIGHT, 0, yOffset);
     }
 
@@ -288,16 +314,26 @@ void HomeScreen::updateTime(const char* timeStr, const char* secondsStr, const c
     }
     if (lblClockDate) {
         lv_label_set_text(lblClockDate, dateStr);
-        lv_obj_align(lblClockDate, LV_ALIGN_TOP_MID, 0, 54);
+        lv_obj_align(lblClockDate, LV_ALIGN_TOP_MID, 0, 43);
     }
 }
 
-void HomeScreen::updateLunarCalendar(const char* lunarDayStr, const char* lunarInfoStr) {
-    if (lblLunarDate) {
+void HomeScreen::updateLunarCalendar(const char* lunarDayStr, const char* lunarInfoStr, bool isHoangDao) {
+    if (lblLunarDate && lunarDayStr) {
         lv_label_set_text(lblLunarDate, lunarDayStr);
-        lv_obj_align(lblLunarDate, LV_ALIGN_TOP_MID, 0, 82);
+        lv_obj_align(lblLunarDate, LV_ALIGN_TOP_MID, 0, 68);
     }
-    if (lblLunarInfo) lv_label_set_text(lblLunarInfo, lunarInfoStr);
+    if (lblLunarInfo && lunarInfoStr) {
+        lv_label_set_text(lblLunarInfo, lunarInfoStr);
+        lv_obj_align(lblLunarInfo, LV_ALIGN_TOP_MID, 0, 90);
+        if (strlen(lunarInfoStr) == 0 || strcmp(lunarInfoStr, "--") == 0) {
+            CydTheme::applyTextFont(lblLunarInfo, CydTheme::getFont12(), CydTheme::getTextMuted());
+        } else if (isHoangDao) {
+            CydTheme::applyTextFont(lblLunarInfo, CydTheme::getFont12(), CydTheme::getSuccessColor());
+        } else {
+            CydTheme::applyTextFont(lblLunarInfo, CydTheme::getFont12(), CydTheme::getDangerColor());
+        }
+    }
 }
 
 void HomeScreen::updateCalendarRibbon(int activeDayIndex, const int* dayNumbers) {
@@ -325,13 +361,40 @@ void HomeScreen::updateCalendarRibbon(int activeDayIndex, const int* dayNumbers)
 void HomeScreen::updateWeather(int temp, const char* condition, int feelsLike, int humidity, int windSpeed, int uvIndex, const char* cityName) {
     char buf[32];
     
-    if (lblWeatherCity && cityName && strlen(cityName) > 0) {
+    if (lblWeatherCity) {
+        const char* nameToUse = (cityName && strlen(cityName) > 0) ? cityName : ConfigManager::getCurrentCity().name;
         char cBuf[64];
-        snprintf(cBuf, sizeof(cBuf), LV_SYMBOL_GPS " %s", cityName);
+        snprintf(cBuf, sizeof(cBuf), LV_SYMBOL_GPS " %s", nameToUse);
         lv_label_set_text(lblWeatherCity, cBuf);
+        lv_obj_align(lblWeatherCity, LV_ALIGN_TOP_RIGHT, 0, 0);
     }
 
     // Custom weather icon mapping using dedicated Weather Icons font
+    if (temp <= -100) {
+        if (lblWeatherTemp) lv_label_set_text(lblWeatherTemp, "--°C");
+        if (lblWeatherCond) {
+            lv_label_set_text(lblWeatherCond, condition ? condition : "Đang tải...");
+            lv_obj_align(lblWeatherCond, LV_ALIGN_TOP_RIGHT, 0, 19);
+        }
+        if (lblWeatherFeelsLike) {
+            lv_label_set_text(lblWeatherFeelsLike, "--°");
+            lv_obj_align(lblWeatherFeelsLike, LV_ALIGN_TOP_RIGHT, 0, 37);
+        }
+        if (lblWeatherParamHumid) {
+            lv_label_set_text(lblWeatherParamHumid, "--%");
+            lv_obj_align(lblWeatherParamHumid, LV_ALIGN_TOP_RIGHT, 0, 56);
+        }
+        if (lblWeatherParamWind) {
+            lv_label_set_text(lblWeatherParamWind, "-- km/h");
+            lv_obj_align(lblWeatherParamWind, LV_ALIGN_TOP_RIGHT, 0, 75);
+        }
+        if (lblWeatherParamUv) {
+            lv_label_set_text(lblWeatherParamUv, "--");
+            lv_obj_align(lblWeatherParamUv, LV_ALIGN_TOP_RIGHT, 0, 94);
+        }
+        return;
+    }
+
     if (strstr(condition, "Mưa") || strstr(condition, "mưa") || strstr(condition, "Bão") || strstr(condition, "bão")) {
         lv_label_set_text(objWeatherIconCanvas, "\uF008"); // wi-day-rain
         lv_obj_set_style_text_color(objWeatherIconCanvas, lv_color_make(64, 156, 255), 0); // Beautiful rain blue
@@ -345,27 +408,53 @@ void HomeScreen::updateWeather(int temp, const char* condition, int feelsLike, i
 
     sprintf(buf, "%d°C", temp);
     lv_label_set_text(lblWeatherTemp, buf);
-    lv_label_set_text(lblWeatherCond, condition);
 
-    sprintf(buf, "Cảm giác: %d°", feelsLike);
+    if (lblWeatherCond) {
+        lv_label_set_text(lblWeatherCond, condition);
+        lv_obj_align(lblWeatherCond, LV_ALIGN_TOP_RIGHT, 0, 19);
+    }
+
+    sprintf(buf, "%d°", feelsLike);
     lv_label_set_text(lblWeatherFeelsLike, buf);
+    lv_obj_align(lblWeatherFeelsLike, LV_ALIGN_TOP_RIGHT, 0, 37);
 
-    sprintf(buf, "Độ ẩm: %d%%", humidity);
+    sprintf(buf, "%d%%", humidity);
     lv_label_set_text(lblWeatherParamHumid, buf);
+    lv_obj_align(lblWeatherParamHumid, LV_ALIGN_TOP_RIGHT, 0, 56);
 
-    sprintf(buf, "Gió: %d km/h", windSpeed);
+    sprintf(buf, "%d km/h", windSpeed);
     lv_label_set_text(lblWeatherParamWind, buf);
+    lv_obj_align(lblWeatherParamWind, LV_ALIGN_TOP_RIGHT, 0, 75);
 
-    sprintf(buf, "Chỉ số UV: %d", uvIndex);
+    sprintf(buf, "%d", uvIndex);
     lv_label_set_text(lblWeatherParamUv, buf);
+    lv_obj_align(lblWeatherParamUv, LV_ALIGN_TOP_RIGHT, 0, 94);
 }
 
-void HomeScreen::updateGoldPrices(const char* buySJC, const char* sellSJC) {
-    if (lblGoldBuy && buySJC) {
-        lv_label_set_text(lblGoldBuy, buySJC);
+void HomeScreen::updateGoldPrices(const char* buySJC, const char* sellSJC, const char* worldBuy, const char* worldSell) {
+    bool hasValidData = (buySJC && strlen(buySJC) > 0 && 
+                         strcmp(buySJC, "----") != 0 && 
+                         strcmp(buySJC, "-----") != 0);
+    if (lblGoldBuy) {
+        lv_label_set_text(lblGoldBuy, hasValidData ? buySJC : "-----");
     }
-    if (lblGoldSell && sellSJC) {
-        lv_label_set_text(lblGoldSell, sellSJC);
+    if (lblGoldSell) {
+        lv_label_set_text(lblGoldSell, (sellSJC && strlen(sellSJC) > 0 && 
+                                       strcmp(sellSJC, "----") != 0 && 
+                                       strcmp(sellSJC, "-----") != 0) ? sellSJC : "-----");
+    }
+    if (lblGoldStatus) {
+        if (worldBuy && strlen(worldBuy) > 0 && strcmp(worldBuy, "-----") != 0 && strcmp(worldBuy, "----") != 0) {
+            char tgBuf[48];
+            if (worldSell && strlen(worldSell) > 0 && strcmp(worldSell, "-----") != 0) {
+                snprintf(tgBuf, sizeof(tgBuf), "Thế giới: %s - %s USD/oz", worldBuy, worldSell);
+            } else {
+                snprintf(tgBuf, sizeof(tgBuf), "Thế giới: %s USD/oz", worldBuy);
+            }
+            lv_label_set_text(lblGoldStatus, tgBuf);
+        } else {
+            lv_label_set_text(lblGoldStatus, hasValidData ? "Đang cập nhật..." : "Đang tải...");
+        }
     }
 }
 
@@ -377,6 +466,15 @@ void HomeScreen::updateFuelPrices(int ron95, int ron92, int diesel, int mazut, i
         char pBuf[16];
         char dBuf[16];
         
+        if (price <= 0) {
+            if (lblPrice) lv_label_set_text(lblPrice, "--");
+            if (lblDelta) {
+                lv_label_set_text(lblDelta, "--");
+                lv_obj_set_style_text_color(lblDelta, CydTheme::getTextMuted(), 0);
+            }
+            return;
+        }
+
         if (price >= 1000) {
             sprintf(pBuf, "%d.%03d", price / 1000, price % 1000);
         } else {

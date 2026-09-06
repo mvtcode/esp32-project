@@ -105,30 +105,43 @@ StorageInfo StorageService::getInfo() {
     return info;
 }
 
+static bool wipeDirectoryRecursive(const char* dirPath, int depth = 5) {
+    if (depth <= 0) return false;
+    File dir = SD.open(dirPath);
+    if (!dir || !dir.isDirectory()) return false;
+
+    File file = dir.openNextFile();
+    while (file) {
+        String rawName = file.name();
+        bool isDir = file.isDirectory();
+
+        int lastSlash = rawName.lastIndexOf('/');
+        String filename = (lastSlash >= 0) ? rawName.substring(lastSlash + 1) : rawName;
+
+        String fullPath = String(dirPath);
+        if (!fullPath.endsWith("/")) fullPath += "/";
+        fullPath += filename;
+
+        file.close();
+
+        if (isDir) {
+            wipeDirectoryRecursive(fullPath.c_str(), depth - 1);
+            SD.rmdir(fullPath.c_str());
+        } else {
+            SD.remove(fullPath.c_str());
+        }
+        file = dir.openNextFile();
+    }
+    dir.close();
+    return true;
+}
+
 bool StorageService::formatCard() {
     if (!isMounted()) return false;
-    LOG_I("Storage", "Starting SD card clean...");
-    
-    File root = SD.open("/");
-    if (!root) return false;
-
-    File file = root.openNextFile();
-    while (file) {
-        String path = file.name();
-        bool isDir = file.isDirectory();
-        file.close();
-        
-        if (isDir) {
-            SD.rmdir(path.c_str());
-        } else {
-            SD.remove(path.c_str());
-        }
-        file = root.openNextFile();
-    }
-    root.close();
-
-    LOG_I("Storage", "SD Card format complete.");
-    return true;
+    LOG_I("Storage", "Starting recursive SD card clean...");
+    bool ok = wipeDirectoryRecursive("/");
+    LOG_I("Storage", "SD Card format complete. Result: %d", ok);
+    return ok;
 }
 
 SPIClass* StorageService::getSPI() {

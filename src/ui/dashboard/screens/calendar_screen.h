@@ -6,7 +6,7 @@
 
 class CalendarScreen {
 public:
-    CalendarScreen(lv_obj_t* parent);
+    CalendarScreen(lv_obj_t* parent, int todayYear = 0, int todayMonth = 0, int todayDay = 0);
     ~CalendarScreen();
 
 

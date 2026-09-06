@@ -1,5 +1,6 @@
 #include "settings_screen.h"
 #include "../cyd_theme.h"
+#include "../dialog_manager.h"
 #include "../../../services/config_manager.h"
 #include "../../../services/wifi_service.h"
 #include "../../../services/storage_service.h"
@@ -16,7 +17,7 @@ SettingsScreen::SettingsScreen(lv_obj_t* parent) :
     rightPane(nullptr),
     lblDevName(nullptr), lblDevModel(nullptr), lblDevFw(nullptr), lblDevBuild(nullptr),
     lblDevOs(nullptr), lblDevSerial(nullptr), lblDevUptime(nullptr), lblDevRam(nullptr),
-    lblDevIp(nullptr), lblDevMac(nullptr),
+    lblDevWifi(nullptr), lblDevIp(nullptr), lblDevMac(nullptr),
     btnRestart(nullptr), btnFactoryReset(nullptr),
     lblWifiCurrentState(nullptr), lblWifiCurrentInfo(nullptr), btnWifiScan(nullptr),
     lblBtnScan(nullptr), wifiListContainer(nullptr),
@@ -28,8 +29,17 @@ SettingsScreen::SettingsScreen(lv_obj_t* parent) :
     ddCity(nullptr), ddSyncInterval(nullptr), btnSyncNow(nullptr), lblSyncStatus(nullptr),
     sliderBrightness(nullptr), lblBrightnessVal(nullptr), ddSleepTimeout(nullptr), swAutoBrightness(nullptr),
     swDevMode(nullptr), sliderVolume(nullptr), lblVolumeVal(nullptr), swTouchBeep(nullptr),
-    cachedFreeHeap(160000), cachedWifiRssi(-100)
+    cachedFreeHeap(160000), cachedWifiRssi(-100),
+    pendingCityIdx(-1), syncTimer(nullptr), syncCheckCount(0)
 {
+    strncpy(cachedDevName, "ESP32 CYD 3.5\" 480x320", sizeof(cachedDevName) - 1);
+    strncpy(cachedDevModel, "ESP32-3248S035", sizeof(cachedDevModel) - 1);
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION "v1.0.0"
+#endif
+    strncpy(cachedDevFw, FIRMWARE_VERSION, sizeof(cachedDevFw) - 1);
+    strncpy(cachedAuthor, "Mạc Tân - 0964335688", sizeof(cachedAuthor) - 1);
+    strncpy(cachedEmail, "macvantan@gmail.com", sizeof(cachedEmail) - 1);
     memset(selectedSsid, 0, sizeof(selectedSsid));
     strncpy(cachedUptime, "00:00:00", sizeof(cachedUptime) - 1);
     strncpy(cachedIp, "0.0.0.0", sizeof(cachedIp) - 1);
@@ -63,8 +73,14 @@ SettingsScreen::SettingsScreen(lv_obj_t* parent) :
 }
 
 SettingsScreen::~SettingsScreen() {
+    if (syncTimer) {
+        lv_timer_del(syncTimer);
+        syncTimer = nullptr;
+    }
     // Ẩn modal trước để ngăn bàn phím LVGL xử lý sự kiện sau khi destroyed
     hideWifiPasswordModal();
+    DialogManager::dismissModal();
+    DialogManager::hideLockOverlay();
 
     // Xóa modal backdrop (các child objects bị xóa theo cây LVGL)
     if (modalBackdrop) {
@@ -129,12 +145,19 @@ void SettingsScreen::createSidebar(lv_obj_t* parent) {
 }
 
 void SettingsScreen::destroyCurrentPane() {
+    if (syncTimer) {
+        lv_timer_del(syncTimer);
+        syncTimer = nullptr;
+    }
+    DialogManager::dismissModal();
     if (rightPane) {
         lv_obj_clean(rightPane);
     }
 
     // Reset pointers
     lblDevName = nullptr;
+    lblDevAuthor = nullptr;
+    lblDevEmail = nullptr;
     lblDevModel = nullptr;
     lblDevFw = nullptr;
     lblDevBuild = nullptr;
@@ -142,6 +165,7 @@ void SettingsScreen::destroyCurrentPane() {
     lblDevSerial = nullptr;
     lblDevUptime = nullptr;
     lblDevRam = nullptr;
+    lblDevWifi = nullptr;
     lblDevIp = nullptr;
     lblDevMac = nullptr;
     btnRestart = nullptr;
@@ -192,48 +216,74 @@ void SettingsScreen::buildDevicePane() {
     lv_obj_set_style_pad_all(cardInfo, 8, 0);
     lv_obj_clear_flag(cardInfo, LV_OBJ_FLAG_SCROLLABLE);
 
+    char titleBuf[96];
+    if (strstr(cachedDevName, cachedDevFw) != nullptr) {
+        snprintf(titleBuf, sizeof(titleBuf), "%s", cachedDevName);
+    } else {
+        snprintf(titleBuf, sizeof(titleBuf), "%s (%s)", cachedDevName, cachedDevFw);
+    }
+
     lblDevName = lv_label_create(cardInfo);
-    lv_label_set_text(lblDevName, "ESP32 CYD 3.5\" Smart Dashboard");
+    lv_label_set_text(lblDevName, titleBuf);
     CydTheme::applyTextFont(lblDevName, CydTheme::getFont14(), CydTheme::getAccentGlowColor());
     lv_obj_align(lblDevName, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    lblDevModel = lv_label_create(cardInfo);
-    lv_label_set_text(lblDevModel, "MCU: ESP32-WROOM-32 (240MHz)");
-    CydTheme::applyTextFont(lblDevModel, CydTheme::getFont12(), CydTheme::getTextPrimary());
-    lv_obj_align(lblDevModel, LV_ALIGN_TOP_LEFT, 0, 24);
+    lblDevAuthor = lv_label_create(cardInfo);
+    char authorBuf[96];
+    snprintf(authorBuf, sizeof(authorBuf), "Tác giả: %s", cachedAuthor);
+    lv_label_set_text(lblDevAuthor, authorBuf);
+    CydTheme::applyTextFont(lblDevAuthor, CydTheme::getFont12(), CydTheme::getTextPrimary());
+    lv_obj_align(lblDevAuthor, LV_ALIGN_TOP_LEFT, 0, 22);
+
+    lblDevEmail = lv_label_create(cardInfo);
+    char emailBuf[96];
+    snprintf(emailBuf, sizeof(emailBuf), "Email: %s", cachedEmail);
+    lv_label_set_text(lblDevEmail, emailBuf);
+    CydTheme::applyTextFont(lblDevEmail, CydTheme::getFont12(), CydTheme::getAccentGlowColor());
+    lv_obj_align(lblDevEmail, LV_ALIGN_TOP_LEFT, 0, 44);
 
     lblDevRam = lv_label_create(cardInfo);
     char ramBuf[64];
     snprintf(ramBuf, sizeof(ramBuf), "RAM Trống: %u KB (%.1f%%)", cachedFreeHeap / 1024, SystemTelemetry::getHeapUsagePercent());
     lv_label_set_text(lblDevRam, ramBuf);
     CydTheme::applyTextFont(lblDevRam, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblDevRam, LV_ALIGN_TOP_LEFT, 0, 48);
-
-    lblDevFw = lv_label_create(cardInfo);
-    lv_label_set_text(lblDevFw, "Firmware: v2.5.0 (Phase 1 Ready)");
-    CydTheme::applyTextFont(lblDevFw, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblDevFw, LV_ALIGN_TOP_LEFT, 0, 72);
+    lv_obj_align(lblDevRam, LV_ALIGN_TOP_LEFT, 0, 66);
 
     lblDevUptime = lv_label_create(cardInfo);
     char upBuf[64];
     snprintf(upBuf, sizeof(upBuf), "Thời gian chạy: %s", cachedUptime);
     lv_label_set_text(lblDevUptime, upBuf);
     CydTheme::applyTextFont(lblDevUptime, CydTheme::getFont12(), CydTheme::getTextSecondary());
-    lv_obj_align(lblDevUptime, LV_ALIGN_TOP_LEFT, 0, 96);
+    lv_obj_align(lblDevUptime, LV_ALIGN_TOP_LEFT, 0, 88);
+
+    lblDevWifi = lv_label_create(cardInfo);
+    char wifiBuf[64];
+    String ssid = WifiService::getConnectedSSID();
+    if (ssid.length() == 0 && ConfigManager::hasWifiCredentials()) {
+        ssid = ConfigManager::getWifiSSID();
+    }
+    if (ssid.length() > 0) {
+        snprintf(wifiBuf, sizeof(wifiBuf), "Mạng WiFi: %s", ssid.c_str());
+    } else {
+        snprintf(wifiBuf, sizeof(wifiBuf), "Mạng WiFi: Chưa kết nối");
+    }
+    lv_label_set_text(lblDevWifi, wifiBuf);
+    CydTheme::applyTextFont(lblDevWifi, CydTheme::getFont12(), CydTheme::getTextSecondary());
+    lv_obj_align(lblDevWifi, LV_ALIGN_TOP_LEFT, 0, 110);
 
     lblDevIp = lv_label_create(cardInfo);
     char ipBuf[64];
     snprintf(ipBuf, sizeof(ipBuf), "Địa chỉ IP: %s", cachedIp);
     lv_label_set_text(lblDevIp, ipBuf);
     CydTheme::applyTextFont(lblDevIp, CydTheme::getFont12(), CydTheme::getTextMuted());
-    lv_obj_align(lblDevIp, LV_ALIGN_TOP_LEFT, 0, 120);
+    lv_obj_align(lblDevIp, LV_ALIGN_TOP_LEFT, 0, 132);
 
     lblDevMac = lv_label_create(cardInfo);
     char macBuf[64];
     snprintf(macBuf, sizeof(macBuf), "Địa chỉ MAC: %s", cachedMac);
     lv_label_set_text(lblDevMac, macBuf);
     CydTheme::applyTextFont(lblDevMac, CydTheme::getFont12(), CydTheme::getTextMuted());
-    lv_obj_align(lblDevMac, LV_ALIGN_TOP_LEFT, 0, 144);
+    lv_obj_align(lblDevMac, LV_ALIGN_TOP_LEFT, 0, 154);
 
     // Bottom Action Row
     btnRestart = lv_btn_create(rightPane);
@@ -256,7 +306,7 @@ void SettingsScreen::buildDevicePane() {
     lv_obj_add_event_cb(btnFactoryReset, factory_reset_click_cb, LV_EVENT_CLICKED, this);
 
     lv_obj_t* lblBtnFac = lv_label_create(btnFactoryReset);
-    lv_label_set_text(lblBtnFac, LV_SYMBOL_TRASH " Xóa Cài Đặt");
+    lv_label_set_text(lblBtnFac, LV_SYMBOL_TRASH " Khôi Phục Gốc");
     CydTheme::applyTextFont(lblBtnFac, CydTheme::getFont12(), CydTheme::getWhiteColor());
     lv_obj_center(lblBtnFac);
 }
@@ -815,9 +865,27 @@ void SettingsScreen::setActiveMenuItem(int index) {
 }
 
 void SettingsScreen::updateDeviceInfo(const SettingsDeviceInfo& info) {
-    if (lblDevName) lv_label_set_text(lblDevName, info.deviceName);
-    if (lblDevModel) lv_label_set_text(lblDevModel, info.model);
-    if (lblDevFw) lv_label_set_text(lblDevFw, info.fwVersion);
+    if (info.deviceName && strlen(info.deviceName) > 0) {
+        strncpy(cachedDevName, info.deviceName, sizeof(cachedDevName) - 1);
+    }
+    if (info.model && strlen(info.model) > 0) {
+        strncpy(cachedDevModel, info.model, sizeof(cachedDevModel) - 1);
+    }
+    if (info.fwVersion && strlen(info.fwVersion) > 0) {
+        strncpy(cachedDevFw, info.fwVersion, sizeof(cachedDevFw) - 1);
+    }
+
+    if (lblDevName) {
+        char titleBuf[96];
+        if (strstr(cachedDevName, cachedDevFw) != nullptr) {
+            snprintf(titleBuf, sizeof(titleBuf), "%s", cachedDevName);
+        } else {
+            snprintf(titleBuf, sizeof(titleBuf), "%s (%s)", cachedDevName, cachedDevFw);
+        }
+        lv_label_set_text(lblDevName, titleBuf);
+    }
+    if (lblDevModel) lv_label_set_text(lblDevModel, cachedDevModel);
+    if (lblDevFw) lv_label_set_text(lblDevFw, cachedDevFw);
 }
 
 void SettingsScreen::updateTelemetry(uint32_t freeHeap, const char* uptimeStr, const char* ipStr, const char* macStr) {
@@ -834,6 +902,18 @@ void SettingsScreen::updateTelemetry(uint32_t freeHeap, const char* uptimeStr, c
     if (lblDevUptime && uptimeStr) {
         snprintf(buf, sizeof(buf), "Thời gian chạy: %s", uptimeStr);
         lv_label_set_text(lblDevUptime, buf);
+    }
+    if (lblDevWifi) {
+        String ssid = WifiService::getConnectedSSID();
+        if (ssid.length() == 0 && ConfigManager::hasWifiCredentials()) {
+            ssid = ConfigManager::getWifiSSID();
+        }
+        if (ssid.length() > 0) {
+            snprintf(buf, sizeof(buf), "Mạng WiFi: %s", ssid.c_str());
+        } else {
+            snprintf(buf, sizeof(buf), "Mạng WiFi: Chưa kết nối");
+        }
+        lv_label_set_text(lblDevWifi, buf);
     }
     if (lblDevIp && ipStr) {
         snprintf(buf, sizeof(buf), "Địa chỉ IP: %s", ipStr);
@@ -852,6 +932,15 @@ void SettingsScreen::updateWifiStatus(const char* stateStr, const char* ssid, co
     cachedWifiRssi = rssi;
 
     char buf[64];
+    if (lblDevWifi) {
+        String s = (ssid && strlen(ssid) > 0) ? String(ssid) : ConfigManager::getWifiSSID();
+        if (s.length() > 0) {
+            snprintf(buf, sizeof(buf), "Mạng WiFi: %s", s.c_str());
+        } else {
+            snprintf(buf, sizeof(buf), "Mạng WiFi: Chưa kết nối");
+        }
+        lv_label_set_text(lblDevWifi, buf);
+    }
     if (lblWifiCurrentState) {
         if (ssid && strlen(ssid) > 0) {
             snprintf(buf, sizeof(buf), "WiFi: %s (%ddBm)", ssid, rssi);
@@ -960,6 +1049,12 @@ void SettingsScreen::wifi_connect_submit_cb(lv_event_t* e) {
     
     LOG_I("UI", "User submit connect to SSID: %s", self->selectedSsid);
     WifiService::connect(String(self->selectedSsid), String(pass ? pass : ""));
+    strncpy(self->cachedWifiSsid, self->selectedSsid, sizeof(self->cachedWifiSsid) - 1);
+    if (self->lblDevWifi) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Mạng WiFi: %s", self->selectedSsid);
+        lv_label_set_text(self->lblDevWifi, buf);
+    }
     self->hideWifiPasswordModal();
 }
 
@@ -975,35 +1070,122 @@ void SettingsScreen::refresh_sd_click_cb(lv_event_t* e) {
     if (self) {
         self->destroyCurrentPane();
         self->buildSdCardPane();
+
+        StorageInfo sd = StorageService::getInfo();
+        char toastMsg[96];
+        if (sd.isMounted && sd.totalBytes > 0) {
+            double totalGB = (double)sd.totalBytes / (1024.0 * 1024.0 * 1024.0);
+            double freeGB = (double)sd.freeBytes / (1024.0 * 1024.0 * 1024.0);
+            snprintf(toastMsg, sizeof(toastMsg), LV_SYMBOL_OK " Thẻ SD: %.2f GB (Còn trống: %.2f GB)", totalGB, freeGB);
+        } else if (sd.isMounted) {
+            snprintf(toastMsg, sizeof(toastMsg), LV_SYMBOL_WARNING " Thẻ SD: Đã nhận nhưng chưa đọc phân vùng");
+        } else {
+            snprintf(toastMsg, sizeof(toastMsg), LV_SYMBOL_CLOSE " Thẻ SD: Chưa nhận hoặc chưa cắm thẻ!");
+        }
+        DialogManager::showToast(toastMsg, 2500);
     }
 }
 
 void SettingsScreen::format_sd_click_cb(lv_event_t* e) {
     SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
-    LOG_I("UI", "User requested SD Card Format.");
-    if (self->lblSdActionMsg) {
-        lv_label_set_text(self->lblSdActionMsg, LV_SYMBOL_TRASH " Đang format thẻ nhớ SD...");
+    if (self) {
+        DialogManager::showConfirm(
+            LV_SYMBOL_WARNING " XÁC NHẬN FORMAT THẺ NHỚ",
+            "Cảnh báo: Toàn bộ dữ liệu trên thẻ MicroSD\nsẽ bị xóa vĩnh viễn và không thể khôi phục.\nBạn có chắc chắn muốn format không?",
+            LV_SYMBOL_TRASH " Format Ngay",
+            format_confirm_execute_cb,
+            self,
+            LV_SYMBOL_CLOSE " Hủy Bỏ",
+            format_confirm_cancel_cb
+        );
     }
+}
+
+void SettingsScreen::format_confirm_cancel_cb(lv_event_t* e) {
+    DialogManager::dismissModal();
+}
+
+void SettingsScreen::format_confirm_execute_cb(lv_event_t* e) {
+    SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
+    if (!self) return;
+
+    // 1. Đóng popup xác nhận
+    DialogManager::dismissModal();
+
+    // 2. Khóa toàn bộ màn hình (chặn 100% cảm ứng cho đến khi xong)
+    DialogManager::showLockOverlay(
+        "ĐANG FORMAT THẺ NHỚ...",
+        "Đang xóa sạch toàn bộ dữ liệu.\nVui lòng không rút thẻ hoặc tắt nguồn!",
+        "Màn hình tạm khóa cho đến khi xong...",
+        LV_SYMBOL_TRASH
+    );
+
+    // 3. Thực hiện xóa toàn bộ file trên thẻ nhớ
+    LOG_I("UI", "Executing formatCard with screen locked...");
     bool ok = StorageService::formatCard();
-    if (self && self->lblSdActionMsg) {
-        if (ok) {
-            lv_label_set_text(self->lblSdActionMsg, LV_SYMBOL_OK " Thẻ SD: Đã format sạch!");
-            if (self->barSdUsage) lv_bar_set_value(self->barSdUsage, 0, LV_ANIM_OFF);
-            if (self->lblSdPercent) lv_label_set_text(self->lblSdPercent, "0%");
-        } else {
-            lv_label_set_text(self->lblSdActionMsg, LV_SYMBOL_WARNING " Thẻ SD: Format thất bại!");
-        }
+
+    // 4. Mở khóa màn hình
+    DialogManager::hideLockOverlay();
+
+    // 5. Cập nhật lại giao diện tab Thẻ SD
+    self->destroyCurrentPane();
+    self->buildSdCardPane();
+
+    // 6. Hiển thị thông báo Toast kết quả
+    if (ok) {
+        DialogManager::showToast(LV_SYMBOL_OK " Thẻ SD: Đã format sạch thành công!", 3000);
+    } else {
+        DialogManager::showToast(LV_SYMBOL_CLOSE " Thẻ SD: Format thất bại!", 3000);
     }
 }
 
 void SettingsScreen::city_changed_cb(lv_event_t* e) {
-    lv_obj_t* dd = lv_event_get_target(e);
-    int idx = lv_dropdown_get_selected(dd);
-    ConfigManager::setCityIndex(idx);
-    const CityLocation& c = ConfigManager::getCurrentCity();
-    WeatherService::setLocation(c.name, c.latitude, c.longitude);
-    WeatherService::update(WifiService::isConnected(), true);
-    LOG_I("Config", "Selected city: %s (%.4f, %.4f)", c.name, c.latitude, c.longitude);
+    SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
+    if (!self || !self->ddCity) return;
+
+    int newIdx = lv_dropdown_get_selected(self->ddCity);
+    int curIdx = ConfigManager::getCityIndex();
+    if (newIdx == curIdx) return;
+
+    if (newIdx >= 0 && newIdx < (int)VIETNAM_CITIES_COUNT) {
+        self->pendingCityIdx = newIdx;
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Bạn có muốn đổi sang %s\nvà đồng bộ lại thời tiết ngay bây giờ không?", VIETNAM_CITIES[newIdx].name);
+        DialogManager::showConfirm(
+            LV_SYMBOL_GPS " ĐỔI TỈNH / THÀNH PHỐ",
+            msg,
+            LV_SYMBOL_OK " Đồng Bộ Ngay",
+            city_confirm_execute_cb,
+            self,
+            LV_SYMBOL_CLOSE " Hủy Bỏ",
+            city_confirm_cancel_cb,
+            CydTheme::getAccentColor()
+        );
+    }
+}
+
+void SettingsScreen::city_confirm_cancel_cb(lv_event_t* e) {
+    SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
+    DialogManager::dismissModal();
+    if (self && self->ddCity) {
+        lv_dropdown_set_selected(self->ddCity, ConfigManager::getCityIndex());
+    }
+}
+
+void SettingsScreen::city_confirm_execute_cb(lv_event_t* e) {
+    SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
+    DialogManager::dismissModal();
+    if (!self) return;
+
+    int idx = self->pendingCityIdx;
+    if (idx >= 0 && idx < (int)VIETNAM_CITIES_COUNT) {
+        ConfigManager::setCityIndex(idx);
+        const CityLocation& c = ConfigManager::getCurrentCity();
+        WeatherService::setLocation(c.name, c.latitude, c.longitude);
+        LOG_I("Config", "Selected city: %s (%.4f, %.4f)", c.name, c.latitude, c.longitude);
+
+        self->startDataSync();
+    }
 }
 
 void SettingsScreen::sync_interval_changed_cb(lv_event_t* e) {
@@ -1020,14 +1202,74 @@ void SettingsScreen::sync_interval_changed_cb(lv_event_t* e) {
 
 void SettingsScreen::sync_now_click_cb(lv_event_t* e) {
     SettingsScreen* self = (SettingsScreen*)lv_event_get_user_data(e);
+    if (!self) return;
     LOG_I("UI", "Sync Now requested by user");
-    if (self && self->lblSyncStatus) {
-        lv_label_set_text(self->lblSyncStatus, LV_SYMBOL_REFRESH " Đang đồng bộ dữ liệu...");
-    }
+    self->startDataSync();
+}
+
+void SettingsScreen::startDataSync() {
     bool wifiOk = WifiService::isConnected();
+    if (!wifiOk) {
+        DialogManager::showToast("Không thể đồng bộ: Chưa kết nối Wi-Fi!", 2500);
+        if (lblSyncStatus) {
+            lv_label_set_text(lblSyncStatus, LV_SYMBOL_DOWNLOAD " Đồng Bộ Dữ Liệu Ngay");
+        }
+        if (btnSyncNow) {
+            lv_obj_add_flag(btnSyncNow, LV_OBJ_FLAG_CLICKABLE);
+        }
+        return;
+    }
+
+    if (lblSyncStatus) {
+        lv_label_set_text(lblSyncStatus, LV_SYMBOL_REFRESH " Đang đồng bộ dữ liệu...");
+    }
+    if (btnSyncNow) {
+        lv_obj_clear_flag(btnSyncNow, LV_OBJ_FLAG_CLICKABLE);
+    }
+
     TimeService::update(wifiOk);
     WeatherService::update(wifiOk, true);
     MarketService::update(wifiOk, true);
+
+    syncCheckCount = 0;
+    if (syncTimer) {
+        lv_timer_del(syncTimer);
+        syncTimer = nullptr;
+    }
+    syncTimer = lv_timer_create(sync_monitor_timer_cb, 250, this);
+}
+
+void SettingsScreen::sync_monitor_timer_cb(lv_timer_t* t) {
+    SettingsScreen* self = (SettingsScreen*)t->user_data;
+    if (!self) return;
+
+    self->syncCheckCount++;
+    // Đợi ít nhất 500ms (2 tick) để task FreeRTOS bắt đầu chạy
+    if (self->syncCheckCount < 2) return;
+
+    bool weatherBusy = WeatherService::isFetching();
+    bool marketBusy = MarketService::isFetching();
+
+    // Hoàn tất nếu cả 2 service đều không còn bận hoặc đã quá timeout (8s = 32 tick)
+    if ((!weatherBusy && !marketBusy) || self->syncCheckCount >= 32) {
+        if (self->syncTimer) {
+            lv_timer_del(self->syncTimer);
+            self->syncTimer = nullptr;
+        }
+
+        if (self->lblSyncStatus) {
+            lv_label_set_text(self->lblSyncStatus, LV_SYMBOL_DOWNLOAD " Đồng Bộ Dữ Liệu Ngay");
+        }
+        if (self->btnSyncNow) {
+            lv_obj_add_flag(self->btnSyncNow, LV_OBJ_FLAG_CLICKABLE);
+        }
+
+        if (!weatherBusy && !marketBusy) {
+            DialogManager::showToast("Đồng bộ dữ liệu thành công!", 2500);
+        } else {
+            DialogManager::showToast("Đồng bộ hoàn tất!", 2500);
+        }
+    }
 }
 
 void SettingsScreen::brightness_changed_cb(lv_event_t* e) {
@@ -1073,14 +1315,42 @@ void SettingsScreen::volume_changed_cb(lv_event_t* e) {
 }
 
 void SettingsScreen::restart_click_cb(lv_event_t* e) {
+    DialogManager::showLockOverlay(
+        "ĐANG KHỞI ĐỘNG LẠI...",
+        "Hệ thống đang chuẩn bị khởi động lại...\nVui lòng chờ giây lát!",
+        nullptr,
+        LV_SYMBOL_REFRESH,
+        lv_color_make(30, 80, 150)
+    );
     LOG_I("System", "Restarting ESP32 by user request...");
     delay(500);
     ESP.restart();
 }
 
 void SettingsScreen::factory_reset_click_cb(lv_event_t* e) {
-    LOG_I("System", "Factory resetting config...");
+    DialogManager::showConfirm(
+        LV_SYMBOL_WARNING " KHÔI PHỤC CÀI ĐẶT GỐC",
+        "Cảnh báo: Toàn bộ thông tin WiFi và cấu hình cá nhân\nsẽ bị xóa sạch về trạng thái ban đầu của nhà sản xuất.\nThiết bị sẽ tự động khởi động lại.\nBạn có chắc chắn muốn tiếp tục?",
+        LV_SYMBOL_TRASH " Khôi Phục",
+        factory_reset_confirm_cb,
+        nullptr,
+        LV_SYMBOL_CLOSE " Hủy Bỏ",
+        nullptr,
+        lv_color_make(180, 40, 50)
+    );
+}
+
+void SettingsScreen::factory_reset_confirm_cb(lv_event_t* e) {
+    DialogManager::dismissModal();
+    DialogManager::showLockOverlay(
+        "ĐANG KHÔI PHỤC GỐC...",
+        "Đang xóa sạch dữ liệu cấu hình NVS Flash.\nThiết bị sẽ tự khởi động lại sau giây lát!",
+        "Vui lòng không tắt nguồn thiết bị...",
+        LV_SYMBOL_TRASH,
+        lv_color_make(180, 40, 50)
+    );
+    LOG_I("System", "Factory resetting config by user request...");
     ConfigManager::resetToDefaults();
-    delay(500);
+    delay(800);
     ESP.restart();
 }

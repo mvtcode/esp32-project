@@ -142,8 +142,13 @@ void WeatherService::fetchWeatherTask(void *param) {
 void WeatherService::update(bool wifiConnected, bool force) {
     if (!wifiConnected) return;
 
-    uint32_t intervalMs = (uint32_t)ConfigManager::getSyncIntervalMinutes() * 60 * 1000;
-    if (intervalMs < 15 * 60 * 1000) intervalMs = 15 * 60 * 1000;
+    // Nếu chưa có dữ liệu thật (!is_valid), retry sau 20s. Khi đã có, tuân thủ interval (tối thiểu 15 phút)
+    uint32_t intervalMs = current_weather.is_valid
+        ? ((uint32_t)ConfigManager::getSyncIntervalMinutes() * 60 * 1000)
+        : (20 * 1000);
+    if (current_weather.is_valid && intervalMs < 15 * 60 * 1000) {
+        intervalMs = 15 * 60 * 1000;
+    }
 
     uint32_t now = millis();
     if (!is_fetching && (force || last_fetch_time == 0 || (now - last_fetch_time >= intervalMs))) {

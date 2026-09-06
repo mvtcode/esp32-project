@@ -48,6 +48,8 @@ private:
 
     // --- Tab 0: Device Widgets ---
     lv_obj_t* lblDevName;
+    lv_obj_t* lblDevAuthor;
+    lv_obj_t* lblDevEmail;
     lv_obj_t* lblDevModel;
     lv_obj_t* lblDevFw;
     lv_obj_t* lblDevBuild;
@@ -55,6 +57,7 @@ private:
     lv_obj_t* lblDevSerial;
     lv_obj_t* lblDevUptime;
     lv_obj_t* lblDevRam;
+    lv_obj_t* lblDevWifi;
     lv_obj_t* lblDevIp;
     lv_obj_t* lblDevMac;
     lv_obj_t* btnRestart;
@@ -103,7 +106,12 @@ private:
     lv_obj_t* lblVolumeVal;
     lv_obj_t* swTouchBeep;
 
-    // Cached telemetry for on-demand rendering
+    // Cached telemetry & device info for on-demand rendering
+    char cachedDevName[64];
+    char cachedDevModel[64];
+    char cachedDevFw[64];
+    char cachedAuthor[64];
+    char cachedEmail[64];
     uint32_t cachedFreeHeap;
     char cachedUptime[32];
     char cachedIp[32];
@@ -131,15 +139,26 @@ private:
     static void wifi_modal_cancel_cb(lv_event_t* e);
     static void refresh_sd_click_cb(lv_event_t* e);
     static void format_sd_click_cb(lv_event_t* e);
+    static void format_confirm_cancel_cb(lv_event_t* e);
+    static void format_confirm_execute_cb(lv_event_t* e);
     static void city_changed_cb(lv_event_t* e);
+    static void city_confirm_cancel_cb(lv_event_t* e);
+    static void city_confirm_execute_cb(lv_event_t* e);
     static void sync_interval_changed_cb(lv_event_t* e);
     static void sync_now_click_cb(lv_event_t* e);
+    static void sync_monitor_timer_cb(lv_timer_t* t);
+    void startDataSync();
+
+    int pendingCityIdx;
+    lv_timer_t* syncTimer;
+    int syncCheckCount;
     static void brightness_changed_cb(lv_event_t* e);
     static void sleep_timeout_changed_cb(lv_event_t* e);
     static void dev_mode_toggle_cb(lv_event_t* e);
     static void volume_changed_cb(lv_event_t* e);
     static void restart_click_cb(lv_event_t* e);
     static void factory_reset_click_cb(lv_event_t* e);
+    static void factory_reset_confirm_cb(lv_event_t* e);
 };
 
 #endif // SETTINGS_SCREEN_H
