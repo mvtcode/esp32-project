@@ -1,5 +1,4 @@
-#ifndef CONFIG_MANAGER_H
-#define CONFIG_MANAGER_H
+#pragma once
 
 #include <Arduino.h>
 #include <Preferences.h>
@@ -39,6 +38,8 @@ static const size_t VIETNAM_CITIES_COUNT = sizeof(VIETNAM_CITIES) / sizeof(VIETN
 class ConfigManager {
 public:
     static void init();
+    static void update(); // Xử lý debounce ghi NVS không chặn (Rule 7)
+    static void flush();  // Ghi lập tức các giá trị dirty còn lại trước khi restart
 
     // WiFi Config
     static String getWifiSSID();
@@ -83,6 +84,16 @@ public:
 private:
     static Preferences prefs;
     static bool initialized;
+
+    // Cache và Debounce các slider thường xuyên thay đổi (Rule 7)
+    static uint8_t s_cachedBrightness;
+    static bool s_brightnessLoaded;
+    static bool s_brightnessDirty;
+    static unsigned long s_brightnessDebounceTime;
+
+    static uint8_t s_cachedVolume;
+    static bool s_volumeLoaded;
+    static bool s_volumeDirty;
+    static unsigned long s_volumeDebounceTime;
 };
 
-#endif // CONFIG_MANAGER_H

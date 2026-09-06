@@ -1,16 +1,11 @@
-#ifndef STORAGE_SERVICE_H
-#define STORAGE_SERVICE_H
+#pragma once
 
 #include <Arduino.h>
 #include <FS.h>
 #include <SD.h>
 #include <SPI.h>
+#include "pin_config.h"
 
-// ESP32 CYD 3.5" SD Card Pinout (Dedicated VSPI bus)
-#define SD_CS_PIN    5
-#define SD_MOSI_PIN  23
-#define SD_MISO_PIN  19
-#define SD_SCLK_PIN  18
 
 struct StorageInfo {
     bool isMounted;
@@ -33,4 +28,3 @@ private:
     static SPIClass* sdSPI;
 };
 
-#endif // STORAGE_SERVICE_H

@@ -213,6 +213,8 @@ void loop() {
     // Background services loop
     WifiService::update();
     BacklightManager::update();
+    ConfigManager::update();
+
 
     bool wifiConnected = WifiService::isConnected();
     TimeService::update(wifiConnected);

@@ -1,12 +1,13 @@
-#ifndef BACKLIGHT_MANAGER_H
-#define BACKLIGHT_MANAGER_H
+#pragma once
 
 #include <Arduino.h>
+#include "pin_config.h"
 
-#define TFT_BL_PIN 27
-#define LEDC_BL_CHANNEL 0
-#define LEDC_BL_FREQ 5000
-#define LEDC_BL_RES 8
+#define TFT_BL_PIN       PIN_TFT_BL
+#define LEDC_BL_CHANNEL  0
+#define LEDC_BL_FREQ     5000
+#define LEDC_BL_RES      8
+
 
 class BacklightManager {
 public:
@@ -31,4 +32,3 @@ private:
     static void applyDuty(uint8_t duty);
 };
 
-#endif // BACKLIGHT_MANAGER_H

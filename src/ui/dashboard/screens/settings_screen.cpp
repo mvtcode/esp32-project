@@ -1323,8 +1323,10 @@ void SettingsScreen::restart_click_cb(lv_event_t* e) {
         lv_color_make(30, 80, 150)
     );
     LOG_I("System", "Restarting ESP32 by user request...");
+    ConfigManager::flush();
     delay(500);
     ESP.restart();
+
 }
 
 void SettingsScreen::factory_reset_click_cb(lv_event_t* e) {

@@ -9,6 +9,7 @@ Dự án Đồng hồ thông minh, Bảng tin tức & Trình phát nhạc MP3 ca
 Dự án đã được nâng cấp toàn diện từ giao diện mẫu (Mock UI) sang **hệ thống thời gian thực hoàn chỉnh (Production-ready System)** với các cải tiến nổi bật:
 
 ### 1. Nâng cấp Tính năng Thực tế (Real Features)
+
 - 🕒 **Đồng hồ NTP & Lịch Âm Việt Nam**: Đồng bộ thời gian chuẩn GMT+7 qua NTP Server (`pool.ntp.org`), tích hợp thuật toán Hồ Ngọc Đức tính toán chính xác ngày, tháng, năm âm lịch và Can Chi (Giáp Thìn, Ất Tỵ,...).
 - ⛅ **Thời tiết Trực tuyến (Open-Meteo API)**: Dự báo thời tiết tự động theo Tỉnh/Thành phố được chọn (Hà Nội, TP.HCM, Đà Nẵng,...), hiển thị nhiệt độ, độ ẩm, sức gió và biểu tượng thời tiết động.
 - 📈 **Thị trường Tài chính (VNExpress API)**: Cập nhật biến động **Giá vàng SJC / Nhẫn 9999** (Mua/Bán) và **Giá xăng dầu** (RON 95-III, E5 RON 92-II, Dầu Diesel).
@@ -26,6 +27,7 @@ Dự án đã được nâng cấp toàn diện từ giao diện mẫu (Mock UI)
   - **Hệ thống & Âm thanh**: Chỉnh âm lượng mặc định, bật/tắt âm thanh phản hồi chạm và kích hoạt Developer HUD.
 
 ### 2. Tối ưu Hiệu năng & Ổn định Hệ thống
+
 - 🚀 **Tối ưu FPS & Render GUI**: Tối ưu chu kỳ vẽ `lv_timer_handler()` và cơ chế cập nhật UI theo sự kiện / timer tách biệt, không render liên tục các widget tĩnh, loại bỏ giật lag màn hình.
 - 🧠 **Khắc phục rò rỉ bộ nhớ (Zero Memory Leak)**: Tối ưu dung lượng buffer LVGL, giải phóng tài nguyên chuỗi và modal sau khi đóng popup.
 - 📊 **Developer HUD**: Khung thông số hiệu năng overlay trực tiếp trên màn hình theo dõi **FPS, RAM Free Heap, CPU Load, Cường độ sóng WiFi (dBm)**.
@@ -63,6 +65,7 @@ Dự án đã được nâng cấp toàn diện từ giao diện mẫu (Mock UI)
 Mạch **ESP32-3248S035 (CYD 3.5" TFT ST7796 + XPT2046)** có sơ đồ kết nối phần cứng như sau:
 
 ### 1. Màn hình TFT LCD (Driver: ST7796, 480x320 px)
+
 - **TFT_MISO**: GPIO 12
 - **TFT_MOSI**: GPIO 13
 - **TFT_SCLK**: GPIO 14
@@ -72,16 +75,19 @@ Mạch **ESP32-3248S035 (CYD 3.5" TFT ST7796 + XPT2046)** có sơ đồ kết n�
 - **TFT_BL**: GPIO 27 (Backlight - Điều khiển xung PWM)
 
 ### 2. Cảm ứng điện trở (Resistive Touch - XPT2046)
+
 - **TOUCH_CS**: GPIO 33
 - **Bus SPI**: Dùng chung đường HSPI với màn hình TFT (MOSI=13, MISO=12, SCLK=14).
 
 ### 3. Khay thẻ nhớ MicroSD (VSPI riêng biệt)
+
 - **SD_CS**: GPIO 5
 - **SD_MOSI**: GPIO 23
 - **SD_MISO**: GPIO 19
 - **SD_SCLK**: GPIO 18
 
 ### 4. Âm thanh & Cảm biến ngoại vi
+
 - **Audio Output (Speaker)**: GPIO 26 (Sử dụng DAC nội bộ của ESP32 hoặc mở rộng I2S)
 - **LDR (Quang trở cảm biến ánh sáng)**: GPIO 34 (Analog ADC)
 - **RGB LED Onboard**: GPIO 21
@@ -148,31 +154,37 @@ esp32-project/
 ## 🚀 Hướng dẫn Cài đặt & Sử dụng
 
 ### 1. Yêu cầu môi trường
+
 - Cài đặt [Visual Studio Code](https://code.visualstudio.com/) cùng tiện ích mở rộng **PlatformIO IDE** (hoặc cài đặt PlatformIO Core qua Python CLI).
 
 ### 2. Các lệnh PlatformIO cơ bản
 
 #### Build dự án:
+
 ```bash
 pio run
 ```
 
 #### Nạp code lên ESP32:
+
 ```bash
 pio run --target upload
 ```
 
 #### Mở Serial Monitor:
+
 ```bash
 pio device monitor
 ```
 
 #### Build + Upload + Monitor trong 1 lệnh:
+
 ```bash
 pio run --target upload && pio device monitor
 ```
 
 #### Xóa các file build tạm:
+
 ```bash
 pio run --target clean
 ```
@@ -186,7 +198,7 @@ pio run --target clean
 Mở file `platformio.ini` để cấu hình chế độ Log:
 
 ```ini
-build_flags = 
+build_flags =
     ; --- Logging control: Bỏ comment dòng dưới để BẬT LOG (DEV), comment lại để TẮT LOG (PRODUCTION) ---
     ; -DENABLE_SERIAL_LOG
     -DCORE_DEBUG_LEVEL=0
@@ -225,3 +237,23 @@ build_flags =
 3. **Lỗi Upload code**:
    - Nhấn giữ nút **BOOT** trên ESP32 trong lúc phần mềm hiển thị `Connecting...`.
    - Đảm bảo đã cài driver USB UART (CH340 / CP2102).
+
+---
+
+## 📦 Đóng Gói & Nạp Firmware Hàng Loạt (Offset 0x00)
+
+Dự án cung cấp sẵn công cụ gom toàn bộ thành phần (`bootloader`, `partitions`, `otadata`, `firmware`) thành **1 file `.bin` duy nhất** để nạp từ địa chỉ `0x00` vào thiết bị mới:
+
+- **File firmware gộp:** [`merged_firmware_0x00.bin`](merged_firmware_0x00.bin) (Nạp tại offset `0x00000000`).
+- **Script đóng gói tự động:** [`tools/merge_firmware.py`](tools/merge_firmware.py) (Chạy lệnh `python tools/merge_firmware.py` sau khi `pio run`).
+- **Hướng dẫn chi tiết:** Xem file [**`FLASH_GUIDE.md`**](FLASH_GUIDE.md) để biết cách nạp qua **ESP Flash Download Tool**, **esptool CLI**, hoặc **Web Flasher**.
+
+---
+
+## 👨‍💻 Tác Giả & Bản Quyền
+
+- **Tác giả:** **[Mạc Tân](https://www.facebook.com/mvt.hp.star/)**
+- **Hotline / Zalo:** [0964 335 688](tel:0964335688)
+- **Mã nguồn:** Mã nguồn mở phục vụ nghiên cứu, học tập và ứng dụng thực tế trên các dòng vi điều khiển ESP32 / ESP8266 / Arduino.
+
+⭐ _Nếu thấy kho dự án hữu ích, hãy tặng 1 Star trên GitHub để ủng hộ tác giả nhé!_

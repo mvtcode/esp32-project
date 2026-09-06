@@ -1,14 +1,59 @@
 #include "config_manager.h"
+#include "log.h"
+
+static const char* TAG = "Config";
 
 Preferences ConfigManager::prefs;
 bool ConfigManager::initialized = false;
 
+uint8_t ConfigManager::s_cachedBrightness = 80;
+bool ConfigManager::s_brightnessLoaded = false;
+bool ConfigManager::s_brightnessDirty = false;
+unsigned long ConfigManager::s_brightnessDebounceTime = 0;
+
+uint8_t ConfigManager::s_cachedVolume = 30;
+bool ConfigManager::s_volumeLoaded = false;
+bool ConfigManager::s_volumeDirty = false;
+unsigned long ConfigManager::s_volumeDebounceTime = 0;
+
 #define PREF_NAMESPACE "cyd_cfg"
+#define DEBOUNCE_DELAY_MS 600 // Trì hoãn 600ms chống mòn Flash NVS (Rule 7)
 
 void ConfigManager::init() {
     if (initialized) return;
     prefs.begin(PREF_NAMESPACE, false);
     initialized = true;
+}
+
+void ConfigManager::update() {
+    if (!initialized) return;
+    unsigned long now = millis();
+
+    // Debounce ghi NVS cho độ sáng màn hình
+    if (s_brightnessDirty && (now - s_brightnessDebounceTime >= DEBOUNCE_DELAY_MS)) {
+        s_brightnessDirty = false;
+        prefs.putInt("bright", s_cachedBrightness);
+        LOG_D(TAG, "NVS flushed: Brightness = %d%%", s_cachedBrightness);
+    }
+
+    // Debounce ghi NVS cho âm lượng mặc định
+    if (s_volumeDirty && (now - s_volumeDebounceTime >= DEBOUNCE_DELAY_MS)) {
+        s_volumeDirty = false;
+        prefs.putInt("def_vol", s_cachedVolume);
+        LOG_D(TAG, "NVS flushed: Volume = %d%%", s_cachedVolume);
+    }
+}
+
+void ConfigManager::flush() {
+    if (!initialized) return;
+    if (s_brightnessDirty) {
+        s_brightnessDirty = false;
+        prefs.putInt("bright", s_cachedBrightness);
+    }
+    if (s_volumeDirty) {
+        s_volumeDirty = false;
+        prefs.putInt("def_vol", s_cachedVolume);
+    }
 }
 
 String ConfigManager::getWifiSSID() {
@@ -23,8 +68,12 @@ String ConfigManager::getWifiPassword() {
 
 void ConfigManager::setWifiCredentials(const String& ssid, const String& password) {
     init();
-    prefs.putString("wifi_ssid", ssid);
-    prefs.putString("wifi_pass", password);
+    if (getWifiSSID() != ssid) {
+        prefs.putString("wifi_ssid", ssid);
+    }
+    if (getWifiPassword() != password) {
+        prefs.putString("wifi_pass", password);
+    }
 }
 
 bool ConfigManager::hasWifiCredentials() {
@@ -41,7 +90,9 @@ int ConfigManager::getCityIndex() {
 void ConfigManager::setCityIndex(int index) {
     init();
     if (index >= 0 && (size_t)index < VIETNAM_CITIES_COUNT) {
-        prefs.putInt("city_idx", index);
+        if (getCityIndex() != index) {
+            prefs.putInt("city_idx", index);
+        }
     }
 }
 
@@ -57,22 +108,37 @@ int ConfigManager::getSyncIntervalMinutes() {
 
 void ConfigManager::setSyncIntervalMinutes(int minutes) {
     init();
-    prefs.putInt("sync_int", minutes);
+    if (getSyncIntervalMinutes() != minutes) {
+        prefs.putInt("sync_int", minutes);
+    }
 }
 
 uint8_t ConfigManager::getBrightness() {
     init();
-    int val = prefs.getInt("bright", 80);
-    if (val < 10) val = 10;
-    if (val > 100) val = 100;
-    return (uint8_t)val;
+    if (!s_brightnessLoaded) {
+        int val = prefs.getInt("bright", 80);
+        if (val < 10) val = 10;
+        if (val > 100) val = 100;
+        s_cachedBrightness = (uint8_t)val;
+        s_brightnessLoaded = true;
+    }
+    return s_cachedBrightness;
 }
 
 void ConfigManager::setBrightness(uint8_t val) {
     init();
     if (val < 10) val = 10;
     if (val > 100) val = 100;
-    prefs.putInt("bright", val);
+
+    // Dirty check: nếu không đổi và không dirty thì không cần làm gì
+    if (s_brightnessLoaded && s_cachedBrightness == val && !s_brightnessDirty) {
+        return;
+    }
+
+    s_cachedBrightness = val;
+    s_brightnessLoaded = true;
+    s_brightnessDirty = true;
+    s_brightnessDebounceTime = millis();
 }
 
 int ConfigManager::getSleepTimeoutSeconds() {
@@ -82,7 +148,9 @@ int ConfigManager::getSleepTimeoutSeconds() {
 
 void ConfigManager::setSleepTimeoutSeconds(int seconds) {
     init();
-    prefs.putInt("sleep_to", seconds);
+    if (getSleepTimeoutSeconds() != seconds) {
+        prefs.putInt("sleep_to", seconds);
+    }
 }
 
 bool ConfigManager::isAutoBrightnessEnabled() {
@@ -92,21 +160,36 @@ bool ConfigManager::isAutoBrightnessEnabled() {
 
 void ConfigManager::setAutoBrightnessEnabled(bool enabled) {
     init();
-    prefs.putBool("auto_br", enabled);
+    if (isAutoBrightnessEnabled() != enabled) {
+        prefs.putBool("auto_br", enabled);
+    }
 }
 
 uint8_t ConfigManager::getDefaultVolume() {
     init();
-    int val = prefs.getInt("def_vol", 30);
-    if (val < 0) val = 0;
-    if (val > 100) val = 100;
-    return (uint8_t)val;
+    if (!s_volumeLoaded) {
+        int val = prefs.getInt("def_vol", 30);
+        if (val < 0) val = 0;
+        if (val > 100) val = 100;
+        s_cachedVolume = (uint8_t)val;
+        s_volumeLoaded = true;
+    }
+    return s_cachedVolume;
 }
 
 void ConfigManager::setDefaultVolume(uint8_t vol) {
     init();
     if (vol > 100) vol = 100;
-    prefs.putInt("def_vol", vol);
+
+    // Dirty check: nếu không đổi và không dirty thì bỏ qua
+    if (s_volumeLoaded && s_cachedVolume == vol && !s_volumeDirty) {
+        return;
+    }
+
+    s_cachedVolume = vol;
+    s_volumeLoaded = true;
+    s_volumeDirty = true;
+    s_volumeDebounceTime = millis();
 }
 
 bool ConfigManager::isTouchBeepEnabled() {
@@ -116,7 +199,9 @@ bool ConfigManager::isTouchBeepEnabled() {
 
 void ConfigManager::setTouchBeepEnabled(bool enabled) {
     init();
-    prefs.putBool("touch_bp", enabled);
+    if (isTouchBeepEnabled() != enabled) {
+        prefs.putBool("touch_bp", enabled);
+    }
 }
 
 String ConfigManager::getLastAudioTrackPath() {
@@ -126,7 +211,7 @@ String ConfigManager::getLastAudioTrackPath() {
 
 void ConfigManager::setLastAudioTrackPath(const String& path) {
     init();
-    if (path.length() > 0) {
+    if (path.length() > 0 && getLastAudioTrackPath() != path) {
         prefs.putString("last_track", path);
     }
 }
@@ -138,7 +223,7 @@ int ConfigManager::getLastAudioTrackIndex() {
 
 void ConfigManager::setLastAudioTrackIndex(int index) {
     init();
-    if (index >= 0) {
+    if (index >= 0 && getLastAudioTrackIndex() != index) {
         prefs.putInt("last_idx", index);
     }
 }
@@ -150,10 +235,17 @@ bool ConfigManager::isDevModeEnabled() {
 
 void ConfigManager::setDevModeEnabled(bool enabled) {
     init();
-    prefs.putBool("dev_mode", enabled);
+    if (isDevModeEnabled() != enabled) {
+        prefs.putBool("dev_mode", enabled);
+    }
 }
 
 void ConfigManager::resetToDefaults() {
     init();
+    s_brightnessDirty = false;
+    s_volumeDirty = false;
+    s_brightnessLoaded = false;
+    s_volumeLoaded = false;
     prefs.clear();
 }
+

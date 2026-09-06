@@ -254,8 +254,8 @@ void WifiService::update() {
         if (WiFi.status() == WL_CONNECTED) {
             currentState = WIFI_STATE_CONNECTED;
         } else if (!isConnecting && !isScanRunning && ConfigManager::hasWifiCredentials()) {
-            // Tự động kết nối lại nếu mất mạng
-            if (now - lastConnectAttempt >= 30000) { // Thử lại sau mỗi 30s
+            // Tự động kết nối lại nếu mất mạng định kỳ 15s (Rule 5 - GEMINI.md)
+            if (now - lastConnectAttempt >= 15000) { // Thử lại sau mỗi 15s
                 String ssid = ConfigManager::getWifiSSID();
                 String pass = ConfigManager::getWifiPassword();
                 connect(ssid, pass);

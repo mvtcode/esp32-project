@@ -11,6 +11,11 @@
 *.elf
 *.bin
 *.map
+*.exe
+
+# Firmware assets
+!tools/boot_app0.bin
+
 
 # IDE
 .DS_Store
