@@ -245,7 +245,15 @@ bool OtaService::startUpdate(const String& firmwareUrl, bool clearNvs, OtaProgre
     }
 
     // Reset lại toàn bộ tiến trình & giải phóng Update nếu còn sót
+    if (s_otaTaskHandle != nullptr) {
+        vTaskDelete(s_otaTaskHandle);
+        s_otaTaskHandle = nullptr;
+    }
+    if (Update.isRunning()) {
+        Update.end(false);
+    }
     Update.abort();
+    Update.clearError();
     s_downloadUrl = firmwareUrl;
     s_clearNvs = clearNvs;
     s_progressCb = progressCb;
@@ -370,7 +378,11 @@ void OtaService::otaTask(void* param) {
         return;
     }
 
-    Update.abort(); // Đảm bảo trạng thái sạch trước khi khởi tạo
+    if (Update.isRunning()) {
+        Update.end(false);
+    }
+    Update.abort();
+    Update.clearError();
 
     if (!Update.begin(contentLength, U_FLASH)) {
         snprintf(s_errorMsg, sizeof(s_errorMsg), "Khởi tạo OTA lỗi (Mã %d: %s, MaxBlock=%u)", 
