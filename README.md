@@ -74,6 +74,7 @@ git checkout clock-esp32s3-6p5
 
 | Nhánh (Branch) | Vi điều khiển & Phần cứng | Mô tả & Tính năng nổi bật |
 | :--- | :--- | :--- |
+| [**`esp32s3-kit35`**](https://github.com/mvtcode/esp32-project/tree/esp32s3-kit35) | • Bo mạch **Guition JC3248W535** (ESP32-S3 N16R8, 16MB Flash, 8MB Octal PSRAM)<br>• IPS 3.5" 320x480 (AXS15231B QSPI)<br>• Cảm ứng điện dung AXS15231B (I2C `0x3B`)<br>• Loa khuếch đại NS4168 (I2S)<br>• Khe MicroSD (SD_MMC 1-bit native) | • **Bộ chẩn đoán & xác định phần cứng toàn diện cho Kit ESP32-S3 3.5"**:<br>• **Màn hình QSPI**: Tích hợp PSRAM Canvas DMA chống lỗi vỡ pixel, hiển thị sắc nét 320x480 Portrait.<br>• **Cảm ứng điện dung**: Nhận diện đa điểm, hiển thị tọa độ X/Y thời gian thực và vẽ tâm ngắm Crosshair.<br>• **Âm thanh I2S**: Phát nhạc chuông khởi động và âm bip xúc giác khi chạm màn hình.<br>• **Thẻ nhớ MicroSD Dual Mode**: Hỗ trợ SD_MMC 1-bit tốc độ cao và SPI fallback, tự động đo và hiển thị dung lượng (GB/MB) lên màn hình kèm xác thực Magic Bytes. |
 | [**`esp32-kit3.5`**](https://github.com/mvtcode/esp32-project/tree/esp32-kit3.5) | • Bo mạch **ESP32-3248S035** (CYD 3.5" TFT ST7796 480x320 + Cảm ứng XPT2046)<br>• Thẻ nhớ MicroSD, DAC Audio, Quang trở LDR, RGB LED | • **Bảng điều khiển thông minh Smart Dashboard (LVGL v8)** mượt mà 30+ FPS.<br>• **Màn hình Home**: Đồng hồ số lớn, Lịch Âm Can Chi, Dự báo thời tiết, cập nhật **Giá vàng SJC/PNJ** và **Giá xăng dầu** trực tiếp từ Internet.<br>• **Lịch vạn niên**: Ma trận lịch tháng, xem ngày hoàng đạo, sự kiện.<br>• **Trình phát nhạc MP3**: Quét thư viện thẻ nhớ SD, Visualizer sóng âm thanh, tua bài.<br>• **Cài đặt & Giám sát**: Cấu hình mạng WiFi, format thẻ nhớ, độ sáng PWM, Dev HUD hiển thị RAM, CPU load, FPS thực tế và WiFi dBm. |
 | [**`esp32wroom-lcd3.5-lvgl`**](https://github.com/mvtcode/esp32-project/tree/esp32wroom-lcd3.5-lvgl) | • ESP32-WROOM CYD 3.5"<br>• Cảm ứng XPT2046 | • Nền tảng tích hợp thư viện đồ họa LVGL cùng bộ biểu tượng Material Icon Font trên màn hình cảm ứng điện trở 3.5 inch. |
 | [**`esp32wroom-lcd3.5`**](https://github.com/mvtcode/esp32-project/tree/esp32wroom-lcd3.5) | • ESP32-WROOM CYD 3.5"<br>• Cảm biến DHT11 & LDR<br>• Thẻ nhớ SD & I2S DAC | • Bản thử nghiệm toàn diện phần cứng CYD: Đo nhiệt độ/độ ẩm phòng (DHT11), đo cường độ sáng (LDR), hiệu ứng nháy LED RGB 7 màu, phát nhạc MP3 từ thẻ nhớ và vẽ thử nghiệm vùng cảm ứng. |
@@ -81,8 +82,28 @@ git checkout clock-esp32s3-6p5
 | [**`esp32s3-super-mini-oled-1.3`**](https://github.com/mvtcode/esp32-project/tree/esp32s3-super-mini-oled-1.3) / [**`esp32-lvgl-oled1.3`**](https://github.com/mvtcode/esp32-project/tree/esp32-lvgl-oled1.3) | • ESP32 / ESP32-S3<br>• OLED 1.3" (128x64 SH1106 / SSD1306) | • Thử nghiệm giao diện đồ họa đơn sắc và tích hợp thư viện đồ họa LVGL trên màn hình OLED 1.3 inch. |
 
 ```bash
-# Chuyển sang dự án Smart Dashboard CYD 3.5" TFT LVGL v8
-git checkout esp32-kit3.5
+# Chuyển sang dự án Kit ESP32-S3 3.5" (Guition JC3248W535)
+git checkout esp32s3-kit35
+```
+
+### 📋 Sơ Đồ Chân (Pinout) Chi Tiết Kit Guition JC3248W535 (ESP32-S3 N16R8)
+
+Toàn bộ chân GPIO được quy chuẩn quản lý tập trung tại [`include/pin_config.h`](file:///d:/projects/esp32-project/include/pin_config.h):
+
+| Khối Chức Năng | Tín Hiệu | Chân GPIO | Chuẩn Giao Tiếp & Ghi Chú |
+| :--- | :--- | :---: | :--- |
+| **Màn Hình IPS 3.5"**<br>*(320x480 AXS15231B)* | `QSPI_CS`<br>`QSPI_SCK`<br>`QSPI_D0`<br>`QSPI_D1`<br>`QSPI_D2`<br>`QSPI_D3`<br>`TFT_BL`<br>`TFT_RST` | **IO45**<br>**IO47**<br>**IO21**<br>**IO48**<br>**IO40**<br>**IO39**<br>**IO1**<br>**-1** | **QSPI 4-Wire (32MHz Burst DMA)**<br>• Dùng `CanvasPSRAM` (bộ đệm 307.2KB trên 8MB PSRAM) để vẽ và đẩy 1 lần nguyên khung hình.<br>• Độ phân giải chuẩn Portrait: 320x480.<br>• `TFT_BL` điều khiển độ sáng PWM.<br>• `TFT_RST` nối chung với chân RESET hệ thống. |
+| **Cảm Ứng Điện Dung**<br>*(Capacitive Touch)* | `I2C_SDA`<br>`I2C_SCL`<br>`TOUCH_INT`<br>`TOUCH_RST` | **IO4**<br>**IO8**<br>**IO3**<br>**-1** | **I2C Fast Mode (400kHz)**<br>• Chip cảm ứng: **AXS15231B (Địa chỉ I2C `0x3B`)**.<br>• Không dùng chân RST (giải phóng GPIO 2 cho I2S Audio). |
+| **Âm Thanh (Sound)**<br>*(Amp NS4168)* | `I2S_BCLK`<br>`I2S_LRCK`<br>`I2S_DOUT` | **IO42**<br>**IO2**<br>**IO41** | **I2S Master TX (16-bit 44.1kHz)**<br>• IC khuếch đại công suất Mono NS4168 phát trực tiếp ra loa onboard.<br>• Phát chuông khởi động và âm bip xúc giác khi chạm màn hình. |
+| **Thẻ Nhớ MicroSD**<br>*(Dual Mode)* | `SD_CLK`<br>`SD_CMD`<br>`SD_D0`<br>`SD_CS` | **IO12**<br>**IO11**<br>**IO13**<br>**IO10** | **Chế độ chính: SD_MMC 1-Bit Native** (chỉ dùng IO12, IO11, IO13 - không cần chân CS, tốc độ cao 20MHz).<br>**Chế độ dự phòng: SPI qua HSPI (SPI3_HOST)** (CS=IO10) tránh xung đột với QSPI màn hình (dùng SPI2_HOST). |
+
+#### Lệnh Nạp Firmware & Giám Sát Serial:
+```powershell
+# Nạp firmware cho kit ESP32-S3 3.5"
+pio run -e esp32s3_kit35 -t upload
+
+# Mở Serial Monitor theo dõi log
+pio device monitor -e esp32s3_kit35
 ```
 
 ---

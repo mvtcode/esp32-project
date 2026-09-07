@@ -1,176 +1,164 @@
 #include <Arduino.h>
-#include <WiFi.h>
 #include "log.h"
 #include "pin_config.h"
-#include "version.h"
-#include "services/ota_service.h"
+#include "modules/i2c_scanner.h"
+#include "modules/display_touch_test.h"
+#include "modules/sd_card_test.h"
+#include "modules/audio_test.h"
 
 static const char *TAG = "Main";
 
-static const char *WIFI_SSID = "HPSTAR";
-static const char *WIFI_PASS = "0964335688";
+// Con trỏ đối tượng các module kiểm thử (áp dụng RAII & quản lý vòng đời bộ nhớ)
+static I2cScanner *s_i2cScanner = nullptr;
+static DisplayTouchTest *s_displayTouch = nullptr;
+static SdCardTest *s_sdTest = nullptr;
+static AudioTest *s_audioTest = nullptr;
 
-static bool s_otaChecked = false;
-static unsigned long s_lastOtaCheckTime = 0;
-static bool s_hasNewVersion = false;
-static OtaInfo s_cachedOtaInfo;
+// Lưu thông tin thẻ nhớ SD để hiển thị
+static String s_sdCapStr = "";
+static String s_sdDetailStr = "";
+static bool s_sdOk = false;
 
-void checkOtaVersion() {
-    if (OtaService::isUpdating()) {
-        return;
-    }
+// Biến trạng thái cảm ứng và âm thanh
+static bool s_wasTouched = false;
+static int32_t s_lastX = -1;
+static int32_t s_lastY = -1;
+static int32_t s_lastRawX = 0;
+static int32_t s_lastRawY = 0;
+static unsigned long s_lastTouchUpdate = 0;
+static unsigned long s_lastSdCheck = 0;
 
-    LOG_I(TAG, "--------------------------------------------------");
-    LOG_I(TAG, "Đang kiểm tra phiên bản mới từ: %s", OTA_MANIFEST_URL);
-    OtaInfo info;
-    if (OtaService::checkUpdate(info)) {
-        s_cachedOtaInfo = info;
-        LOG_I(TAG, "Phiên bản trên Server: %s (Hiện tại: %s)", info.version.c_str(), FIRMWARE_VERSION);
-        LOG_I(TAG, "Nội dung cập nhật: %s", info.changelog.c_str());
-
-        if (info.hasUpdate) {
-            s_hasNewVersion = true;
-            LOG_I(TAG, "==================================================");
-            LOG_I(TAG, "🚀 PHÁT HIỆN PHIÊN BẢN MỚI: %s", info.version.c_str());
-            LOG_I(TAG, "Link tải firmware: %s", info.firmwareUrl.c_str());
-            LOG_I(TAG, "👉 HÃY GIỮ NÚT BOOT (IO0) TRONG 3 GIÂY ĐỂ BẮT ĐẦU NÂNG CẤP!");
-            LOG_I(TAG, "==================================================");
-        } else {
-            s_hasNewVersion = false;
-            LOG_I(TAG, "Thiết bị đang ở phiên bản mới nhất (%s).", FIRMWARE_VERSION);
-        }
+static void updateSdStatus(const SdCardStatus& status) {
+  s_sdOk = status.mounted;
+  if (s_sdOk) {
+    float capGB = (float)status.totalBytes / (1024.0f * 1024.0f * 1024.0f);
+    uint32_t capMB = (uint32_t)(status.totalBytes / (1024 * 1024));
+    if (capGB >= 1.0f) {
+      char b[64];
+      snprintf(b, sizeof(b), "%.2f GB (%u MB)", capGB, capMB);
+      s_sdCapStr = b;
     } else {
-        LOG_W(TAG, "Kiểm tra phiên bản thất bại: %s", OtaService::getErrorMessage());
+      s_sdCapStr = String(capMB) + " MB";
     }
-    LOG_I(TAG, "--------------------------------------------------");
-}
-
-void triggerOtaUpdate() {
-    if (OtaService::isUpdating()) {
-        LOG_W(TAG, "OTA đang trong tiến trình, bỏ qua yêu cầu.");
-        return;
-    }
-
-    if (WiFi.status() != WL_CONNECTED) {
-        LOG_E(TAG, "Chưa kết nối WiFi! Không thể nạp OTA.");
-        return;
-    }
-
-    if (!s_hasNewVersion) {
-        LOG_I(TAG, "Đang kiểm tra lại máy chủ trước khi nạp...");
-        checkOtaVersion();
-    }
-
-    if (!s_hasNewVersion) {
-        LOG_W(TAG, "Không có phiên bản mới trên máy chủ để nạp.");
-        return;
-    }
-
-    LOG_I(TAG, "==================================================");
-    LOG_I(TAG, "🔥 ĐÃ GIỮ NÚT BOOT ĐỦ 3 GIÂY -> BẮT ĐẦU NẠP OTA!");
-    LOG_I(TAG, "Phiên bản mục tiêu: %s", s_cachedOtaInfo.version.c_str());
-    LOG_I(TAG, "==================================================");
-
-    OtaService::startUpdate(
-        s_cachedOtaInfo.firmwareUrl,
-        s_cachedOtaInfo.clearNvs,
-        s_cachedOtaInfo.changelog,
-        s_cachedOtaInfo.releaseDate,
-        [](int percent, size_t dl, size_t total) {
-            static int lastPct = -1;
-            if (percent % 10 == 0 && percent != lastPct) {
-                lastPct = percent;
-                LOG_I(TAG, "[OTA] Tiến trình nạp: %d%% (%u / %u KB)", percent, (uint32_t)(dl / 1024), (uint32_t)(total / 1024));
-            }
-        },
-        [](OtaState state, const char *msg) {
-            if (state == OtaState::SUCCESS) {
-                LOG_I(TAG, "✅ [OTA] %s", msg);
-            } else if (state == OtaState::ERROR) {
-                LOG_E(TAG, "❌ [OTA] %s", msg);
-            }
-        }
-    );
+    s_sdDetailStr = "Loai: " + status.cardType + " | Doc/Ghi & Magic Bytes: THANH CONG";
+  } else {
+    s_sdCapStr = "CHUA NHAN THE NHO MICRO SD";
+    s_sdDetailStr = status.message + " (Cam the vao khe de thu lai)";
+  }
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
 
-  LOG_I(TAG, "=================================");
-  LOG_I(TAG, "ESP32 Firmware: %s (%s)", FIRMWARE_VERSION, FIRMWARE_RELEASE_DATE);
-  LOG_I(TAG, "OTA Manifest URL: %s", OTA_MANIFEST_URL);
-  LOG_I(TAG, "=================================");
+  // Đợi cổng USB CDC kết nối nếu đang cắm qua USB trực tiếp
+  delay(1500);
 
-  OtaService::init();
+  LOG_I(TAG, "==================================================");
+  LOG_I(TAG, "CHUONG TRINH KIEM THU PHAN CUNG ESP32-S3 KIT 3.5\"");
+  LOG_I(TAG, "Thiet ke cho: %s", BOARD_NAME);
+  LOG_I(TAG, "==================================================");
 
-  // Cấu hình LED và Nút BOOT (Rule 3)
-  pinMode(PIN_LED_BUILTIN, OUTPUT);
-  pinMode(PIN_BUTTON_BOOT, INPUT_PULLUP);
+  // 1. Kiem tra Thong So Bo Nho (Flash & PSRAM)
+  uint32_t flashSize = ESP.getFlashChipSize() / (1024 * 1024);
+  uint32_t psramSize = ESP.getPsramSize() / (1024 * 1024);
+  uint32_t freePsram = ESP.getFreePsram() / 1024;
+  uint32_t freeHeap = ESP.getFreeHeap() / 1024;
 
-  // Kết nối WiFi (Rule 5)
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  LOG_I(TAG, "Đang kết nối WiFi: '%s' ...", WIFI_SSID);
+  LOG_I(TAG, "--- THONG SO HE THONG ---");
+  LOG_I(TAG, "Flash Chip Size: %u MB", flashSize);
+  LOG_I(TAG, "PSRAM Total: %u MB (Con trong: %u KB)", psramSize, freePsram);
+  LOG_I(TAG, "Internal Heap Free: %u KB", freeHeap);
+
+  // 2. Chay SD Card Diagnostic (Yeu cau 3: Dung luong the SD o giua man hinh)
+  s_sdTest = new SdCardTest();
+  SdCardStatus sdStatus = s_sdTest->runDiagnostic();
+  updateSdStatus(sdStatus);
+
+  // 3. Khoi tao Audio Test (NS4168 qua I2S: BCLK=42, LRCK=2, DOUT=41)
+  s_audioTest = new AudioTest();
+  s_audioTest->begin();
+
+  // 4. Khoi tao Man hinh va Cam ung qua PSRAM Canvas DMA
+  s_displayTouch = new DisplayTouchTest();
+  if (s_displayTouch->begin()) {
+    // Chay bai test 5 mau co ban
+    s_displayTouch->showColorTest();
+
+    // Hien thi giao dien Dashboard trung tam (SD card + Touch position)
+    s_displayTouch->showScreen(s_sdCapStr, s_sdDetailStr, s_sdOk, -1, -1, 0, 0, false);
+  } else {
+    LOG_E(TAG, "Khong the khoi tao man hinh LCD!");
+  }
+
+  // Phat am thanh giai điệu khởi động
+  s_audioTest->playChime();
+
+  LOG_I(TAG, "He thong da san sang nhan tuong tac!");
 }
 
 void loop() {
-  static unsigned long lastToggle = 0;
-  static bool ledState = false;
-  static unsigned long lastWifiCheck = 0;
-  static unsigned long bootPressStart = 0;
-  static bool bootTriggered = false;
+  if (s_displayTouch != nullptr) {
+    TouchPoint pt = s_displayTouch->getTouch();
 
-  unsigned long currentMillis = millis();
+    if (pt.touched) {
+      s_lastX = pt.x;
+      s_lastY = pt.y;
+      s_lastRawX = pt.rawX;
+      s_lastRawY = pt.rawY;
 
-  // 1. Nhấp nháy LED built-in (chớp nhanh 100ms khi đang OTA, 1000ms bình thường)
-  unsigned long blinkInterval = OtaService::isUpdating() ? 100 : 1000;
-  if (currentMillis - lastToggle >= blinkInterval) {
-    lastToggle = currentMillis;
-    ledState = !ledState;
-    digitalWrite(PIN_LED_BUILTIN, ledState ? HIGH : LOW);
-  }
+      if (!s_wasTouched) {
+        // Sự kiện mới chạm vào màn hình (Touch DOWN)
+        s_wasTouched = true;
+        s_lastTouchUpdate = millis();
 
-  // 2. Xử lý giữ nút BOOT 3 giây để kích hoạt cập nhật OTA
-  if (digitalRead(PIN_BUTTON_BOOT) == LOW) {
-    if (bootPressStart == 0) {
-      bootPressStart = currentMillis;
-      bootTriggered = false;
-      LOG_I(TAG, "Nút BOOT được nhấn! Giữ tiếp 3 giây để kích hoạt OTA...");
-    } else if (!bootTriggered && (currentMillis - bootPressStart >= 3000)) {
-      bootTriggered = true;
-      triggerOtaUpdate();
-    }
-  } else {
-    bootPressStart = 0;
-    bootTriggered = false;
-  }
+        LOG_I(TAG, "-> TOUCH DOWN tai: Screen(X=%d, Y=%d) | Raw(X=%d, Y=%d)",
+              pt.x, pt.y, pt.rawX, pt.rawY);
 
-  // 3. Quản lý kết nối WiFi & Kiểm tra thông tin phiên bản từ xa
-  if (WiFi.status() == WL_CONNECTED) {
-    if (!s_otaChecked) {
-      s_otaChecked = true;
-      s_lastOtaCheckTime = currentMillis;
-      LOG_I(TAG, "WiFi đã kết nối! IP: %s (RSSI: %d dBm)", 
-            WiFi.localIP().toString().c_str(), WiFi.RSSI());
-      checkOtaVersion();
-    } else if (currentMillis - s_lastOtaCheckTime >= 60000) {
-      // Tự động kiểm tra lại sau mỗi 60 giây nếu chưa cập nhật
-      s_lastOtaCheckTime = currentMillis;
-      checkOtaVersion();
-    }
-  } else {
-    // Reconnect định kỳ mỗi 12 giây nếu mất kết nối (Rule 5)
-    if (currentMillis - lastWifiCheck >= 12000) {
-      lastWifiCheck = currentMillis;
-      if (s_otaChecked) {
-        LOG_W(TAG, "Mất kết nối WiFi, đang kết nối lại...");
-        s_otaChecked = false;
+        // Phát âm thanh bip phản hồi xúc giác
+        if (s_audioTest != nullptr) {
+          s_audioTest->playTone(2200, 30, 0.4f);
+        }
+
+        // Cập nhật ngay tọa độ lên giữa màn hình
+        s_displayTouch->showScreen(s_sdCapStr, s_sdDetailStr, s_sdOk,
+                                   pt.x, pt.y, pt.rawX, pt.rawY, true);
+      } else {
+        // Đang giữ/di chuyển ngón tay (Throttle update ~ 30ms / ~33 FPS)
+        unsigned long now = millis();
+        if (now - s_lastTouchUpdate >= 30) {
+          s_lastTouchUpdate = now;
+          s_displayTouch->showScreen(s_sdCapStr, s_sdDetailStr, s_sdOk,
+                                     pt.x, pt.y, pt.rawX, pt.rawY, true);
+        }
       }
-      WiFi.reconnect();
+    } else {
+      if (s_wasTouched) {
+        // Sự kiện nhấc tay khỏi màn hình (Touch UP)
+        s_wasTouched = false;
+        LOG_I(TAG, "-> TOUCH UP (Giu toa do cuoi: X=%d, Y=%d)", s_lastX, s_lastY);
+
+        // Cập nhật lại trạng thái [ CHO CHAM ] nhưng vẫn giữ tọa độ chạm cuối cùng
+        s_displayTouch->showScreen(s_sdCapStr, s_sdDetailStr, s_sdOk,
+                                   s_lastX, s_lastY, s_lastRawX, s_lastRawY, false);
+      }
     }
   }
 
-  // Nhường CPU cho FreeRTOS IDLE task reset Watchdog Timer (Rule 8)
+  // Tự phục hồi: Kiểm tra lại thẻ SD nếu ban đầu chưa cắm thẻ (chu kỳ 5 giây/lần - Rule 10)
+  if (!s_sdOk && s_sdTest != nullptr && s_displayTouch != nullptr) {
+    unsigned long now = millis();
+    if (now - s_lastSdCheck >= 5000) {
+      s_lastSdCheck = now;
+      SdCardStatus newStatus = s_sdTest->runDiagnostic();
+      if (newStatus.mounted) {
+        LOG_I(TAG, "Phat hien the nho SD vua duoc cam vao!");
+        updateSdStatus(newStatus);
+        s_displayTouch->showScreen(s_sdCapStr, s_sdDetailStr, s_sdOk,
+                                   s_lastX, s_lastY, s_lastRawX, s_lastRawY, s_wasTouched);
+      }
+    }
+  }
+
+  // Nhường thời gian cho FreeRTOS IDLE task để tránh kích hoạt Watchdog Timer (Rule 4 & Rule 8)
   vTaskDelay(pdMS_TO_TICKS(10));
 }
