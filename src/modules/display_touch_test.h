@@ -26,7 +26,8 @@ public:
   bool begin();
   void showColorTest();
   void showScreen(const String& sdCapacityStr, const String& sdStatusDetail, bool sdOk,
-                  int32_t touchX, int32_t touchY, int32_t rawX, int32_t rawY, bool touched);
+                  int32_t touchX, int32_t touchY, int32_t rawX, int32_t rawY, bool touched,
+                  bool bleConnected = false, const String& bleHost = "");
   void flush();
   TouchPoint getTouch();
   void setBacklight(uint8_t brightness);

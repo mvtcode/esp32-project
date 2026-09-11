@@ -201,7 +201,8 @@ void DisplayTouchTest::showColorTest() {
 }
 
 void DisplayTouchTest::showScreen(const String& sdCapacityStr, const String& sdStatusDetail, bool sdOk,
-                                  int32_t touchX, int32_t touchY, int32_t rawX, int32_t rawY, bool touched) {
+                                  int32_t touchX, int32_t touchY, int32_t rawX, int32_t rawY, bool touched,
+                                  bool bleConnected, const String& bleHost) {
   if (!_initialized || !_canvas) return;
 
   // 1. Nền màn hình chính (Dark slate navy)
@@ -307,25 +308,39 @@ void DisplayTouchTest::showScreen(const String& sdCapacityStr, const String& sdS
   _canvas->setCursor(18, 288);
   _canvas->print("Cham bat ky dau de kiem tra do nhay");
 
-  // 5. Khung Card 3: ÂM THANH & HỆ THỐNG
+  // 5. Khung Card 3: BLE HID COMPOSITE & HỆ THỐNG
   _canvas->fillRect(10, 330, 300, 92, 0x10A2);
-  _canvas->drawRect(10, 330, 300, 92, 0x2965);
+  _canvas->drawRect(10, 330, 300, 92, bleConnected ? 0x07E0 : 0x07FF);
   _canvas->setTextSize(1);
   _canvas->setTextColor(0x07FF);
   _canvas->setCursor(18, 338);
-  _canvas->print("[ 3. AM THANH & HE THONG ]");
+  _canvas->print("[ 3. BLE HID COMPOSITE & HE THONG ]");
 
-  _canvas->setTextColor(0x07E0);
-  _canvas->setCursor(18, 358);
-  _canvas->print("Loa NS4168 (I2S): DA TEST OK");
+  if (bleConnected) {
+    _canvas->setTextColor(0x07E0); // Green
+    _canvas->setCursor(18, 356);
+    _canvas->print("BLE: [ DA KET NOI / CONNECTED ]");
 
-  _canvas->setTextColor(WHITE);
-  _canvas->setCursor(18, 378);
-  _canvas->print("Phat am thanh bip phan hoi moi lan cham");
+    _canvas->setTextColor(WHITE);
+    _canvas->setCursor(18, 374);
+    _canvas->printf("Host: %s", bleHost.length() > 0 ? bleHost.c_str() : "PC / Laptop");
 
-  _canvas->setTextColor(0xFFE0);
-  _canvas->setCursor(18, 398);
-  _canvas->print("PSRAM: 8MB DMA | QSPI: 32MHz Burst");
+    _canvas->setTextColor(0xFFE0); // Yellow
+    _canvas->setCursor(18, 392);
+    _canvas->print("Serial CLI: Go 'help' de test lenh HID");
+  } else {
+    _canvas->setTextColor(0xFD20); // Orange
+    _canvas->setCursor(18, 356);
+    _canvas->print("BLE: [ DANG CHO KET NOI... ]");
+
+    _canvas->setTextColor(WHITE);
+    _canvas->setCursor(18, 374);
+    _canvas->print("Ten: ESP32-S3 Smart TouchPad");
+
+    _canvas->setTextColor(0xCE79);
+    _canvas->setCursor(18, 392);
+    _canvas->print("Vao Bluetooth tren PC de ghep noi");
+  }
 
   // 6. Footer bar dưới cùng
   _canvas->fillRect(10, 432, 300, 38, 0x0842);
