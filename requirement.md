@@ -5,6 +5,7 @@
 ---
 
 ## 1. 🎯 Tổng Quan Dự Án (Project Overview)
+
 Biến bo mạch **ESP32-S3 tích hợp màn hình cảm ứng điện dung 3.5 inch** thành thiết bị ngoại vi không dây cao cấp kết nối với Máy tính / Laptop / Tablet qua chuẩn **Bluetooth Low Energy (BLE) Human Interface Device (HID)**.
 
 Thiết bị đóng vai trò là một **HID Composite Device** (vừa là Chuột, vừa là Bàn phím, vừa là Bộ điều khiển đa phương tiện - Consumer Control) mà không cần cài đặt driver trên máy tính chủ (Driverless, tương thích Windows, macOS, Linux, Android, iOS).
@@ -13,21 +14,22 @@ Thiết bị đóng vai trò là một **HID Composite Device** (vừa là Chu�
 
 ## 2. ⚙️ Phần Cứng & Môi Trường Hoạt Động (Hardware Specifications)
 
-| Thành phần | Thông số kỹ thuật | Ghi chú tích hợp |
-| :--- | :--- | :--- |
-| **Vi điều khiển (MCU)** | ESP32-S3 Dual-Core Xtensa LX7 @ 240MHz | 16MB Flash (Quad/Octal), 8MB Octal PSRAM |
-| **Màn hình hiển thị** | 3.5" IPS LCD độ phân giải **320x480** (Landscape 480x320) | Giao tiếp QSPI tốc độ cao (AXS15231B / ST7796) |
-| **Cảm ứng (Touch)** | Cảm ứng điện dung (Capacitive Touch) | Giao tiếp I2C, nhận diện đa điểm (Multi-touch) |
-| **Bluetooth** | BLE 5.0 (Bluetooth Low Energy) | Công suất phát tối đa, độ trễ thấp (< 15ms) |
-| **Âm thanh (Audio)** | Loa onboard qua IC khuếch đại NS4168 (I2S) | Phát âm thanh phản hồi xúc giác (Audio Haptic Click) |
-| **Lưu trữ** | Flash NVS & Thẻ nhớ MicroSD (SD_MMC / SPI) | Lưu cài đặt người dùng, macro tuỳ biến |
-| **Định hướng màn hình**| **Ngang (Landscape 480 x 320 px)** | Tối ưu không gian cho bàn di chuột và cụm phím |
+| Thành phần              | Thông số kỹ thuật                          | Ghi chú tích hợp                                     |
+| :---------------------- | :----------------------------------------- | :--------------------------------------------------- |
+| **Vi điều khiển (MCU)** | ESP32-S3 Dual-Core Xtensa LX7 @ 240MHz     | 16MB Flash (Quad/Octal), 8MB Octal PSRAM             |
+| **Màn hình hiển thị**   | 3.5" IPS LCD độ phân giải **320x480**      | Giao tiếp QSPI tốc độ cao (AXS15231B / ST7796)       |
+| **Cảm ứng (Touch)**     | Cảm ứng điện dung (Capacitive Touch)       | Giao tiếp I2C, **chỉ 1 điểm chạm** (Single-touch only - giới hạn AXS15231B) |
+| **Bluetooth**           | BLE 5.0 (Bluetooth Low Energy)             | Công suất phát tối đa, độ trễ thấp (< 15ms)          |
+| **Âm thanh (Audio)**    | Loa onboard qua IC khuếch đại NS4168 (I2S) | Phát âm thanh phản hồi xúc giác (Audio Haptic Click) |
+| **Lưu trữ**             | Flash NVS & Thẻ nhớ MicroSD (SD_MMC / SPI) | Lưu cài đặt người dùng, macro tuỳ biến               |
+| **Định hướng màn hình** | **Dọc (Portrait 320 x 480 px)**            | Màn hình vật lý native Portrait; LVGL `hor_res=320, ver_res=480` |
 
 ---
 
 ## 3. 🧩 Kiến Trúc Phần Mềm & Phân Luồng (Architecture & Concurrency)
 
 Tuân thủ nghiêm ngặt các quy chuẩn kỹ thuật trong `GEMINI.md`:
+
 - **Dual-Core FreeRTOS Partitioning**:
   - **Core 0**: Chạy BLE HID Stack (NimBLE / ESP32 BLE HID) đảm bảo tốc độ gửi báo cáo HID ổn định, không giật lag.
   - **Core 1**: Chạy UI Framework (LVGL / GFX PSRAM Canvas), đọc dữ liệu cảm ứng I2C (sample rate ~40–50Hz), xử lý cử chỉ và quản lý trạng thái.
@@ -40,13 +42,14 @@ Tuân thủ nghiêm ngặt các quy chuẩn kỹ thuật trong `GEMINI.md`:
 ## 4. 📱 Đặc Tả Chi Tiết Giao Diện & Tính Năng (Detailed Features)
 
 ### 4.1. Màn Hình Khởi Động & Ghép Nối (Pairing & Connection Screen)
+
 - **Giao diện khi chưa kết nối (Advertising State)**:
   - Hiển thị logo Bluetooth với hiệu ứng nhịp thở (Pulsing Animation).
   - Tên thiết bị BLE quảng bá rõ ràng (ví dụ: `ESP32-S3 Smart TouchPad`).
-  - Hướng dẫn nhanh người dùng: *"Vào Cài đặt Bluetooth trên máy tính để ghép nối"*.
+  - Hướng dẫn nhanh người dùng: _"Vào Cài đặt Bluetooth trên máy tính để ghép nối"_.
   - Trạng thái: `Đang chờ kết nối... (Advertising)`.
 - **Giao diện khi ghép nối thành công (Connected State)**:
-  - Biểu tượng Bluetooth chuyển sang màu xanh dương sáng kèm thông báo *"Đã kết nối thành công!"*.
+  - Biểu tượng Bluetooth chuyển sang màu xanh dương sáng kèm thông báo _"Đã kết nối thành công!"_.
   - Hiển thị tên máy tính/thiết bị đã kết nối (nếu lấy được qua BLE GATT).
   - Tự động chuyển mượt mà vào **Màn hình chính (Main UI)** sau 1.5 giây hoặc cho phép bấm trực tiếp để vào ngay.
 - **Cơ chế mất kết nối (Auto Reconnect & Fallback)**:
@@ -55,37 +58,42 @@ Tuân thủ nghiêm ngặt các quy chuẩn kỹ thuật trong `GEMINI.md`:
 ---
 
 ### 4.2. Màn Hình Chính & Thanh Điều Hướng (Main Dashboard & Navigation)
-- **Thanh trạng thái trên cùng (Top Status Bar - Cao ~32px)**:
-  - Biểu tượng BLE: Hiển thị trạng thái kết nối và cường độ sóng.
-  - Chế độ hệ điều hành: `[ WIN ]` hoặc `[ MAC ]` (chạm để chuyển đổi tức thì).
-  - Phản hồi âm thanh: Biểu tượng Loa (Bật/Tắt âm thanh click).
-  - Thanh Tab chuyển đổi tính năng mượt mà (Swipe hoặc Tap):
-    1. 🖱️ **TouchPad** (Chuột & Cử chỉ)
-    2. ⌨️ **Dev Shortcuts** (Phím tắt lập trình)
-    3. 🔢 **Numpad** (Bàn phím số)
-    4. 🎵 **Media Control** (Đa phương tiện & Hệ thống)
-    5. ⚙️ **Settings** (Cài đặt & Giám sát)
+
+- **Thanh Tab điều hướng (Tab Bar - Cao ~38px)** nằm trên cùng màn hình:
+  - **Toàn bộ 5 tab chỉ hiển thị ICON** (không có text label), sử dụng LVGL built-in symbols hoặc icon font riêng:
+    1. `LV_SYMBOL_HOME` hoặc icon trackpad tương đương → **TouchPad**
+    2. `LV_SYMBOL_KEYBOARD` hoặc icon shortcuts → **Dev Shortcuts**
+    3. `LV_SYMBOL_LIST` hoặc icon numpad → **Numpad**
+    4. `LV_SYMBOL_AUDIO` hoặc icon nhạc → **Media Control**
+    5. `LV_SYMBOL_SETTINGS` → **Settings**
+  - Tap vào icon để chuyển tab; **tắt swipe gesture** (`lv_obj_clear_flag(_tabview, LV_OBJ_FLAG_GESTURE_BUBBLE)` và `lv_tabview` không dùng swipe) để tránh chuyển tab không mong muốn khi kéo trackpad hoặc kéo slider.
+  - Tab active: icon highlight màu `COLOR_ACTIVE_BLUE`; inactive: icon màu `COLOR_TEXT_MUTED`.
 
 ---
 
 ### 4.3. Chi Tiết Các Tab Tính Năng (Feature Tabs)
 
 #### 🔹 TAB 1: MOUSE & TRACKPAD (Bàn di chuột thông minh)
+
 - **Khu vực TouchPad trung tâm (Trackpad Canvas)**:
-  - Vùng cảm ứng rộng lớn chiếm 75% diện tích màn hình.
-  - Chuyển động vi sai (Delta X, Delta Y) truyền đến máy tính với thuật toán làm mượt (Smoothing & Ballistics/Gia tốc con trỏ) giúp di chuột chuẩn xác.
-  - Hỗ trợ cử chỉ cảm ứng thông minh (Gestures):
-    - **Chạm 1 ngón (Single Tap)**: Chuột trái (Left Click).
-    - **Chạm 2 ngón (Two-Finger Tap)**: Chuột phải (Right Click).
-    - **Giữ và kéo (Tap & Hold Drag)**: Kéo bôi đen văn bản / kéo cửa sổ.
-    - **Vuốt mép phải (Edge Scroll)**: Cuộn trang lên/xuống (Scroll Wheel).
-- **Cụm nút bấm phía dưới (Bottom Physical-like Buttons)**:
-  - Nút **Left Click** (Chuột trái): Diện tích lớn bên trái.
-  - Nút **Right Click** (Chuột phải): Bên phải.
-  - Có hiệu ứng đổi màu khi nhấn và phát âm thanh bíp cơ học (haptic audio click).
+  - Vùng cảm ứng rộng lớn chiếm ≈ 75% diện tích màn hình (phần còn lại là cụm nút bấm dưới).
+  - Chuyển động vi sai (Delta X, Delta Y) truyền đến máy tính với thuật toán làm mượt (Smoothing & Ballistics) giúp di chuột chính xác.
+  - **Giới hạn phần cứng**: Chip cảm ứng **AXS15231B chỉ hỗ trợ 1 điểm chạm** tại một thời điểm (single-touch), không có multi-touch. Mọi gesture đều phải được thiết kế cho **1 ngón tay**.
+  - Hỗ trợ cử chỉ single-touch (Gestures):
+    - **Chạm ngắn 1 ngón (Single Tap < 200ms)**: Chuột trái (Left Click).
+    - **Giữ lâu 1 ngón (Long Press ≥ 500ms, không di chuyển)**: Chuột phải (Right Click) — *thay thế Two-Finger Tap do không hỗ trợ multi-touch*.
+    - **Chạm-Giữ-Kéo (Tap & Hold Drag)**: Chạm nhanh rồi giữ lâu và kéo — kéo bôi đen văn bản / kéo cửa sổ (drag mode).
+    - **Scroll**: Dùng cụm nút **Scroll Up / Scroll Down** riêng trên Tab Trackpad thay cho Edge Scroll 2 ngón.
+- **Cụm nút bấm phía dưới (Bottom Buttons)**:
+  - Nút **Left Click** (Chuột trái - hiển thị bằng icon).
+  - Nút **Right Click** (Chuột phải - hiển thị bằng icon).
+  - Nút **Scroll ↑** và **Scroll ↓** (cuộn trang - hiển thị bằng icon mũi tên).
+  - Có hiệu ứng đổi màu khi nhấn và phát âm thanh click I2S (haptic audio click).
 
 #### 🔹 TAB 2: DEV SHORTCUTS (Cụm phím tắt Lập trình viên & Văn phòng)
+
 Bố trí lưới nút bấm (Grid Layout 3x3 hoặc 4x2) với các macro thường dùng:
+
 - **Select All** (`Ctrl + A` trên Win / `Cmd + A` trên Mac)
 - **Copy** (`Ctrl + C` / `Cmd + C`)
 - **Paste** (`Ctrl + V` / `Cmd + V`)
@@ -95,10 +103,12 @@ Bố trí lưới nút bấm (Grid Layout 3x3 hoặc 4x2) với các macro thư�
 - **Save All** (`Ctrl + S` / `Cmd + S`)
 - **Home / End**: Nhảy về đầu dòng / cuối dòng.
 - **Find / Replace** (`Ctrl + F` / `Ctrl + H`).
-> *Tự động hoán đổi giữa mã phím `Ctrl` và `Cmd (GUI)` dựa theo chế độ hệ điều hành đang chọn trên Status Bar.*
+  > _Tự động hoán đổi giữa mã phím `Ctrl` và `Cmd (GUI)` dựa theo chế độ hệ điều hành đang chọn trên Status Bar._
 
 #### 🔹 TAB 3: NUMPAD (Bàn phím số & Tính toán)
+
 Thiết kế theo chuẩn Numpad bàn phím Full-size:
+
 - **Hàng số**: `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`
 - **Dấu chấm thập phân**: `.`
 - **Phép toán cơ bản**: `+`, `-`, `*`, `/`, `%`, `=`
@@ -110,7 +120,9 @@ Thiết kế theo chuẩn Numpad bàn phím Full-size:
 - Nút bấm to rõ, khoảng cách phím hợp lý, chống bấm nhầm.
 
 #### 🔹 TAB 4: MEDIA CONTROL (Điều khiển Đa phương tiện & Hệ thống)
+
 Gửi các mã HID chuẩn **Consumer Control**:
+
 - **Trình phát nhạc/video**:
   - `Play / Pause` (Phát / Tạm dừng)
   - `Next Track` (Bài kế tiếp)
@@ -125,23 +137,50 @@ Gửi các mã HID chuẩn **Consumer Control**:
   - `Task Manager / Mission Control`
   - Chụp ảnh màn hình (`Print Screen` / `Cmd + Shift + 4`)
 
-#### 🔹 TAB 5: CÀI ĐẶT & HỆ THỐNG (SETTINGS & SYSTEM DASHBOARD)
-- **Tùy chọn Ngôn ngữ (Language Switcher)**:
-  - Hỗ trợ chuyển đổi tức thì: **[ Tiếng Việt 🇻🇳 ]** hoặc **[ English 🇬🇧 ]**.
-  - Toàn bộ nhãn, thông số, trạng thái và menu được bản địa hoá Tiếng Việt chuẩn xác.
+#### 🔹 TAB 5: SETTINGS (Cài đặt & Hệ thống)
+
+> **Ngôn ngữ hiển thị**: Tab Settings sử dụng **Tiếng Việt hoàn toàn** với font Montserrat hỗ trợ dấu tiếng Việt. Các tab còn lại (1–4) dùng icon không có text.
+
 - **Cấu hình Trải nghiệm Điều khiển**:
-  - Thanh trượt chỉnh **Độ nhạy con trỏ chuột** (*Độ nhạy: 1.0x - 3.0x*).
-  - Tùy chọn **Đảo chiều cuộn trang** (*Cuộn tự nhiên / Tiêu chuẩn*).
-  - Chọn **Hệ điều hành mặc định** (*Windows* / *macOS*).
+  - Thanh trượt `lv_slider` chỉnh **Độ nhạy con trỏ chuột** (_Phạm vi: 1.0x – 3.0x, bước 0.1_); giá trị lưu vào NVS sau Debounce 500ms.
+    - ⚠️ **Chống Swipe không mong muốn**: Slider phải `lv_obj_add_flag(slider, LV_OBJ_FLAG_CLICK_FOCUSABLE)` và container tab phải tắt gesture bubble để kéo slider không kích hoạt chuyển tab.
+  - Toggle switch **Đảo chiều cuộn trang** (_Cuộn tự nhiên / Tiêu chuẩn_).
+  - Toggle switch **Hệ điều hành** (_Windows `Ctrl` / macOS `Cmd`_); lưu NVS.
 - **Cấu hình Hiển thị & Âm thanh**:
-  - Thanh trượt chỉnh **Độ sáng màn hình** (*Độ sáng: 10% - 100% qua PWM*).
-  - Công tắc bật/tắt **Âm thanh phản hồi khi bấm** (*Bật / Tắt tiếng click cơ học*).
-  - Thời gian **Chờ tắt màn hình** (*30 giây / 1 phút / 3 phút / Luôn sáng*).
+  - Thanh trượt `lv_slider` chỉnh **Độ sáng màn hình** (_10% – 100% qua `analogWrite(PIN_TFT_BL, val)`_); lưu NVS Debounce 500ms.
+    - ⚠️ **Chống Swipe không mong muốn**: Áp dụng tương tự slider độ nhạy.
+  - Toggle switch **Âm thanh phản hồi khi bấm** (_Bật / Tắt tiếng click I2S_); lưu NVS.
+  - Dropdown `lv_dropdown` **Thời gian chờ tắt màn hình** (_30 giây / 1 phút / 3 phút / Luôn sáng_); lưu NVS.
 - **Giám sát Phần cứng (Hardware Diagnostics)**:
-  - Tên thiết bị Bluetooth và địa chỉ MAC.
-  - Tình trạng bộ nhớ: Dung lượng RAM & PSRAM còn trống theo thời gian thực.
-  - Tình trạng thẻ nhớ MicroSD (nếu có cắm thẻ).
-  - Phiên bản Firmware & nút bấm *"Khôi phục cài đặt gốc (Reset Factory)"*.
+  - Tên thiết bị Bluetooth và địa chỉ MAC thực (lấy từ `NimBLEDevice::getAddress()`).
+  - Dung lượng RAM & PSRAM còn trống theo thời gian thực (cập nhật mỗi 2 giây).
+  - Tình trạng thẻ nhớ MicroSD (có/không có thẻ + dung lượng nếu có).
+  - Phiên bản Firmware & nút bấm **"Khôi phục cài đặt gốc"** (xoá NVS namespace và reboot).
+
+---
+
+## 4.4. ⚠️ Vấn Đề Kỹ Thuật Cần Xử Lý (Known Issues & Constraints)
+
+### Bug: Swipe/Drag Slider Không Mong Muốn
+
+- **Mô tả**: Khi người dùng kéo ngón tay trên **Trackpad** hoặc kéo **slider** trong Tab Settings, LVGL truyền sự kiện gesture lên `lv_tabview` gây chuyển tab ngoài ý muốn; đồng thời kéo trên trackpad có thể vô tình tương tác với slider.
+- **Nguyên nhân**: `lv_tabview` mặc định cho phép swipe gesture để chuyển tab; sự kiện không được consume tại lớp con mà bubble lên cha.
+- **Yêu cầu Fix**:
+  1. **Tắt hoàn toàn swipe gesture trên tabview**: Sau khi tạo `_tabview`, gọi:
+     ```cpp
+     lv_obj_clear_flag(lv_tabview_get_content(_tabview), LV_OBJ_FLAG_SCROLLABLE);
+     ```
+     và trên từng tab page:
+     ```cpp
+     lv_obj_clear_flag(_tabTouchpad, LV_OBJ_FLAG_SCROLLABLE);
+     // tương tự cho các tab khác
+     ```
+  2. **Isolate slider events**: Slider trong Tab Settings phải `consume` event và không cho bubble:
+     ```cpp
+     lv_obj_add_event_cb(slider, onSliderEvent, LV_EVENT_PRESSING, this);
+     // Trong callback: lv_event_stop_bubbling(e);
+     ```
+  3. **Chuyển tab chỉ bằng Tap**: Chỉ dùng `lv_tabview_set_act()` trong callback `LV_EVENT_CLICKED` của từng button tab bar, không dùng swipe.
 
 ---
 
@@ -173,7 +212,11 @@ Gửi các mã HID chuẩn **Consumer Control**:
 
 ## 6. 📅 Lộ Trình Phát Triển Đề Xuất (Development Roadmap)
 
-- **Giai đoạn 1**: Cấu hình BLE HID Composite Service (Mouse + Keyboard + Consumer Control) và test truyền nhận lệnh chuẩn với PC qua Serial.
-- **Giai đoạn 2**: Xây dựng UI Framework với LVGL v8 ở chế độ Landscape 480x320; tích hợp driver cảm ứng AXS15231B I2C và nhúng bộ font Montserrat Tiếng Việt (`vi_font_montserrat_xx`) từ nhánh `esp32-kit3.5`.
-- **Giai đoạn 3**: Hoàn thiện Tab Mouse (thuật toán lọc nhiễu di chuột + nhận diện tap/gestures) và Tab Numpad/Dev Shortcuts.
-- **Giai đoạn 4**: Xây dựng Tab Cài Đặt song ngữ (Tiếng Việt / English), tích hợp âm thanh click I2S, thanh trượt cài đặt độ nhạy chuột, lưu NVS và kiểm tra thực tế trên Windows/macOS.
+- **Giai đoạn 1**: Cấu hình BLE HID Composite Service (Mouse + Keyboard + Consumer Control) và test truyền nhận lệnh chuẩn với PC qua Serial. ✅ _Hoàn thành_
+- **Giai đoạn 2**: Xây dựng UI Framework với LVGL v8 ở chế độ **Portrait 320×480**; tích hợp driver cảm ứng AXS15231B I2C và nhúng bộ font Montserrat Tiếng Việt (`vi_font_montserrat_xx`) từ nhánh `esp32-kit3.5`. ✅ _Hoàn thành cơ bản_
+- **Giai đoạn 3** _(Đang thực hiện)_:
+  - Fix bug swipe/drag không mong muốn trên tabview và slider.
+  - Thay thế text label trên Tab Bar bằng **Icon** (LVGL symbol hoặc custom icon font).
+  - Hoàn thiện Tab TouchPad: thuật toán lọc nhiễu (Smoothing + Ballistics), nhận diện 2-finger tap, Tap & Hold drag, Edge scroll.
+  - Bổ sung phím còn thiếu: Tab Numpad (Delete, %, Esc/Clear), Tab Shortcuts (Home/End), Tab Media (Lock Screen, Screenshot, Task Manager).
+- **Giai đoạn 4**: Xây dựng Tab Settings Tiếng Việt hoàn chỉnh, tích hợp âm thanh click I2S từ UI, slider độ nhạy/độ sáng chống swipe, NVS persistence, Screen Saver, kiểm tra thực tế trên Windows/macOS.

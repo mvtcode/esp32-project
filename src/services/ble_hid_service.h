@@ -152,6 +152,12 @@ class NimBLEServer;
 class NimBLEHIDDevice;
 class NimBLECharacteristic;
 
+// UUID cho Custom Volume GATT Service
+#define VOLUME_SERVICE_UUID        "FFE0"
+#define VOLUME_CHARACTERISTIC_UUID "FFE1"
+
+typedef void (*VolumeChangeCallback)(uint8_t volumePercent);
+
 class BleHidService {
 public:
   // Quản lý vòng đời bộ nhớ (RAII)
@@ -188,6 +194,11 @@ public:
   void mediaKeyRelease();
   void mediaKeyWrite(uint16_t mediaMask);
 
+  // --- API Đồng Bộ Âm Lượng Hai Chiều (Bi-directional Volume Sync) ---
+  void setRemoteVolume(uint8_t volumePercent);
+  uint8_t getRemoteVolume() const { return _remoteVolume; }
+  void setVolumeChangeCallback(VolumeChangeCallback cb) { _volChangeCb = cb; }
+
   // Singleton instance truy cập toàn cục an toàn
   static BleHidService *getInstance();
 
@@ -201,6 +212,7 @@ private:
   NimBLECharacteristic *_outputKeyboard;
   NimBLECharacteristic *_inputMouse;
   NimBLECharacteristic *_inputConsumer;
+  NimBLECharacteristic *_volCharacteristic;
 
   // FreeRTOS Task và Queue trên Core 0
   TaskHandle_t _taskHandle;
@@ -214,6 +226,8 @@ private:
   uint8_t _keyboardModifiers;
   uint8_t _keyboardKeys[6];
   uint16_t _consumerMask;
+  uint8_t _remoteVolume;
+  VolumeChangeCallback _volChangeCb;
 
   // Task xử lý HID trên Core 0
   static void bleHidTask(void *param);
@@ -228,4 +242,5 @@ private:
 
   // Callbacks
   friend class BleHidServerCallbacks;
+  friend class VolumeCharacteristicCallbacks;
 };

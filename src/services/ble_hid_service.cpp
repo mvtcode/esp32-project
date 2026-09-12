@@ -163,6 +163,27 @@ private:
   BleHidService *_service;
 };
 
+class VolumeCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
+public:
+  VolumeCharacteristicCallbacks(BleHidService *service) : _service(service) {}
+
+  void onWrite(NimBLECharacteristic *pCharacteristic) override {
+    std::string val = pCharacteristic->getValue();
+    if (val.length() > 0 && _service != nullptr) {
+      uint8_t vol = (uint8_t)val[0];
+      if (vol > 100) vol = 100;
+      _service->_remoteVolume = vol;
+      LOG_I("BleHidService", "Nhan du lieu Volume tu Companion App: %d%%", vol);
+      if (_service->_volChangeCb != nullptr) {
+        _service->_volChangeCb(vol);
+      }
+    }
+  }
+
+private:
+  BleHidService *_service;
+};
+
 BleHidService::BleHidService()
   : _server(nullptr)
   , _hidDevice(nullptr)
@@ -170,6 +191,7 @@ BleHidService::BleHidService()
   , _outputKeyboard(nullptr)
   , _inputMouse(nullptr)
   , _inputConsumer(nullptr)
+  , _volCharacteristic(nullptr)
   , _taskHandle(nullptr)
   , _cmdQueue(nullptr)
   , _connected(false)
@@ -178,6 +200,8 @@ BleHidService::BleHidService()
   , _currentMouseButtons(0)
   , _keyboardModifiers(0)
   , _consumerMask(0)
+  , _remoteVolume(50)
+  , _volChangeCb(nullptr)
 {
   memset(_keyboardKeys, 0, sizeof(_keyboardKeys));
   s_instance = this;
@@ -238,6 +262,22 @@ bool BleHidService::begin(const char *deviceName) {
 
   // 5. BAT BUOC: Khoi dong cac GATT Services cho HID, Battery va Device Info
   _hidDevice->startServices();
+
+  // 5b. Khoi dong Custom Volume GATT Service (0xFFE0 / 0xFFE1) cho Companion App
+  NimBLEService *pVolService = _server->createService(VOLUME_SERVICE_UUID);
+  if (pVolService != nullptr) {
+    _volCharacteristic = pVolService->createCharacteristic(
+      VOLUME_CHARACTERISTIC_UUID,
+      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::NOTIFY
+    );
+    if (_volCharacteristic != nullptr) {
+      uint8_t initVol = 50;
+      _volCharacteristic->setValue(&initVol, 1);
+      _volCharacteristic->setCallbacks(new VolumeCharacteristicCallbacks(this));
+    }
+    pVolService->start();
+    LOG_I(TAG, "Custom Volume GATT Service (0xFFE0 / 0xFFE1) da khoi tao thanh cong!");
+  }
 
   // 6. Khoi dong BLE Advertising (Chi quang ba HID Service UUID de khong tran 31 bytes)
   NimBLEAdvertising *pAdv = NimBLEDevice::getAdvertising();
@@ -452,6 +492,16 @@ void BleHidService::mediaKeyWrite(uint16_t mediaMask) {
   cmd.type = BleHidCommandType::CONSUMER_WRITE;
   cmd.data.consumer.mediaMask = mediaMask;
   sendCommand(cmd);
+}
+
+void BleHidService::setRemoteVolume(uint8_t volumePercent) {
+  if (volumePercent > 100) volumePercent = 100;
+  _remoteVolume = volumePercent;
+  if (_volCharacteristic != nullptr && _connected) {
+    _volCharacteristic->setValue(&volumePercent, 1);
+    _volCharacteristic->notify();
+    LOG_D(TAG, "Goi Notify Volume len Companion App: %d%%", volumePercent);
+  }
 }
 
 void BleHidService::sendKeyboardReport() {
